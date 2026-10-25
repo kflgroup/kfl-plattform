@@ -169,7 +169,12 @@ async function handlePartnerApi(ctx, url) {
     const orgAvg = await DB.val(db, `SELECT AVG(n) FROM (SELECT COUNT(*) AS n FROM offers WHERE org_id = ? AND created_at >= ? GROUP BY user_id)`, p.orgId, isoOf(nowMs() - 28 * 86400e3));
     const goal = Math.max(3, Math.ceil(((orgAvg || 0) / 4) * 1.2));
     const newSince = await DB.val(db, "SELECT COUNT(*) FROM notifications WHERE recipient_type = 'partner' AND recipient_id = ? AND created_at > ?", p.id, since);
-    return out({ ok: true, today, week: w.week, year: w.year, news, notes, newRequests: newReq, mine, waiting, won, newSince,
+    // Aktivität der letzten 14 Tage (eigene Angebote und Übernahmen je Tag) für das Start-Diagramm
+    const from14 = isoOf(nowMs() - 13 * 86400e3).slice(0, 10);
+    const offDays = await DB.all(db, 'SELECT substr(created_at, 1, 10) AS d, COUNT(*) AS n FROM offers WHERE user_id = ? AND created_at >= ? GROUP BY d', p.id, from14);
+    const takeDays = await DB.all(db, 'SELECT substr(taken_at, 1, 10) AS d, COUNT(*) AS n FROM assignments WHERE taken_by = ? AND taken_at >= ? GROUP BY d', p.id, from14);
+    const activity = []; for (let i = 13; i >= 0; i--) { const d = isoOf(nowMs() - i * 86400e3).slice(0, 10); activity.push({ day: d, offers: (offDays.find((x) => x.d === d) || {}).n || 0, taken: (takeDays.find((x) => x.d === d) || {}).n || 0 }); }
+    return out({ ok: true, today, week: w.week, year: w.year, news, notes, newRequests: newReq, mine, waiting, won, newSince, activity,
       stats: { taken: st.taken || 0, offers: st.offers || 0, won: st.won || 0, presented: st.presented || 0, winRate: st.offers ? Math.round((st.won || 0) / st.offers * 100) : 0, weekOffers, weekGoal: goal } });
   }
   if (path === '/notes' && method === 'GET') return out({ ok: true, notes: await DB.all(db, 'SELECT * FROM partner_notes WHERE user_id = ? ORDER BY day IS NULL DESC, day, id DESC', p.id) });

@@ -1,12 +1,14 @@
 /* ===== Anfragen, Angebot abgeben ===== */
-const PTABS = () => [['neu', 'Neu', '#/anfragen?tab=neu'], ['meine', 'In Bearbeitung', '#/anfragen?tab=meine'], ['beantwortet', 'Beantwortet', '#/anfragen?tab=beantwortet'], ['gewonnen', 'Gewonnen', '#/anfragen?tab=gewonnen'], ['archiv', 'Archiv', '#/anfragen?tab=archiv'], isVL() && ['team', 'Team', '#/anfragen?tab=team']];
+const PTABS = () => { const st = P.start || {}, n = (k) => (st[k] || []).length || 0; return [['neu', 'Neu', '#/anfragen?tab=neu', n('newRequests')], ['meine', 'In Bearbeitung', '#/anfragen?tab=meine', n('mine')], ['beantwortet', 'Beim Kunden', '#/anfragen?tab=beantwortet', n('waiting')], ['gewonnen', 'Gewonnen', '#/anfragen?tab=gewonnen', n('won')], ['archiv', 'Archiv', '#/anfragen?tab=archiv'], isVL() && ['team', 'Team', '#/anfragen?tab=team']]; };
 const TAB_EMPTY = { neu: ['Keine neuen Anfragen', 'Neue Anfragen aus deiner Region erscheinen hier – du bekommst zusätzlich eine E-Mail.'], meine: ['Nichts in Bearbeitung', 'Übernimm eine neue Anfrage und gib dein Angebot ab.'], beantwortet: ['Noch keine Angebote offen', ''], gewonnen: ['Noch kein Deal gewonnen', 'Gute Angebote zahlen sich aus – bleib dran!'], archiv: ['Archiv ist leer', ''], team: ['Keine Anfragen im Team', ''] };
 async function pRequests() {
   const V = ppage('anfragen');
   const tab = hashQuery().tab || 'neu';
   const d = await GET('/requests', { tab }); if (!V.alive()) return;
-  V.show(html`${phead('Anfragen', 'Vor der Übernahme siehst du nur die Eckdaten. Nach der Übernahme gehört die Anfrage dir – dein Team sieht sie nicht mehr.')}${ptabs(PTABS(), tab)}
-    <div class="mt">${d.items.length ? d.items.map((a) => rqCard(a, 'list')) : html`<section class="block">${empty(...TAB_EMPTY[tab])}</section>`}</div>`);
+  if (!P.start) await pcounts(); if (!V.alive()) return;
+  V.show(html`${phead('Anfragen', 'Alle Anfragen aus deiner Region – sortiert nach Status. Wer zuerst ein starkes Angebot abgibt, gewinnt.')}${ptabs(PTABS(), tab)}
+    ${tab === 'neu' ? html`<div class="hint-bar">${icon('shield')}<span>Vor der Übernahme siehst du nur die Eckdaten. Nach der Übernahme gehört die Anfrage dir – dein Team sieht sie dann nicht mehr.</span></div>` : ''}
+    <div class="mt">${d.items.length ? html`<div class="rq-wrap">${rqList(d.items)}</div>` : html`<section class="block">${empty(...TAB_EMPTY[tab])}</section>`}</div>`);
 }
 
 let PA = null;
@@ -25,7 +27,7 @@ async function pRequest(id) {
       <button class="btn btn-primary" data-act="ptake" data-id="${a.id}">${icon('bolt')}Anfrage übernehmen</button></section>`);
   }
   if (a.level === 'summary') {
-    return V.show(html`${phead(`Anfrage #${r.number}`, `${r.zustand || ''} ${r.brand || ''} · PLZ ${r.plz}`, badge(a.statusLabel, a.tone), back)}<section class="block"><div class="block-body">
+    return V.show(html`${phead(`Anfrage #${r.number}`, `${r.zustand || ''} ${r.brand || ''} · PLZ ${r.plz}`, badge(a.statusLabel, a.tone), back)}<section class="block narrow"><div class="block-head"><h2><span class="h-ic">${icon('lock')}</span>Wird von deinem Team bearbeitet</h2></div><div class="block-body">
       ${kv([['Bearbeitet von', a.taker || '–'], ['Übernommen', fDT(a.taken_at)], ['Angebot gesendet', a.sent_at ? fDT(a.sent_at) : 'noch nicht'], ['Frist', fDT(a.deadline_at)], ['Kontaktfrist', a.contact_due_at ? fDT(a.contact_due_at) : '']])}
       <p class="small muted mt">Inhalt und Angebot sieht nur die bearbeitende Person. ${isVL() ? html`Abgegebene Angebote findest du unter <a class="link" href="#/angebote">Angebote</a>.` : ''}</p></div></section>`);
   }

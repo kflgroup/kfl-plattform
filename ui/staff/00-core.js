@@ -188,4 +188,4 @@ async function boot() {
   await refreshCounts();
   Router.resolve();
 }
-setInterval(() => { if (S.user && document.visibilityState === 'visible') refreshCounts(); }, 90000);
+setInterval(() => { if (S.user && document.visibilityState === 'visible') refreshCounts(); }, 30000);
