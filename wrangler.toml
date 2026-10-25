@@ -1,9 +1,12 @@
 # KFL Plattform 2.0 – Cloudflare Worker (internes Dashboard /admin, Partner-Dashboard /partner, Formular-Dienst)
 # Gebaut wird mit `node build.mjs` (keine Fremdpakete), Ergebnis: dist/worker.js
-name = "kfl-plattform"
+# Name des bestehenden Workers – die Plattform ersetzt das bisherige Dashboard unter derselben Adresse
+name = "tiny-lab-d971kfl-forms"
 main = "dist/worker.js"
 compatibility_date = "2026-10-01"
 workers_dev = true
+# im Dashboard gesetzte Variablen (z. B. DASHBOARD_URL, SENDER_EMAIL) beim Deploy behalten
+keep_vars = true
 
 [build]
 command = "node build.mjs"
@@ -15,17 +18,13 @@ enabled = true
 [triggers]
 crons = ["*/5 * * * *"]
 
-# Workers Paid: mehr Rechenzeit für PDF, Backup und Import
-[limits]
-cpu_ms = 30000
-
 # Neue Datenbank der Plattform (in Cloudflare mit Standort „EU“ anlegen und die ID hier eintragen)
 [[d1_databases]]
 binding = "DB"
 database_name = "kfl-plattform"
-database_id = "HIER-DIE-ID-DER-NEUEN-DATENBANK-EINTRAGEN"
+database_id = "f2b0e0e7-538e-4af4-8a3a-ac761029dfa4"
 
-# Bisherige Datenbank – nur für den einmaligen Import der Altdaten (Verwaltung → System)
+# Bisherige Datenbank – wird beim ersten Start automatisch übernommen (Konten, Anfragen, Notizen, Verlauf, Support)
 [[d1_databases]]
 binding = "OLD_DB"
 database_name = "kfl-dashboard"
@@ -39,6 +38,8 @@ database_id = "9e8a17c8-ad37-49ad-b57e-fc698724ca51"
 [vars]
 # Öffentliche Adresse des Workers (für Links in E-Mails aus zeitgesteuerten Abläufen)
 PUBLIC_ORIGIN = ""
+# Name des Workers für die Sicherung des Systemcodes im Backup
+CF_SCRIPT_NAME = "tiny-lab-d971kfl-forms"
 
 # Secrets (NICHT hier eintragen, sondern im Dashboard unter Einstellungen → Variablen und Secrets):
 # FORM_SECRET        gleicher Schlüssel wie im Shopify-Snippet kfl-config (signiert Formulare und „Meine Anfragen“)

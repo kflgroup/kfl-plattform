@@ -76,6 +76,23 @@ async function importOldDatabase(ctx) {
   return counts;
 }
 
+// Einmalige automatische Übernahme der Altdaten beim ersten Start mit leerer Datenbank (Binding OLD_DB)
+let autoImportDone = false;
+async function autoImport(ctx) {
+  if (autoImportDone || !ctx.env.OLD_DB) return;
+  if (await rawSetting(ctx.db, '_old_import')) { autoImportDone = true; return; }
+  const have = (await DB.val(ctx.db, 'SELECT COUNT(*) FROM requests')) + (await DB.val(ctx.db, 'SELECT COUNT(*) FROM users'));
+  let result = { uebersprungen: 'Datenbank war nicht leer' };
+  if (!have) {
+    const actor = ctx.actor; ctx.actor = { type: 'system', id: null, name: 'System' };
+    try { result = await importOldDatabase(ctx); } catch (e) { result = { fehler: e.message }; console.log('Altdaten-Import', e.stack || e.message); }
+    await audit(ctx, 'altdaten_importiert', 'system', null, result);
+    ctx.actor = actor;
+  }
+  await setRawSetting(ctx.db, '_old_import', JSON.stringify({ at: nowIso(), result }));
+  autoImportDone = true;
+}
+
 async function makeCtx(request, env, url) {
   const ip = request ? clientIp(request) : '';
   let origin = url ? url.origin : (env.PUBLIC_ORIGIN || '');
@@ -91,6 +108,7 @@ export default {
       if (!env.DB) return new Response('KFL Plattform: D1-Datenbank (Binding "DB") fehlt.', { status: 503 });
       await migrate(env.DB);
       const ctx = await makeCtx(request, env, url);
+      await autoImport(ctx);
       const p = url.pathname;
       if (p === '/' && (request.method === 'POST' || request.method === 'OPTIONS')) return await handleForm(ctx);
       if (p.startsWith('/my/')) return await handleMy(ctx, url);
@@ -117,6 +135,7 @@ export default {
     await migrate(env.DB);
     const c = await makeCtx(null, env, null);
     c.actor = { type: 'system', id: null, name: 'System' };
+    await autoImport(c);
     ctx.waitUntil(runJobs(c));
   }
 };

@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node build.mjs && cp dist/worker.js test/wk.mjs && cd test && node --no-warnings e2e.mjs",
+    "test": "node build.mjs && cp dist/worker.js test/wk.mjs && cd test && node --no-warnings e2e.mjs && node --no-warnings import.mjs",
     "serve": "node build.mjs && cp dist/worker.js test/wk.mjs && node --no-warnings test/serve.mjs",
     "test:ui": "node test/ui-flow.mjs ."
   },
