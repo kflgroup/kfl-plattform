@@ -1,0 +1,7 @@
+node_modules/
+.wrangler/
+dist/*.check.js
+test/wk.mjs
+theme/test/my.html
+*.log
+.DS_Store

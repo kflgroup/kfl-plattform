@@ -1,0 +1,14 @@
+{
+  "name": "kfl-plattform",
+  "version": "2.0.0",
+  "private": true,
+  "description": "KFL Plattform 2.0 – internes Dashboard, Partner-Dashboard und Formular-Dienst auf Cloudflare Workers",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node build.mjs && cp dist/worker.js test/wk.mjs && cd test && node --no-warnings e2e.mjs",
+    "serve": "node build.mjs && cp dist/worker.js test/wk.mjs && node --no-warnings test/serve.mjs",
+    "test:ui": "node test/ui-flow.mjs ."
+  },
+  "engines": { "node": ">=22.5" }
+}

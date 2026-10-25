@@ -1,0 +1,27 @@
+{%- comment -%}
+  Umkreis für die automatische Verteilung an KFL-Geschäftspartner (Marke + Entfernung zur PLZ).
+  Wird in kfl-contact-fields gerendert und nur in den Formularen Traumwagen-DEAL und Auto verkaufen aktiviert.
+  Gesendetes Feld: Umkreis ("25 km" … "Deutschlandweit")
+{%- endcomment -%}
+<div class="k-radius" data-k-radius hidden>
+  <fieldset class="k-choices" style="margin-top:1.6rem">
+    <legend data-radius-legend>Wie weit darf das Autohaus von dir entfernt sein?</legend>
+    <label class="k-choice"><input type="radio" name="contact[Umkreis]" value="25 km" data-sum="Umkreis" disabled><span>25 km<small>ganz in der Nähe</small></span></label>
+    <label class="k-choice"><input type="radio" name="contact[Umkreis]" value="50 km" checked data-sum="Umkreis" disabled><span>50 km<small>empfohlen</small></span></label>
+    <label class="k-choice"><input type="radio" name="contact[Umkreis]" value="100 km" data-sum="Umkreis" disabled><span>100 km</span></label>
+    <label class="k-choice"><input type="radio" name="contact[Umkreis]" value="200 km" data-sum="Umkreis" disabled><span>200 km</span></label>
+    <label class="k-choice"><input type="radio" name="contact[Umkreis]" value="Deutschlandweit" data-sum="Umkreis" disabled><span>Deutschlandweit<small>die meisten Angebote</small></span></label>
+  </fieldset>
+  <p class="k-hint" style="margin:.8rem 0 0">Wir schicken deine Anfrage an geprüfte KFL-Partner in diesem Umkreis um deine PLZ. Die Partner sehen nur deine Postleitzahl – Name und Kontaktdaten bekommt erst der Partner, dessen Angebot du annimmst.</p>
+</div>
+<script>
+  (() => {
+    const box = document.currentScript && document.currentScript.previousElementSibling;
+    const form = box && box.closest('form');
+    const type = form && form.dataset.kForm;
+    if (!box || (type !== 'deal' && type !== 'sell')) return;
+    box.hidden = false;
+    box.querySelectorAll('input').forEach((i) => { i.disabled = false; });
+    if (type === 'sell') box.querySelector('[data-radius-legend]').textContent = 'Wie weit dürfen Ankaufpartner von dir entfernt sein?';
+  })();
+</script>

@@ -1,0 +1,49 @@
+# KFL Plattform 2.0 – Cloudflare Worker (internes Dashboard /admin, Partner-Dashboard /partner, Formular-Dienst)
+# Gebaut wird mit `node build.mjs` (keine Fremdpakete), Ergebnis: dist/worker.js
+name = "kfl-plattform"
+main = "dist/worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[build]
+command = "node build.mjs"
+
+[observability]
+enabled = true
+
+# Fristen, Auswertung, Support-Eskalation, Mahnungen, Tagesabschluss, Monatsrechnungen, Backup (0:01 Uhr)
+[triggers]
+crons = ["*/5 * * * *"]
+
+# Workers Paid: mehr Rechenzeit für PDF, Backup und Import
+[limits]
+cpu_ms = 30000
+
+# Neue Datenbank der Plattform (in Cloudflare mit Standort „EU“ anlegen und die ID hier eintragen)
+[[d1_databases]]
+binding = "DB"
+database_name = "kfl-plattform"
+database_id = "HIER-DIE-ID-DER-NEUEN-DATENBANK-EINTRAGEN"
+
+# Bisherige Datenbank – nur für den einmaligen Import der Altdaten (Verwaltung → System)
+[[d1_databases]]
+binding = "OLD_DB"
+database_name = "kfl-dashboard"
+database_id = "9e8a17c8-ad37-49ad-b57e-fc698724ca51"
+
+# Optional: Dateispeicher für PDFs und Backups (R2 im Cloudflare-Dashboard aktivieren, Bucket „kfl-dateien“ anlegen)
+# [[r2_buckets]]
+# binding = "FILES"
+# bucket_name = "kfl-dateien"
+
+[vars]
+# Öffentliche Adresse des Workers (für Links in E-Mails aus zeitgesteuerten Abläufen)
+PUBLIC_ORIGIN = ""
+
+# Secrets (NICHT hier eintragen, sondern im Dashboard unter Einstellungen → Variablen und Secrets):
+# FORM_SECRET        gleicher Schlüssel wie im Shopify-Snippet kfl-config (signiert Formulare und „Meine Anfragen“)
+# APP_SECRET         zufälliger Schlüssel (mind. 32 Zeichen) für Server-Verschlüsselung und signierte Links
+# SETUP_TOKEN        Einmal-Schlüssel für die Ersteinrichtung des ersten Admin-Kontos
+# BREVO_API_KEY      E-Mail-Versand (Brevo)
+# SHOPIFY_ADMIN_TOKEN, SHOPIFY_SHOP   optional: Webshop-Statistik
+# CF_API_TOKEN, CF_ACCOUNT_ID         optional: Systemcode im täglichen Backup
