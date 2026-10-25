@@ -1,6 +1,6 @@
 # KFL Plattform 2.0 – Einrichtung und Go-live
 
-Die Plattform läuft als ein einziger Cloudflare Worker (`kfl-plattform`):
+Die Plattform läuft als ein einziger Cloudflare Worker und **ersetzt das bisherige Dashboard unter derselben Adresse** (Worker `tiny-lab-d971kfl-forms`, `https://tiny-lab-d971kfl-forms.black-lake-b0cd.workers.dev`):
 
 | Adresse | Inhalt |
 |---|---|
@@ -10,21 +10,22 @@ Die Plattform läuft als ein einziger Cloudflare Worker (`kfl-plattform`):
 | `POST /my/…` | „Meine Anfragen“ im Shop: Anfragen, Angebote, „Interessiert mich“ |
 | `/c/…` | Links aus Kunden-E-Mails (Rückfrage Ja/Nein, Umfrage) |
 
-Der bisherige Worker `tiny-lab-d971kfl-forms` läuft unverändert weiter, bis die neue Plattform freigeschaltet ist.
+Beim ersten Start mit der neuen, leeren Datenbank übernimmt die Plattform automatisch alle Daten aus der bisherigen Datenbank `kfl-dashboard` (Konten mit ihren Passwörtern, Anfragen, Notizen, Verlauf, alte Support-Formulare als Tickets). Die alte Datenbank bleibt unverändert erhalten.
 
 ## 1. Datenbank anlegen (einmalig, ca. 1 Minute)
 
 1. Cloudflare-Dashboard → **Storage & Databases → D1 SQL Database → Create**.
 2. Name `kfl-plattform`, **Location: Jurisdiction „European Union (EU)“** (Daten bleiben in der EU, DSGVO).
-3. Die angezeigte **Database ID** in `wrangler.toml` bei `database_id` eintragen (oder an Claude schicken).
+3. Die **Database ID** steht in `wrangler.toml` (`f2b0e0e7-538e-4af4-8a3a-ac761029dfa4`, angelegt am 25.10.2026).
 
 Die Tabellen legt der Worker beim ersten Aufruf selbst an.
 
 ## 2. Worker aus GitHub verbinden (Workers Builds)
 
-1. Workers & Pages → **Create → Import a repository** → GitHub-Konto `kflgroup` → Repository `kfl-plattform`.
-2. Build command: leer lassen. Deploy command: `npx wrangler deploy`. Root: `/`.
-3. Jeder Push auf `main` baut und veröffentlicht automatisch (der Build läuft über `node build.mjs`).
+1. Claude-GitHub-App für das Repository `kflgroup/kfl-plattform` installieren (damit Claude Änderungen hochladen kann): https://github.com/apps/claude/installations/select_target
+2. Cloudflare → Workers & Pages → Worker `tiny-lab-d971kfl-forms` → **Einstellungen → Build → Verbinden** → GitHub → Repository `kfl-plattform`, Branch `main`.
+3. Build command: leer lassen. Deploy command: `npx wrangler deploy`. Root: `/`.
+4. Jeder Push auf `main` baut und veröffentlicht automatisch (der Build läuft über `node build.mjs`).
 
 ## 3. Tarif
 
@@ -32,13 +33,13 @@ Workers **Paid** (5 USD/Monat). Der kostenlose Tarif erlaubt nur 10 ms Rechenzei
 
 ## 4. Secrets hinterlegen
 
-Worker `kfl-plattform` → Einstellungen → **Variablen und Secrets** → jeweils als **Secret**:
+Worker `tiny-lab-d971kfl-forms` → Einstellungen → **Variablen und Secrets** → jeweils als **Secret**:
 
 | Name | Inhalt |
 |---|---|
-| `FORM_SECRET` | **derselbe** Schlüssel wie im Shopify-Snippet `kfl-config` (Formulare und „Meine Anfragen“ sind damit signiert) |
+| `FORM_SECRET` | ist schon hinterlegt (derselbe Schlüssel wie im Shopify-Snippet `kfl-config`) – bleibt beim Deploy erhalten |
 | `APP_SECRET` | neuer Zufallsschlüssel, mind. 32 Zeichen (signierte Links, Server-Verschlüsselung) |
-| `SETUP_TOKEN` | frei gewählter Einmal-Schlüssel für die Ersteinrichtung |
+| `SETUP_TOKEN` | nur nötig, falls die Datenbank leer startet (ohne Altdaten) |
 | `BREVO_API_KEY` | API-Schlüssel von Brevo für den E-Mail-Versand |
 | `SHOPIFY_ADMIN_TOKEN` | optional: Admin-API-Token (Lesezugriff Bestellungen) für die Webshop-Statistik |
 | `SHOPIFY_SHOP` | optional, Standard `3r1qns-2d.myshopify.com` |
@@ -50,11 +51,11 @@ Variable (kein Secret): `PUBLIC_ORIGIN` = Adresse des Workers, z. B. `https://kf
 
 ## 5. Ersteinrichtung
 
-1. `https://<worker>/admin` öffnen → **Ersteinrichtung** mit dem `SETUP_TOKEN` → erstes Admin-Konto anlegen.
+1. `https://tiny-lab-d971kfl-forms.black-lake-b0cd.workers.dev/admin` öffnen und mit dem **bisherigen Admin-Zugang** anmelden (Konten werden automatisch übernommen).
 2. **Verwaltung → Einstellungen:** Firmendaten (Steuernummer/USt-IdNr., IBAN – Pflicht für Rechnungen und SEPA), Links (`link_staff`, `link_partner`, `link_public`), Preise je Vermittlung, Tagesabschluss.
 3. **Verwaltung → Einstellungen → Bereichspasswort** ändern (Startwert ist das Passwort aus der Vorgabe, nur als Hash gespeichert).
 4. **Backup → Backup-Passwort** festlegen.
-5. **Verwaltung → System → Daten aus dem alten Dashboard** importieren (Anfragen, Notizen, Verlauf, Support-Fälle).
+5. Altdaten prüfen (passiert automatisch beim ersten Start; Eintrag „altdaten importiert“ im Protokoll).
 6. Mitarbeiter anlegen (Einladung per E-Mail), Geschäftspartner mit Marken, Öffnungszeiten und Konten anlegen, Einladungen senden.
 
 ## 6. Shop umstellen (Go-live)
