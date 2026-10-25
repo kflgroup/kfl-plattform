@@ -91,7 +91,7 @@ check(asg.length === 2 && asg[0].org_id === org.A && asg[1].org_id === org.B, 'A
 check(asg[0].deadline_at === '2026-11-04T09:00:00.000Z', 'Frist 24 Werktags-Stunden: Mittwoch 10:00', asg[0].deadline_at);
 const partnerMail = lastMailTo('a_vt1@partner.de');
 check(partnerMail && partnerMail.sender.email === 'vermittlung@kfl-group.com' && !JSON.stringify(partnerMail).includes('max@kunde.de') && !JSON.stringify(partnerMail).includes('Mustermann'), 'Partner-Mail von vermittlung@ ohne Kundendaten');
-check(lastMailTo('max@kunde.de').sender.email === 'noreply@kfl-group.com', 'Eingangsbestätigung an Kunden von noreply@');
+check(lastMailTo('max@kunde.de').sender.email === 'noreplay@kfl-group.com', 'Eingangsbestätigung an Kunden von noreply@');
 
 console.log('4) Partner: Sichtbarkeit, Übernahme, Sperre für Kollegen');
 const aidA = asg[0].id, aidB = asg[1].id;
@@ -218,7 +218,7 @@ const tsS = nowSec();
 r = await c.post('/', { _form: 'support', _kid: '0', _ts: tsS, _sig: sig(`0.${tsS}.support`), name: 'Erika', email: 'erika@web.de', Thema: 'Frage zum Ratgeber', Nachricht: 'Wo finde ich meinen Download?' });
 check(r.ok && r.ticket, 'Webseiten-Support → Ticket', r);
 const tk = q1('SELECT * FROM tickets ORDER BY id DESC LIMIT 1');
-check(tk.tag === 'Webseite' && /Wir haben deine Anfrage erhalten/.test(lastMailTo('erika@web.de').subject) && lastMailTo('erika@web.de').sender.email === 'noreply@kfl-group.com', 'Tag Webseite, Eingangsbestätigung von noreply@');
+check(tk.tag === 'Webseite' && /Wir haben deine Anfrage erhalten/.test(lastMailTo('erika@web.de').subject) && lastMailTo('erika@web.de').sender.email === 'noreplay@kfl-group.com', 'Tag Webseite, Eingangsbestätigung von noreply@');
 advance(25); await cron(worker, env); await relogin();
 check(q1('SELECT priority FROM tickets WHERE id = ?', tk.id).priority === 'hoch', 'Nach 24 h automatisch Priorität „Hoch“');
 r = await c.post(`/api/tickets/${tk.id}/reply`, { text: 'Den Link findest du in deiner Bestellmail.' }, { who: 'vt' }); check(r.ok, 'Vertrieb antwortet');

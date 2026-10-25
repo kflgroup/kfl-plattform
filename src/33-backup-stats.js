@@ -24,7 +24,7 @@ async function securityReport(ctx) {
   if (pstale) issues.push({ level: 'info', text: `${pstale} aktive Partnerkonten ohne Anmeldung seit 90 Tagen.` });
   const mailErr = await DB.val(ctx.db, "SELECT COUNT(*) FROM mail_outbox WHERE status = 'fehler' AND created_at >= ?", since);
   if (mailErr) issues.push({ level: 'hoch', text: `${mailErr} E-Mails konnten in 24 Stunden nicht zugestellt werden.` });
-  if (!ctx.env.BREVO_API_KEY) issues.push({ level: 'hoch', text: 'Kein E-Mail-Dienst (BREVO_API_KEY) eingerichtet – E-Mails werden nur im Postausgang protokolliert.' });
+  if (!mailProvider(ctx.env)) issues.push({ level: 'hoch', text: 'Kein E-Mail-Versand eingerichtet (SMTP_USER/SMTP_PASS oder BREVO_API_KEY) – E-Mails werden nur im Postausgang protokolliert.' });
   if (!(await rawSetting(ctx.db, '_area_pw'))) issues.push({ level: 'hoch', text: 'Das Bereichspasswort für Protokoll und Backup ist noch das Standardpasswort. Bitte ändern.' });
   if (!(await rawSetting(ctx.db, '_backup_pw'))) issues.push({ level: 'hoch', text: 'Kein eigenes Backup-Passwort festgelegt – Backups sind mit dem Server-Schlüssel verschlüsselt.' });
   if (!ctx.env.FILES) issues.push({ level: 'info', text: 'Kein R2-Dateispeicher verbunden – Dateien und Backups liegen in der Datenbank (Größenlimit beachten).' });

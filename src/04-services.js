@@ -61,7 +61,13 @@ async function sendMail(ctx, { category = 'system', to, toName, subject, title, 
   const recipient = Array.isArray(to) ? to.join(', ') : to;
   if (!recipient || !emailOk(String(recipient).split(',')[0].trim())) return { ok: false, error: 'Keine gültige Empfängeradresse' };
   let status = 'nicht_konfiguriert', error = null;
-  if (ctx.env.BREVO_API_KEY) {
+  const list = (Array.isArray(to) ? to : String(to).split(',')).map((x) => String(x).trim()).filter(Boolean);
+  if (smtpConfigured(ctx.env)) {
+    try {
+      await smtpSendMail(ctx.env, { from, fromName: s.mail_sender_name, to: list, toName, subject, html: content, replyTo, attachments: (attachments || []).map((a) => ({ name: a.name, base64: a.base64, type: a.type })) });
+      status = 'gesendet';
+    } catch (e) { status = 'fehler'; error = String(e.message || e).slice(0, 500); }
+  } else if (ctx.env.BREVO_API_KEY) {
     try {
       const payload = { sender: { name: s.mail_sender_name, email: from }, to: (Array.isArray(to) ? to : [to]).map((e) => ({ email: e, name: toName || undefined })),
         subject, htmlContent: content };

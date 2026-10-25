@@ -5,3 +5,4 @@ test/wk.mjs
 theme/test/my.html
 *.log
 .DS_Store
+dist/worker.test.mjs

@@ -40,14 +40,17 @@ Worker `tiny-lab-d971kfl-forms` → Einstellungen → **Variablen und Secrets** 
 | `FORM_SECRET` | ist schon hinterlegt (derselbe Schlüssel wie im Shopify-Snippet `kfl-config`) – bleibt beim Deploy erhalten |
 | `APP_SECRET` | neuer Zufallsschlüssel, mind. 32 Zeichen (signierte Links, Server-Verschlüsselung) |
 | `SETUP_TOKEN` | nur nötig, falls die Datenbank leer startet (ohne Altdaten) |
-| `BREVO_API_KEY` | API-Schlüssel von Brevo für den E-Mail-Versand |
+| `SMTP_USER` | E-Mail-Postfach für den Versand: `noreplay@kfl-group.com` (IONOS) |
+| `SMTP_PASS` | Passwort dieses IONOS-Postfachs |
+| `SMTP_PASS_RECHNUNG`, `SMTP_PASS_VERMITTLUNG`, `SMTP_PASS_SUPPORT` | optional: Passwörter der Postfächer rechnung@, vermittlung@, support@ (sonst wird über noreplay@ mit passender Antwortadresse gesendet) |
+| `BREVO_API_KEY` | optional: Alternative zum Postfach (Brevo) |
 | `SHOPIFY_ADMIN_TOKEN` | optional: Admin-API-Token (Lesezugriff Bestellungen) für die Webshop-Statistik |
 | `SHOPIFY_SHOP` | optional, Standard `3r1qns-2d.myshopify.com` |
 | `CF_API_TOKEN`, `CF_ACCOUNT_ID` | optional: Systemcode zusätzlich im täglichen Backup |
 
 Variable (kein Secret): `PUBLIC_ORIGIN` = Adresse des Workers, z. B. `https://kfl-plattform.<konto>.workers.dev` oder später `https://dashboard.kfl-group.com`.
 
-**E-Mail-Absender in Brevo bestätigen:** `rechnung@`, `noreply@`, `vermittlung@` und `support@kfl-group.com` (bzw. die ganze Domain `kfl-group.com` mit SPF/DKIM).
+**E-Mail-Versand:** Bei IONOS das Postfach `noreplay@kfl-group.com` anlegen, dann `SMTP_USER` und `SMTP_PASS` als Secret setzen. Server `smtp.ionos.de`, Port 587 (STARTTLS) – Änderung über `SMTP_HOST`/`SMTP_PORT` möglich. Prüfen unter **Verwaltung → Einstellungen → E-Mail-Versand → Test senden**. Einladungen an Geschäftspartner (Einzelhändler und Organisationen) gehen beim Anlegen direkt per E-Mail von noreplay@ raus.
 
 ## 5. Ersteinrichtung
 

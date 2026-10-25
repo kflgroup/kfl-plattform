@@ -687,7 +687,7 @@ async function handleStaffApi(ctx, url) {
     need(can(u, 'settings_all') || can(u, 'acc_settings') || can(u, 'acc_manage'), 403, 'Dafür fehlt dir die Berechtigung.');
     const s = await settingsOf(ctx);
     const keys = can(u, 'settings_all') ? Object.keys(DEFAULT_SETTINGS) : can(u, 'acc_settings') ? GF_SETTINGS : ACC_SETTINGS;
-    return out({ ok: true, settings: Object.fromEntries(keys.map((k) => [k, s[k]])), editable: keys, env: can(u, 'settings_all') ? { brevo: !!env.BREVO_API_KEY, r2: !!env.FILES, shopify: !!env.SHOPIFY_ADMIN_TOKEN, cfapi: !!env.CF_API_TOKEN, oldDb: !!env.OLD_DB } : undefined });
+    return out({ ok: true, settings: Object.fromEntries(keys.map((k) => [k, s[k]])), editable: keys, env: can(u, 'settings_all') ? { mail: mailProvider(env), smtpUser: env.SMTP_USER || null, brevo: !!env.BREVO_API_KEY, r2: !!env.FILES, shopify: !!env.SHOPIFY_ADMIN_TOKEN, cfapi: !!env.CF_API_TOKEN, oldDb: !!env.OLD_DB } : undefined });
   }
   if (path === '/settings' && method === 'PATCH') {
     need(can(u, 'settings_all') || can(u, 'acc_settings') || can(u, 'acc_manage'), 403, 'Dafür fehlt dir die Berechtigung.');
@@ -727,6 +727,16 @@ async function handleStaffApi(ctx, url) {
     const r = await sendMail(ctx, { category: 'system', to: str(body.email, 200), subject: which === 'partner' ? 'Dein Link zum KFL-Partner-Dashboard' : 'Dein Link zum KFL Dashboard', title: which === 'partner' ? 'KFL-Partner-Dashboard' : 'KFL Dashboard', body: `<p>Hallo,</p><p>hier ist der Link ${which === 'partner' ? 'zum KFL-Partner-Dashboard' : 'zum internen KFL Dashboard'}:</p>${mailBtn(link, 'Dashboard öffnen')}<p style="color:#6b6b70;font-size:13px">${esc(link)}</p>` });
     await audit(ctx, 'link_versendet', 'link', which, { an: body.email });
     return out({ ok: true, mail: r.status });
+  }
+  if (path === '/mail/test' && method === 'POST') {
+    requirePerm(u, 'settings_all');
+    const to = str(body.to, 200) || u.email; need(emailOk(to), 400, 'Bitte eine gültige E-Mail-Adresse angeben.');
+    const cat = MAIL_CATEGORIES[body.category] ? body.category : 'system';
+    const s = await settingsOf(ctx);
+    const r = await sendMail(ctx, { category: cat, to, subject: 'Test-E-Mail aus dem KFL Dashboard', title: 'Der E-Mail-Versand funktioniert',
+      body: `<p>Hallo ${esc(u.name)},</p><p>diese Test-E-Mail wurde über ${mailProvider(env) === 'smtp' ? 'das Postfach ' + esc(env.SMTP_USER) : mailProvider(env) === 'brevo' ? 'Brevo' : 'keinen Dienst'} mit dem Absender <strong>${esc(s[MAIL_CATEGORIES[cat].setting] || s.mail_from_system)}</strong> versendet.</p>` });
+    await audit(ctx, 'test_mail', 'einstellungen', null, { an: to, status: r.status });
+    return out({ ok: true, status: r.status, error: r.error || null, provider: mailProvider(env) });
   }
   if (path === '/outbox' && method === 'GET') { requirePerm(u, 'settings_all'); return out({ ok: true, mails: await DB.all(db, 'SELECT id, category, sender, recipient, subject, status, error, created_at FROM mail_outbox ORDER BY id DESC LIMIT 200') }); }
   if ((m = path.match(/^\/outbox\/(\d+)$/)) && method === 'GET') { requirePerm(u, 'settings_all'); const mm = await DB.one(db, 'SELECT * FROM mail_outbox WHERE id = ?', +m[1]); need(mm, 404, 'Nicht gefunden.'); return new Response(mm.html, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'none'; img-src data:; style-src 'unsafe-inline'", ...SEC_HEADERS } }); }

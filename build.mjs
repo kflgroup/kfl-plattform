@@ -27,7 +27,11 @@ code += `\n/* ===== 99-index.js ===== */\n` + read('src/99-index.js');
 // nur ASCII ausgeben (Umlaute als \\u-Escapes), damit beim Kopieren nichts verloren geht
 code = [...code].map((c) => { const n = c.codePointAt(0); return n < 128 ? c : n > 0xffff ? c.split('').map((x) => '\\u' + x.charCodeAt(0).toString(16).padStart(4, '0')).join('') : '\\u' + n.toString(16).padStart(4, '0'); }).join('');
 mkdirSync(root + 'dist', { recursive: true });
+// TCP-Sockets (SMTP): im Worker aus 'cloudflare:sockets', in den Tests ein Platzhalter
+const testCode = 'const SMTP_CONNECT = (...a) => globalThis.__kflConnect(...a);\n' + code;
+code = "import { connect as SMTP_CONNECT } from 'cloudflare:sockets';\n" + code;
 // Syntaxprüfung der Oberflächen-Skripte
 for (const k of ['staff', 'partner']) { const h = page(k); const m = h.match(/<script[^>]*>([\s\S]*)<\/script>/); writeFileSync(root + `dist/${k}.check.js`, m ? m[1] : ''); }
 writeFileSync(root + 'dist/worker.js', code);
+writeFileSync(root + 'dist/worker.test.mjs', testCode);
 console.log('dist/worker.js', code.length, 'Zeichen, sha256', createHash('sha256').update(code).digest('hex').slice(0, 16));

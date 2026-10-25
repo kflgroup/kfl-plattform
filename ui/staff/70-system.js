@@ -76,7 +76,7 @@ async function admUsers(P, tab) {
         <td class="r nowrap">${manageable(u) ? html`<button class="btn btn-sm btn-ghost" data-act="userEdit" data-id="${u.id}">Bearbeiten</button>` : ''}${u.pending && manageable(u) ? html`<button class="btn btn-sm btn-ghost" data-act="userInvite" data-id="${u.id}">Einladung</button>` : ''}</td></tr>`)}</tbody></table></div></section>`);
 }
 ACT.userNew = async () => {
-  const d = await ask({ title: 'Mitarbeiter anlegen', text: 'Der Mitarbeiter erhält eine Einladung per E-Mail (noreply@) und legt sein Passwort selbst fest. Die Freigabe erfolgt automatisch.', ok: 'Anlegen und einladen',
+  const d = await ask({ title: 'Mitarbeiter anlegen', text: 'Der Mitarbeiter erhält eine Einladung per E-Mail (noreplay@) und legt sein Passwort selbst fest. Die Freigabe erfolgt automatisch.', ok: 'Anlegen und einladen',
     fields: html`${field('Name', inp('name', '', { req: true }))}${field('E-Mail', inp('email', '', { type: 'email', req: true }))}${field('Rolle', sel('role_key', creatableRoles().map((k) => [k, roleLabel(k)]), creatableRoles().slice(-1)[0] === 'buchhaltung' ? 'vertrieb' : creatableRoles()[0]))}
       <div class="grid-2">${field('Abteilung', inp('department'))}${field('Telefon', inp('phone'))}</div>` });
   if (!d) return; delete d._form;
@@ -152,12 +152,17 @@ async function admSettings(P, tab) {
     if (long) return html`<div class="span-2">${field(label, area(k, v, { rows: 3 }))}</div>`;
     return field(label, inp(k, v, { type: typeof v === 'number' ? 'text' : /^mail_from|_email|_inbox$/.test(k) ? 'email' : 'text', attrs: typeof v === 'number' ? 'inputmode="decimal"' : '' })); };
   const groups = SET_GROUPS.map(([title, , labels]) => [title, Object.entries(labels).filter(([k]) => keys.includes(k))]).filter(([, l]) => l.length);
-  P.show(html`${admHead(tab)}${d.env ? html`<section class="panel mt"><div class="panel-head"><h2>Verbindungen</h2></div><div class="panel-body row">${[['brevo', 'E-Mail-Versand (Brevo)'], ['r2', 'Dateispeicher (R2)'], ['shopify', 'Shopify-Statistik'], ['oldDb', 'Alte Datenbank (Import)']].map(([k, l]) => badge(`${l}: ${d.env[k] ? 'verbunden' : 'nicht eingerichtet'}`, d.env[k] ? 'ok' : 'muted'))}</div></section>` : ''}
+  P.show(html`${admHead(tab)}${d.env ? html`<section class="panel mt"><div class="panel-head"><h2>E-Mail-Versand</h2>${d.env.mail ? badge(d.env.mail === 'smtp' ? `aktiv über Postfach ${d.env.smtpUser}` : 'aktiv über Brevo', 'ok') : badge('nicht eingerichtet', 'err')}</div>
+      <div class="panel-body stack">${d.env.mail ? html`<p class="small muted">Einladungen, Rechnungen, Anfragen und Support-Mails werden mit den Absendern unten versendet. Jede E-Mail steht zusätzlich im Postausgang.</p>`
+        : html`<div class="err-box">${icon('alert')}<span>Es ist noch kein E-Mail-Versand verbunden. Hinterlege in Cloudflare beim Worker die Secrets <b>SMTP_USER</b> (z. B. noreplay@kfl-group.com) und <b>SMTP_PASS</b> (Passwort dieses IONOS-Postfachs). Bis dahin zeigt das Dashboard Einladungslinks zum Kopieren an.</span></div>`}
+        <form class="inline-form" data-submit="mailTest">${field('Test-E-Mail senden an', inp('to', S.user.email, { type: 'email', req: true }))}${field('Absender', sel('category', Object.entries(S.config.mailCategories).filter(([k]) => k !== 'internal').map(([k, v]) => [k, v.label]), 'system'))}<button class="btn btn-dark" type="submit">${icon('send')}Test senden</button></form></div></section>
+    <section class="panel mt"><div class="panel-head"><h2>Verbindungen</h2></div><div class="panel-body row">${[['r2', 'Dateispeicher (R2)'], ['shopify', 'Shopify-Statistik'], ['oldDb', 'Alte Datenbank (Import)']].map(([k, l]) => badge(`${l}: ${d.env[k] ? 'verbunden' : 'nicht eingerichtet'}`, d.env[k] ? 'ok' : 'muted'))}</div></section>` : ''}
     <form class="stack mt" data-submit="settingsSave">${groups.map(([title, list]) => html`<section class="panel"><div class="panel-head"><h2>${title}</h2><button class="btn btn-sm btn-dark" type="submit">Speichern</button></div><div class="panel-body grid-2">${list.map(([k, l]) => input(k, l))}</div></section>`)}</form>
     ${isAdmin() ? html`<section class="panel mt"><div class="panel-head"><h2>Bereichspasswort (Protokoll und Backup)</h2></div><form class="panel-body inline-form" data-submit="areaPw">
       ${field('Aktuelles Bereichspasswort', inp('current', '', { type: 'password', req: true, attrs: 'autocomplete="off"' }))}${field('Neues Bereichspasswort', inp('next', '', { type: 'password', req: true, attrs: 'minlength="10" autocomplete="new-password"' }))}<button class="btn btn-dark" type="submit">Ändern</button></form></section>` : ''}`);
   S.settingsTypes = s;
 }
+SUBMIT.mailTest = async (d) => { const r = await POST('/mail/test', d); if (r.status === 'gesendet') toast(`Test-E-Mail an ${d.to} gesendet.`); else toast(r.error ? `Nicht gesendet: ${r.error}` : 'Kein E-Mail-Versand eingerichtet – die E-Mail liegt nur im Postausgang.', 'err'); };
 SUBMIT.settingsSave = async (d) => {
   const out = {}; for (const [k, v] of Object.entries(d)) { if (!(k in S.settingsTypes)) continue; const t = S.settingsTypes[k]; out[k] = typeof t === 'number' ? String(v).replace(',', '.') : v; }
   await PATCH('/settings', out); toast('Einstellungen gespeichert.'); reload();

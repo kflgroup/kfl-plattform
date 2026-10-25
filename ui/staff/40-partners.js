@@ -43,13 +43,26 @@ ACT.orgNew = async () => {
       ${field('Telefon', inp('phone'))}${field('Rechnungs-E-Mail', inp('billing_email', '', { type: 'email' }), 'Leer = allgemeine E-Mail')}${field('USt-IdNr.', inp('vat_id'))}
       ${can('partner_terms') ? field('Abrechnung', sel('billing_mode', [['einzel', 'Jeder Fall einzeln'], ['monatlich', 'Monatliche Sammelrechnung']], 'einzel')) : ''}</div>
     <fieldset><legend>Marken</legend>${brandPicker([])}</fieldset>
-    <div class="checks">${chk('accepts[]', true, 'Traumwagen-DEAL (Kauf, Leasing, Finanzierung)', 'deal')}${chk('accepts[]', true, 'Fahrzeugankauf', 'sell')}</div></form>`,
+    <div class="checks">${chk('accepts[]', true, 'Traumwagen-DEAL (Kauf, Leasing, Finanzierung)', 'deal')}${chk('accepts[]', true, 'Fahrzeugankauf', 'sell')}</div>
+    <fieldset><legend>Zugang zum Partner-Dashboard</legend><p class="small muted">Optional: Lege gleich das erste Konto an. Die Person bekommt den Einladungslink per E-Mail und legt ihr Passwort selbst fest. Weitere Konten (bei Organisationen) legst du danach beim Partner an.</p>
+      <div class="grid-2 mt">${field('Name der Person', inp('u_name', '', { ph: 'z. B. Max Händler' }))}${field('E-Mail für den Zugang', inp('u_email', '', { type: 'email', ph: 'leer = kein Konto anlegen' }))}
+      ${field('Rolle', sel('u_role', Object.entries(S.config.partnerRoles).map(([k, r]) => [k, r.label]), 'gf'))}${field('Telefon', inp('u_phone'))}</div>
+      ${chk('u_invite', true, 'Einladungslink sofort per E-Mail senden')}</fieldset></form>`,
     foot: html`<button class="btn btn-ghost" data-close>Abbrechen</button><button class="btn btn-primary" type="submit" form="orgNewForm">Anlegen</button>` });
 };
 SUBMIT.orgCreate = async (d) => {
   const brands = d.brand_all ? ['*'] : [...(d.brands || []), ...String(d.brands_extra || '').split(',').map((x) => x.trim()).filter(Boolean)];
   const r = await POST('/orgs', { name: d.name, kind: d.kind, email: d.email, street: d.street, zip: d.zip, city: d.city, phone: d.phone, billing_email: d.billing_email, vat_id: d.vat_id, brands, accepts: d.accepts, ...(can('partner_terms') ? { billing_mode: d.billing_mode } : {}) });
-  closeModal(); toast('Partner angelegt. Lege jetzt die Konten an und verschicke die Einladungen.'); location.hash = '#/partner/' + r.id;
+  closeModal();
+  if (d.u_email) {
+    const pu = await POST(`/orgs/${r.id}/users`, { name: d.u_name || d.u_email.split('@')[0], email: d.u_email, role: d.u_role, phone: d.u_phone });
+    if (d.u_invite) {
+      const inv = await POST(`/orgs/${r.id}/users/${pu.id}/invite`);
+      if (inv.mail === 'gesendet') toast(`Partner angelegt – Einladung an ${d.u_email} versendet.`);
+      else { toast('Partner und Konto angelegt, die E-Mail konnte aber nicht versendet werden. Link bitte kopieren.', 'err'); showLink('Einladungslink', inv.link); }
+    } else toast('Partner und Konto angelegt. Die Einladung kannst du beim Konto senden.');
+  } else toast('Partner angelegt. Lege jetzt die Konten an und verschicke die Einladungen.');
+  location.hash = '#/partner/' + r.id;
 };
 
 let ORG = null;
@@ -134,7 +147,7 @@ ACT.puNew = async () => {
   reload();
 };
 function showLink(title, link) { modal({ title, body: html`<p class="small muted">Diesen Link persönlich weitergeben. Er ist 7 Tage gültig.</p><div class="row mt"><input value="${link}" readonly aria-label="Link"><button class="btn" data-act="copy" data-text="${link}">Kopieren</button></div>` }); }
-ACT.puInvite = async (b) => { const r = await POST(`/orgs/${oid()}/users/${b.dataset.id}/invite`); toast(r.mail === 'gesendet' ? 'Einladung versendet.' : 'E-Mail nicht versendet.'); if (r.mail !== 'gesendet') showLink('Einladungslink', r.link); };
+ACT.puInvite = async (b) => { const u = ORG.users.find((x) => x.id === +b.dataset.id); const r = await POST(`/orgs/${oid()}/users/${b.dataset.id}/invite`); toast(r.mail === 'gesendet' ? `Einladung an ${u ? u.email : 'den Partner'} versendet.` : 'E-Mail nicht versendet – Link bitte kopieren.', r.mail === 'gesendet' ? 'ok' : 'err'); if (r.mail !== 'gesendet') showLink('Einladungslink', r.link); };
 ACT.puReset = async (b) => {
   const u = ORG.users.find((x) => x.id === +b.dataset.id);
   const d = await ask({ title: `Passwort von ${u.name} zurücksetzen`, ok: 'Senden', fields: html`<div class="stack-s">
