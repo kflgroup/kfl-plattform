@@ -145,7 +145,9 @@ async function cancelInvoice(ctx, id, reason) {
   const lines = jparse(inv.lines, []).map((l) => ({ description: 'Storno: ' + l.description, qty: l.qty, unit: -l.unit }));
   const sid = await createInvoice(ctx, { org, recipient: jparse(inv.recipient, {}), lines, kind: 'storno', intro: `Hiermit stornieren wir die Rechnung ${inv.number} vom ${fmtDateDE(inv.issue_date)}.${reason ? ' Grund: ' + reason : ''}`, note: 'Storno zu ' + inv.number });
   await DB.update(ctx.db, 'invoices', id, { status: 'storniert', note: (inv.note ? inv.note + ' · ' : '') + 'Storniert' + (reason ? ': ' + reason : ''), updated_at: nowIso() });
-  await DB.run(ctx.db, "UPDATE billing_items SET status = 'offen', invoice_id = NULL, updated_at = ? WHERE invoice_id = ?", nowIso(), id);
+  // Fälle wieder abrechenbar machen – Monatszahler zurück in die Sammelablage (nächste Sammelrechnung), sonst „Offen“
+  const backTo = org && org.billing_mode === 'monatlich' ? 'gesammelt' : 'offen';
+  await DB.run(ctx.db, "UPDATE billing_items SET status = ?, invoice_id = NULL, updated_at = ? WHERE invoice_id = ?", backTo, nowIso(), id);
   await audit(ctx, 'rechnung_storniert', 'rechnung', inv.number, { grund: reason, storno_id: sid });
   return sid;
 }

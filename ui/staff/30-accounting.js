@@ -39,17 +39,19 @@ function invTable(list) {
 ACT.invSort = (b) => { const q = hashQuery(); setHashQuery({ ...q, sort: b.dataset.key, dir: q.sort === b.dataset.key && q.dir !== 'asc' ? 'asc' : 'desc' }, '#/buchhaltung/rechnungen'); };
 
 async function accItems(P, tab) {
-  const q = hashQuery(); const status = q.status || 'offen';
+  const q = hashQuery(); const status = q.status || 'aktiv';
   const d = await GET('/acc/items', { status }); if (!P.alive()) return;
-  P.show(html`${accHead(tab)}<section class="panel mt"><div class="toolbar">${Object.entries({ offen: 'Offen', gesammelt: 'Sammelablage', abgerechnet: 'Abgerechnet', storniert: 'Storniert', alle: 'Alle' }).map(([k, l]) => html`<a class="btn btn-sm ${status === k ? 'btn-dark' : 'btn-ghost'}" href="#/buchhaltung/faelle?status=${k}">${l}</a>`)}
-      <span class="spacer"></span><span class="small muted">Gewonnene Anfragen, deren Kontaktdaten an den Partner gingen. Monatszahler werden gesammelt und am Monatsende abgerechnet.</span></div>
+  const n = d.counts || {};
+  const chips = { aktiv: 'Aktuell', offen: 'Offen', gesammelt: 'Sammelablage', abgerechnet: 'Abgerechnet', storniert: 'Storniert', alle: 'Alle' };
+  P.show(html`${accHead(tab)}<section class="panel mt"><div class="toolbar">${Object.entries(chips).map(([k, l]) => html`<a class="btn btn-sm ${status === k ? 'btn-dark' : 'btn-ghost'}" href="#/buchhaltung/faelle?status=${k}">${l}${n[k] ? html` <span class="count ${k === 'offen' ? 'hot' : ''}">${n[k]}</span>` : ''}</a>`)}
+      <span class="spacer"></span><span class="small muted">Gewonnene Anfragen, deren Kontaktdaten an den Partner gingen. „Aktuell“ zeigt alle Fälle außer stornierten.</span></div>
     ${d.items.length ? html`<div class="table-wrap"><table class="table"><thead><tr><th>Anfrage</th><th>Kunde</th><th>Geschäftspartner</th><th>Abrechnung</th><th class="r">Netto</th><th>Status</th><th></th></tr></thead><tbody>
       ${d.items.map((i) => html`<tr><td class="nowrap">${i.number ? html`<a class="link strong" href="#/anfragen/${i.number}">#${i.number}</a>` : '–'}<span class="cell-sub">${i.vehicle || i.description}</span><span class="cell-sub">gewonnen ${fDate(i.created_at)}</span></td>
         <td>${i.customer_name || '–'}<span class="cell-sub">${i.customer_email || ''}</span><span class="cell-sub">${i.customer_phone || ''}</span></td>
         <td>${i.org_name}<span class="cell-sub">${i.billing_email || 'keine Rechnungs-E-Mail'}</span></td><td>${i.billing_mode === 'monatlich' ? 'Monatlich' : 'Je Fall'}</td>
-        <td class="r num">${fEur(i.amount_net)}</td><td>${st(ITEM_STATUS, i.status)}${i.invoice_number ? html`<span class="cell-sub">${i.invoice_number}</span>` : ''}${i.note ? html`<span class="cell-sub">Notiz: ${i.note}</span>` : ''}${i.status === 'storniert' ? html`<span class="cell-sub">Grund: ${i.cancel_reason || '–'}</span><span class="cell-sub">${i.cancelled_by || ''} · ${fDT(i.cancelled_at)}</span>` : ''}</td>
-        <td class="r nowrap"><button class="btn btn-sm btn-ghost" data-act="itemOpen" data-id="${i.id}">Ansehen</button>${can('acc_manage') && i.status === 'offen' ? html` <button class="btn btn-sm btn-primary" data-act="itemBill" data-id="${i.id}" data-mode="${i.billing_mode}">${icon('send')}Rechnung versenden</button>` : ''}${itemCancelBtn(i, i.invoice_number)}</td></tr>`)}</tbody></table></div>`
-      : html`<div class="panel-body">${empty(status === 'offen' ? 'Keine offenen Abrechnungsfälle' : 'Keine Fälle', 'Sobald ein Kunde „Interessiert mich“ klickt, erscheint der Fall hier.')}</div>`}</section>`);
+        <td class="r num">${fEur(i.amount_net)}</td><td>${st(ITEM_STATUS, i.status)}${i.invoice_number ? html`<span class="cell-sub"><button class="link" data-act="openInvoice" data-id="${i.invoice_id}">${i.invoice_number}</button> · ${(INV_STATUS[i.invoice_status] || [i.invoice_status])[0]}${i.invoice_cases > 1 ? ` · ${i.invoice_cases} Fälle` : ''}</span>` : ''}${i.note ? html`<span class="cell-sub">Notiz: ${i.note}</span>` : ''}${i.status === 'storniert' ? html`<span class="cell-sub">Grund: ${i.cancel_reason || '–'}</span><span class="cell-sub">${i.cancelled_by || ''} · ${fDT(i.cancelled_at)}</span>` : ''}</td>
+        <td class="r"><div class="row-acts"><button class="btn btn-sm btn-ghost" data-act="itemOpen" data-id="${i.id}">Ansehen</button>${can('acc_manage') && i.status === 'offen' ? html`<button class="btn btn-sm btn-primary" data-act="itemBill" data-id="${i.id}" data-mode="${i.billing_mode}">${icon('send')}Rechnung versenden</button>` : ''}${itemCancelBtn(i)}</div></td></tr>`)}</tbody></table></div>`
+      : html`<div class="panel-body">${empty({ aktiv: 'Keine aktuellen Abrechnungsfälle', offen: 'Keine offenen Abrechnungsfälle', storniert: 'Keine stornierten Fälle' }[status] || 'Keine Fälle', status === 'offen' && n.aktiv ? 'Bereits abgerechnete Fälle findest du unter „Aktuell“ oder „Abgerechnet“ – dort lassen sie sich auch stornieren.' : 'Sobald ein Kunde „Interessiert mich“ klickt, erscheint der Fall hier.')}</div>`}</section>`);
 }
 ACT.itemOpen = async (b) => {
   const d = await GET('/acc/items/' + b.dataset.id);
@@ -63,25 +65,30 @@ ACT.itemOpen = async (b) => {
       <div class="grid-2">${field('Betrag netto', inp('amount', it.amount_net, { attrs: mng && ['offen', 'gesammelt'].includes(it.status) ? '' : 'disabled' }))}${field('Leistungstext', inp('description', it.description, { attrs: mng && ['offen', 'gesammelt'].includes(it.status) ? '' : 'disabled' }))}</div>
       ${field('Notiz', area('note', it.note, { rows: 2, ...(mng ? {} : {}) }))}
       ${it.status === 'storniert' ? html`<div class="note-box">${icon('x')}<span><b>Storniert</b> am ${fDT(it.cancelled_at)} von ${it.cancelled_by || '–'}. Grund: ${it.cancel_reason || '–'}</span></div>` : ''}
-      ${mng || can('acc_cancel') ? html`<div class="row">${mng ? html`<button class="btn btn-dark" type="submit">Speichern</button>` : ''}${mng && it.status === 'offen' ? html`<button class="btn btn-primary" type="button" data-act="itemBill" data-id="${it.id}" data-mode="${d.org.billing_mode}">${icon('send')}Rechnung versenden</button>` : ''}<span class="spacer"></span>${itemCancelBtn(it, d.invoiceNumber)}</div>` : ''}</form>` });
+      ${mng || can('acc_cancel') ? html`<div class="row">${mng ? html`<button class="btn btn-dark" type="submit">Speichern</button>` : ''}${mng && it.status === 'offen' ? html`<button class="btn btn-primary" type="button" data-act="itemBill" data-id="${it.id}" data-mode="${d.org.billing_mode}">${icon('send')}Rechnung versenden</button>` : ''}<span class="spacer"></span>${itemCancelBtn({ ...it, invoice_number: d.invoiceNumber, invoice_cases: d.invoiceCases, invoice_paid: d.invoicePaid, billing_mode: d.org.billing_mode })}</div>` : ''}</form>` });
 };
 // Stornieren nur mit Recht „acc_cancel“ (Admin, Geschäftsführung, Buchhaltung)
-function itemCancelBtn(i, invNo) {
+function itemCancelBtn(i) {
   if (!can('acc_cancel')) return '';
   if (i.status === 'storniert') return html` <button class="btn btn-sm" type="button" data-act="itemReopen" data-id="${i.id}">${icon('refresh')}Storno aufheben</button>`;
-  return html` <button class="btn btn-sm btn-ghost" type="button" data-act="itemCancel" data-id="${i.id}" data-status="${i.status}" data-inv="${invNo || ''}" data-no="${i.number || i.request_number || ''}">${icon('x')}Stornieren</button>`;
+  if (i.status === 'abgerechnet' && i.invoice_paid > 0) return html` <button class="btn btn-sm btn-ghost" type="button" disabled title="Für die Rechnung ${i.invoice_number} sind Zahlungen erfasst – Storno erst nach Klärung der Zahlung.">${icon('lock')}Bezahlt</button>`;
+  return html` <button class="btn btn-sm btn-ghost" type="button" data-act="itemCancel" data-id="${i.id}" data-status="${i.status}" data-inv="${i.invoice_number || ''}" data-cases="${i.invoice_cases || 0}" data-monthly="${i.billing_mode === 'monatlich' ? 1 : ''}" data-no="${i.number || ''}">${icon('x')}Stornieren</button>`;
 }
 ACT.itemCancel = async (b) => {
-  const billed = b.dataset.status === 'abgerechnet', inv = b.dataset.inv, no = b.dataset.no;
-  const text = billed
-    ? `Der Fall ist bereits abgerechnet. Die Rechnung ${inv} wird storniert: Es entsteht eine Stornorechnung, die automatisch an den Geschäftspartner geht. Stehen weitere Fälle auf dieser Rechnung, werden sie sofort mit einer korrigierten Rechnung neu abgerechnet. Bereits bezahlte Rechnungen können nicht storniert werden.`
+  const billed = b.dataset.status === 'abgerechnet', inv = b.dataset.inv, no = b.dataset.no, cases = +b.dataset.cases || 1;
+  const back = b.dataset.monthly ? 'kommt zurück in die Sammelablage' : 'wird wieder „Offen“';
+  const choice = billed ? html`<div class="field"><span class="field-label">Was soll storniert werden? *</span>
+      <label class="check"><input type="radio" name="mode" value="fall" checked><span><b>Fall und Rechnung stornieren</b><br><span class="small muted">Der Vorgang wird nicht berechnet. Die Rechnung ${inv} wird per Stornorechnung aufgehoben${cases > 1 ? `, die ${cases - 1} anderen Fälle dieser Rechnung werden sofort korrigiert neu berechnet` : ''}.</span></span></label>
+      <label class="check"><input type="radio" name="mode" value="rechnung"><span><b>Nur die Rechnung stornieren</b><br><span class="small muted">Die Rechnung ${inv} wird per Stornorechnung aufgehoben, der Fall ${back}${cases > 1 ? ` (ebenso die ${cases - 1} anderen Fälle der Rechnung)` : ''} – z. B. um ihn mit korrigiertem Betrag neu abzurechnen.</span></span></label></div>` : '';
+  const text = billed ? `Der Fall ist bereits abgerechnet (Rechnung ${inv}). Die Stornorechnung geht automatisch an den Geschäftspartner.`
     : 'Der Fall wird nicht abgerechnet und verschwindet aus den offenen Fällen' + (b.dataset.status === 'gesammelt' ? ' und aus der Sammelablage' : '') + '. Das Storno kann später wieder aufgehoben werden.';
-  const d = await ask({ title: `Abrechnungsfall${no ? ' zu Anfrage #' + no : ''} stornieren?`, text, ok: billed ? 'Rechnung und Fall stornieren' : 'Fall stornieren', danger: true,
-    fields: html`${field('Grund *', inp('reason', '', { req: true, ph: 'z. B. Kunde hat nicht gekauft, Kulanz, doppelt erfasst', attrs: 'minlength="3" maxlength="300"' }), 'Wird im Protokoll und beim Fall gespeichert.')}` });
+  const d = await ask({ title: `Abrechnungsfall${no ? ' zu Anfrage #' + no : ''} stornieren?`, text, ok: 'Stornieren', danger: true,
+    fields: html`${choice}${field('Grund *', inp('reason', '', { req: true, ph: 'z. B. Kunde hat nicht gekauft, Kulanz, doppelt erfasst', attrs: 'minlength="3" maxlength="300"' }), 'Wird im Protokoll, beim Fall und auf der Stornorechnung vermerkt.')}` });
   if (!d) return;
-  const r = await POST(`/acc/items/${b.dataset.id}/cancel`, { reason: d.reason });
+  const r = await POST(`/acc/items/${b.dataset.id}/cancel`, { reason: d.reason, mode: d.mode || 'fall' });
   closeModal();
-  toast(r.stornoNumber ? `Storniert. Stornorechnung ${r.stornoNumber} erstellt${r.newNumber ? `, ${plural(r.rebilled, 'weiterer Fall', 'weitere Fälle')} neu abgerechnet (${r.newNumber})` : ''}.` : 'Fall storniert.');
+  if (r.mode === 'rechnung') toast(`Rechnung storniert (Stornorechnung ${r.stornoNumber}). Der Fall ist wieder ${r.status === 'gesammelt' ? 'in der Sammelablage' : 'offen'}.`);
+  else toast(r.stornoNumber ? `Storniert. Stornorechnung ${r.stornoNumber} erstellt${r.newNumber ? `, ${plural(r.rebilled, 'weiterer Fall', 'weitere Fälle')} neu abgerechnet (${r.newNumber})` : ''}.` : 'Fall storniert.');
   reload();
 };
 ACT.itemReopen = async (b) => {

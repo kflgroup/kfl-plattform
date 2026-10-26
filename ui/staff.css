@@ -149,3 +149,6 @@ a.kpi:hover{background:var(--sunken)}
 .side-foot .who{flex:1 1 120px}
 .side-tools{display:flex;gap:2px;width:100%;justify-content:space-between;margin-top:6px}
 html,body{overflow-x:clip}
+
+.row-acts{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;min-width:150px}
+.row-acts .btn{white-space:nowrap}

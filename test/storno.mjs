@@ -99,4 +99,19 @@ sq.prepare('UPDATE users SET revoked_perms = ? WHERE email = ?').run(JSON.string
 check((await c.post(`/api/acc/invoices/${r.invoiceId}/cancel`, sub, { who: 'bh' })).status === 403, 'Ohne Recht „stornieren“ (vom Admin entzogen) kein Rechnungs-Storno');
 sq.prepare("UPDATE users SET revoked_perms = '[]' WHERE email = ?").run('bh@kfl.de');
 check((await c.post(`/api/acc/invoices/${r.invoiceId}/cancel`, sub, { who: 'bh' })).ok, 'Buchhaltung storniert Rechnung');
+
+
+console.log('Storno im Reiter „Abrechnungsfälle“: abgerechnete Fälle sichtbar, nur Rechnung stornieren');
+r = await c.get('/api/acc/items', { who: 'bh' });
+check(r.items.some((x) => x.status === 'abgerechnet' && x.invoice_number && x.invoice_status) && !r.items.some((x) => x.status === 'storniert') && r.counts.aktiv === r.items.length, 'Standardansicht „Aktuell“ zeigt auch abgerechnete Fälle mit Rechnungsnummer', r.counts);
+const i5 = item(org, 5, 79); r = await c.post(`/api/acc/items/${i5}/bill`, {}, { who: 'bh' });
+const inv5 = r.invoiceId;
+r = await c.post(`/api/acc/items/${i5}/cancel`, { mode: 'rechnung', reason: 'Betrag falsch' }, { who: 'bh' });
+check(r.ok && r.mode === 'rechnung' && r.stornoNumber && r.status === 'offen' && q1('SELECT status FROM invoices WHERE id = ?', inv5).status === 'storniert', 'Nur Rechnung storniert → Fall wieder offen', r);
+await c.post(`/api/acc/items/${i5}/amount`, { amount: '59' }, { who: 'bh' }); r = await c.post(`/api/acc/items/${i5}/bill`, {}, { who: 'bh' });
+check(r.ok && q1('SELECT net FROM invoices WHERE id = ?', r.invoiceId).net === 59, 'Fall mit korrigiertem Betrag neu abgerechnet');
+check((await c.post(`/api/acc/invoices/${r.invoiceId}/cancel`, { reason: '' }, { who: 'bh' })).status === 400, 'Rechnungs-Storno ohne Grund abgelehnt');
+const m4 = item(orgM, 'M4', 49); await c.post(`/api/acc/items/${m4}/bill`, {}, { who: 'bh' }); await c.post('/api/jobs/run', { job: 'monat' }, { who: 'admin' });
+r = await c.post(`/api/acc/items/${m4}/cancel`, { mode: 'rechnung', reason: 'Rechnung neu erstellen' }, { who: 'gf' });
+check(r.ok && r.status === 'gesammelt', 'Monatszahler: nach Rechnungs-Storno zurück in die Sammelablage', r);
 console.log(check.fails ? `\n${check.fails} FEHLER` : '\nSTORNO-TEST BESTANDEN');

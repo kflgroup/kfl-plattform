@@ -24,11 +24,16 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
 
   /* ---------- Abrechnungsfälle (gewonnene Anfragen) ---------- */
   if (path === '/items' && method === 'GET') {
-    const st = q.status || 'offen';
-    const rows = await DB.all(db, `SELECT b.*, o.name AS org_name, o.billing_mode, o.billing_email, r.vehicle, r.customer_name, r.email AS customer_email, r.phone AS customer_phone, r.plz, r.type, r.created_at AS request_date, i.number AS invoice_number
+    const st = q.status || 'aktiv';
+    const where = st === 'alle' ? '1=1' : st === 'aktiv' ? "b.status IN ('offen','gesammelt','abgerechnet')" : 'b.status = ?';
+    const rows = await DB.all(db, `SELECT b.*, o.name AS org_name, o.billing_mode, o.billing_email, r.vehicle, r.customer_name, r.email AS customer_email, r.phone AS customer_phone, r.plz, r.type, r.created_at AS request_date,
+        i.number AS invoice_number, i.status AS invoice_status, i.kind AS invoice_kind, i.paid AS invoice_paid, i.gross AS invoice_gross, (SELECT COUNT(*) FROM billing_items x WHERE x.invoice_id = b.invoice_id) AS invoice_cases
       FROM billing_items b JOIN orgs o ON o.id = b.org_id LEFT JOIN requests r ON r.id = b.request_id LEFT JOIN invoices i ON i.id = b.invoice_id
-      WHERE ${st === 'alle' ? '1=1' : 'b.status = ?'} ORDER BY b.id DESC LIMIT 500`, ...(st === 'alle' ? [] : [st]));
-    return out({ ok: true, items: rows.map((r) => ({ ...r, number: r.request_id ? toNumber(r.request_id) : null })) });
+      WHERE ${where} ORDER BY CASE b.status WHEN 'offen' THEN 0 WHEN 'gesammelt' THEN 1 WHEN 'abgerechnet' THEN 2 ELSE 3 END, b.id DESC LIMIT 500`, ...(['alle', 'aktiv'].includes(st) ? [] : [st]));
+    const counts = Object.fromEntries((await DB.all(db, 'SELECT status, COUNT(*) AS n FROM billing_items GROUP BY status')).map((x) => [x.status, x.n]));
+    counts.aktiv = (counts.offen || 0) + (counts.gesammelt || 0) + (counts.abgerechnet || 0);
+    counts.alle = counts.aktiv + (counts.storniert || 0);
+    return out({ ok: true, counts, items: rows.map((r) => ({ ...r, number: r.request_id ? toNumber(r.request_id) : null })) });
   }
   if ((m = path.match(/^\/items\/(\d+)$/)) && method === 'GET') {
     const it = await DB.one(db, 'SELECT * FROM billing_items WHERE id = ?', +m[1]); need(it, 404, 'Fall nicht gefunden.');
@@ -36,12 +41,20 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     const org = await DB.one(db, 'SELECT * FROM orgs WHERE id = ?', it.org_id);
     const offer = it.assignment_id ? await DB.one(db, 'SELECT o.*, pu.name AS user_name FROM offers o LEFT JOIN partner_users pu ON pu.id = o.user_id WHERE o.assignment_id = ?', it.assignment_id) : null;
     const d = req ? jparse(req.data, {}) : {};
-    const invoiceNumber = it.invoice_id ? await DB.val(db, 'SELECT number FROM invoices WHERE id = ?', it.invoice_id) : null;
-    return out({ ok: true, item: { ...it, number: it.request_id ? toNumber(it.request_id) : null }, invoiceNumber, request: req ? { number: toNumber(req.id), type: req.type, vehicle: req.vehicle, summary: req.summary, created_at: req.created_at, status: req.status, fields: Object.fromEntries(Object.entries(d).filter(([k]) => !/^_/.test(k))) } : null,
+    const invRow = it.invoice_id ? await DB.one(db, 'SELECT number, paid, (SELECT COUNT(*) FROM billing_items x WHERE x.invoice_id = invoices.id) AS cases FROM invoices WHERE id = ?', it.invoice_id) : null;
+    return out({ ok: true, item: { ...it, number: it.request_id ? toNumber(it.request_id) : null }, invoiceNumber: invRow ? invRow.number : null, invoicePaid: invRow ? invRow.paid : 0, invoiceCases: invRow ? invRow.cases : 0, request: req ? { number: toNumber(req.id), type: req.type, vehicle: req.vehicle, summary: req.summary, created_at: req.created_at, status: req.status, fields: Object.fromEntries(Object.entries(d).filter(([k]) => !/^_/.test(k))) } : null,
       customer: req ? customerContact(req) : null, org: { ...orgRecipient(org), id: org.id, name: org.name, billing_mode: org.billing_mode, payment_terms_days: org.payment_terms_days, dunning_fee: org.dunning_fee }, offer: offer ? { ...offer, data: jparse(offer.data, {}) } : null });
   }
   if ((m = path.match(/^\/items\/(\d+)\/(cancel|reopen)$/)) && method === 'POST') {
     requirePerm(u, 'acc_cancel');
+    if (m[2] === 'cancel' && body.mode === 'rechnung') {
+      // Nur die Rechnung stornieren: Fall (und weitere Fälle der Rechnung) werden wieder abrechenbar
+      const it = await DB.one(db, 'SELECT * FROM billing_items WHERE id = ?', +m[1]); need(it, 404, 'Fall nicht gefunden.');
+      need(it.status === 'abgerechnet' && it.invoice_id, 409, 'Für diesen Fall gibt es keine Rechnung zum Stornieren.');
+      const reason = str(body.reason, 300); need(reason.length >= 3, 400, 'Bitte gib einen Grund für das Storno an.');
+      const sid = await cancelInvoice(ctx, it.invoice_id, reason);
+      return out({ ok: true, mode: 'rechnung', stornoInvoiceId: sid, stornoNumber: await DB.val(db, 'SELECT number FROM invoices WHERE id = ?', sid), status: await DB.val(db, 'SELECT status FROM billing_items WHERE id = ?', it.id) });
+    }
     if (m[2] === 'cancel') return out({ ok: true, ...(await cancelBillingItem(ctx, +m[1], body.reason)) });
     return out({ ok: true, ...(await reopenBillingItem(ctx, +m[1])) });
   }
@@ -88,7 +101,7 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     if (sub.startsWith('dunning-pdf/') && method === 'GET') { const d = await DB.one(db, 'SELECT * FROM dunnings WHERE id = ? AND invoice_id = ?', +sub.split('/')[1], inv.id); need(d, 404, 'Nicht gefunden.'); return fileResponse(await getFile(ctx, d.file_id), q.download === '1'); }
     if (sub === 'payment' && method === 'POST') { manage(); return out({ ok: true, ...(await addPayment(ctx, inv.id, body)) }); }
     if (sub === 'dunning' && method === 'POST') { manage(); return out({ ok: true, ...(await sendDunning(ctx, inv.id)) }); }
-    if (sub === 'cancel' && method === 'POST') { requirePerm(u, 'acc_cancel'); return out({ ok: true, id: await cancelInvoice(ctx, inv.id, str(body.reason, 300)) }); }
+    if (sub === 'cancel' && method === 'POST') { requirePerm(u, 'acc_cancel'); need(str(body.reason, 300).length >= 3, 400, 'Bitte gib einen Grund für das Storno an.'); return out({ ok: true, id: await cancelInvoice(ctx, inv.id, str(body.reason, 300)) }); }
     if (sub === 'resend' && method === 'POST') { manage(); const r = await sendInvoiceMail(ctx, inv.id, emailOk(body.email) ? body.email : null); await audit(ctx, 'rechnung_erneut_gesendet', 'rechnung', inv.number, { an: body.email || null }); return out({ ok: true, mail: r && r.status }); }
   }
   if (path === '/monthly-run' && method === 'POST') { manage(); const n = await runMonthlyInvoices(ctx, { force: true }); await audit(ctx, 'sammelrechnungen_manuell', 'buchhaltung', null, { anzahl: n }); return out({ ok: true, count: n }); }
