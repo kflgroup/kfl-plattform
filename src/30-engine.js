@@ -4,7 +4,7 @@
    ============================================================ */
 
 const PERSONAL_KEY = /^(vorname|nachname|name|email|e-mail|phone|telefon|mobil|handy|straße|strasse|hausnummer|adresse|anschrift|ort|wohnort|stadt|kundennummer|kundenkonto-id|firma|firmenname)$/i;
-const HIDDEN_KEY = /^(_|Firma2$|Formular$|Eingang \(Server\)$|Geändert \(Server\)$|Einwilligung|AGB akzeptiert|Datenschutz akzeptiert|Weitergabe an Partner)/;
+const HIDDEN_KEY = /^(_|form$|form_type$|utf8$|Firma2$|Formular$|Eingang \(Server\)$|Geändert \(Server\)$|Einwilligung|AGB akzeptiert|Datenschutz akzeptiert|Weitergabe an Partner)/;
 const PAY_LABEL = { kaufen: 'Kaufen', finanzieren: 'Finanzieren', leasen: 'Leasen' };
 
 /* ---------- Spalten aus den Formulardaten ---------- */

@@ -245,7 +245,7 @@ async function handleStaffApi(ctx, url) {
     need(r && (!r.deleted || r.status === 'spam' || can(u, 'req_delete')), 404, 'Anfrage nicht gefunden.');
     if (!sub && method === 'GET') {
       const d = jparse(r.data, {});
-      const fields = {}; for (const [k, v] of Object.entries(d)) { if (/^_/.test(k)) continue; if (!can(u, 'req_contact') && PERSONAL_KEY.test(k)) continue; fields[k] = v; }
+      const fields = {}; for (const [k, v] of Object.entries(d)) { if (/^(_|form$|form_type$|utf8$)/.test(k)) continue; if (!can(u, 'req_contact') && PERSONAL_KEY.test(k)) continue; fields[k] = v; }
       const assignments = await DB.all(db, `SELECT a.*, o.name AS org_name, o.city AS org_city, o.kind AS org_kind, pu.name AS taker_name FROM assignments a JOIN orgs o ON o.id = a.org_id LEFT JOIN partner_users pu ON pu.id = a.taken_by WHERE a.request_id = ? ORDER BY a.id`, rid);
       const offers = (await DB.all(db, 'SELECT o.*, g.name AS org_name, pu.name AS user_name FROM offers o JOIN orgs g ON g.id = o.org_id LEFT JOIN partner_users pu ON pu.id = o.user_id WHERE o.request_id = ? ORDER BY COALESCE(o.rank, 99), o.id', rid)).map((o) => ({ ...o, data: jparse(o.data, {}) }));
       const events = await DB.all(db, 'SELECT e.*, u.name AS author FROM events e LEFT JOIN users u ON u.id = e.user_id WHERE e.request_id = ? ORDER BY e.id DESC LIMIT 300', rid);

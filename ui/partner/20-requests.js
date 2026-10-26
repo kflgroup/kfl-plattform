@@ -68,8 +68,17 @@ ACT.pcontract = () => {
   modal({ title: 'Vertragsunterlagen vorbereiten', wide: true, cls: 'printable', body: html`<p class="small muted">Zusammenfassung für deinen Kauf-, Leasing- oder Finanzierungsvertrag. Übernimm die Daten in dein Vertragssystem oder speichere die Seite als PDF.</p>
     <div class="grid-2 mt"><div><h3>Kunde</h3>${kv([['Name', a.contact.name], ['Anschrift', [a.contact.street, [a.contact.zip, a.contact.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')], ['Telefon', a.contact.phone], ['E-Mail', a.contact.email], ['Kundenart', (r.fields || {}).Kundenart]])}</div>
       <div><h3>Fahrzeug</h3>${kv([['Fahrzeug', r.vehicle], ['Zustand', r.zustand], ['Wunsch', r.summary], ['KFL-Anfrage', '#' + r.number]])}</div></div>
-    <h3 class="mt-l">Angebot</h3>${kv(offerRows(o))}`, foot: html`<button class="btn btn-ghost" data-close>Schließen</button><button class="btn btn-dark" data-act="pprint">${icon('download')}Drucken / als PDF</button>` });
+    ${custConfig(r, o)}
+    <h3 class="mt-l">Angebot</h3>${kv(offerRows(o).map(([k, v]) => (k === 'Konfiguration' ? [k, o.config === 'gleich' ? 'Wie vom Kunden angefragt (Konfiguration siehe oben)' : o.herstellercode ? `Alternative · Herstellercode ${o.herstellercode}` : v] : k === 'Herstellercode' ? null : [k, v])).filter(Boolean))}`, foot: html`<button class="btn btn-ghost" data-close>Schließen</button><button class="btn btn-dark" data-act="pprint">${icon('download')}Drucken / als PDF</button>` });
 };
+// Konfiguration laut Kundenanfrage (alle Angaben inkl. „Sonstiges“) – für den Vertrag ausgeschrieben
+const CFG_SKIP = /^(PLZ|Umkreis|Kontaktweg|Kundenart|Zustand|Formular|form|utf8|form_type|AGB akzeptiert|Datenschutz akzeptiert)$/i;
+function custConfig(r, o) {
+  const f = r.fields || {};
+  const rows = Object.entries(f).filter(([k, v]) => !CFG_SKIP.test(k) && String(v ?? '').trim() !== '').map(([k, v]) => [k === 'body' ? 'Sonstiges' : k, html`<span class="pre">${v}</span>`]);
+  if (!rows.length) return '';
+  return html`<h3 class="mt-l">${o.config === 'alternativ' ? 'Konfiguration laut Kundenanfrage (Angebot weicht ab)' : 'Konfiguration laut Kundenanfrage'}</h3>${o.config === 'gleich' ? html`<p class="small muted">Das Angebot entspricht dieser Konfiguration.</p>` : ''}${kv(rows)}`;
+}
 ACT.pprint = () => { document.body.classList.add('printing'); window.print(); setTimeout(() => document.body.classList.remove('printing'), 500); };
 
 function offerForm(a) {

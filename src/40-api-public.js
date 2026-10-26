@@ -59,7 +59,7 @@ async function handleForm(ctx) {
 }
 
 /* ---------- Kundenbereich „Meine Anfragen“ ---------- */
-const MY_HIDDEN = /^(_|Firma2$|Formular$|Kundennummer$|Eingang \(Server\)$|Kundenkonto-ID$|Geändert \(Server\)$|Einwilligung|AGB akzeptiert|Datenschutz akzeptiert|Weitergabe an Partner)/;
+const MY_HIDDEN = /^(_|form$|form_type$|utf8$|Firma2$|Formular$|Kundennummer$|Eingang \(Server\)$|Kundenkonto-ID$|Geändert \(Server\)$|Einwilligung|AGB akzeptiert|Datenschutz akzeptiert|Weitergabe an Partner)/;
 const MY_STATUS = {
   eingang: ['Eingegangen', 'open'], in_bearbeitung: ['In Bearbeitung', 'progress'], versendet: ['Angebote werden eingeholt', 'progress'], angebot_liegt_vor: ['Angebote werden eingeholt', 'progress'],
   angebot_in_bearbeitung: ['Angebote werden geprüft', 'progress'], angebot_beim_kunden: ['Angebot liegt vor', 'offer'], angebot_akzeptiert: ['Angebot angenommen', 'done'],
