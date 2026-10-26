@@ -291,9 +291,21 @@ async function handleStaffApi(ctx, url) {
       await audit(ctx, 'anfrage_geloescht', 'anfrage', reqNo, { grund: str(body.reason, 300) });
       return out({ ok: true });
     }
+    // Bestehende Notiz für die Buchhaltung markieren (bleibt dauerhaft am Fall angeheftet; aufheben nur Admin)
+    const accM = String(sub || '').match(/^notes\/(\d+)\/acc$/);
+    if (accM && method === 'POST') {
+      const n = await DB.one(db, 'SELECT * FROM notes WHERE id = ? AND request_id = ?', +accM[1], rid); need(n, 404, 'Notiz nicht gefunden.');
+      if (body.relevant === false) { need(u.role === 'admin', 403, 'Die Markierung für die Buchhaltung kann nur ein Admin aufheben.'); await DB.update(db, 'notes', n.id, { acc_relevant: 0 }); await audit(ctx, 'notiz_buchhaltung_aufgehoben', 'anfrage', reqNo, { notiz: n.id }); return out({ ok: true }); }
+      requirePerm(u, 'req_edit');
+      await DB.update(db, 'notes', n.id, { acc_relevant: 1, acc_marked_by: u.name, acc_marked_at: nowIso() });
+      await audit(ctx, 'notiz_buchhaltung', 'anfrage', reqNo, { notiz: n.id, text: String(n.text).slice(0, 200) });
+      return out({ ok: true });
+    }
     if (sub === 'notes' && method === 'POST') {
       requirePerm(u, 'req_edit'); const text = str(body.text, 4000); need(text, 400, 'Bitte einen Text eingeben.');
-      await DB.insert(db, 'notes', { request_id: rid, user_id: u.id, text, created_at: nowIso(), visibility: 'intern', author_type: 'staff' });
+      const accRel = body.acc_relevant === true || body.acc_relevant === 'on' || body.acc_relevant === '1';
+      await DB.insert(db, 'notes', { request_id: rid, user_id: u.id, text, created_at: nowIso(), visibility: 'intern', author_type: 'staff', acc_relevant: accRel ? 1 : 0, acc_marked_by: accRel ? u.name : null, acc_marked_at: accRel ? nowIso() : null });
+      if (accRel) await audit(ctx, 'notiz_buchhaltung', 'anfrage', reqNo, { text: text.slice(0, 200) });
       if (!r.first_action_at) await DB.update(db, 'requests', rid, { first_action_at: nowIso() });
       await reqEvent(ctx, rid, 'notiz', text.slice(0, 120));
       return out({ ok: true });

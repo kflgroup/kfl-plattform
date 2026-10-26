@@ -86,6 +86,9 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS billing_items (id INTEGER PRIMARY KEY AUTOINCREMENT, org_id INTEGER NOT NULL, request_id INTEGER, assignment_id INTEGER,
     description TEXT NOT NULL, amount_net REAL NOT NULL, status TEXT NOT NULL DEFAULT 'offen', invoice_id INTEGER, note TEXT,
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+  // Notizen der Buchhaltung zu Rechnungen und Abrechnungsfällen
+  `CREATE TABLE IF NOT EXISTS acc_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_id INTEGER, item_id INTEGER, text TEXT NOT NULL,
+    user_id INTEGER, author_name TEXT, created_at TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT UNIQUE, org_id INTEGER, kind TEXT NOT NULL DEFAULT 'einzel',
     status TEXT NOT NULL DEFAULT 'offen', issue_date TEXT, service_from TEXT, service_to TEXT, due_date TEXT, net REAL NOT NULL DEFAULT 0,
     vat_rate REAL NOT NULL DEFAULT 19, vat REAL NOT NULL DEFAULT 0, gross REAL NOT NULL DEFAULT 0, paid REAL NOT NULL DEFAULT 0, fees REAL NOT NULL DEFAULT 0,
@@ -126,6 +129,7 @@ const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_tickets ON tickets(status, priority)`,
   `CREATE INDEX IF NOT EXISTS idx_tmsg ON ticket_messages(ticket_id)`,
   `CREATE INDEX IF NOT EXISTS idx_bill ON billing_items(org_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_accnotes ON acc_notes(invoice_id, item_id)`,
   `CREATE INDEX IF NOT EXISTS idx_inv_org ON invoices(org_id, status)`,
   `CREATE INDEX IF NOT EXISTS idx_chatmsg ON chat_messages(chat_id, id)`,
   `CREATE INDEX IF NOT EXISTS idx_pev ON partner_events(request_id)`
@@ -139,7 +143,7 @@ const EXTRA_COLUMNS = {
     spam_state: 'TEXT', spam_by: 'INTEGER', spam_reason: 'TEXT', deleted: "INTEGER NOT NULL DEFAULT 0", billed: "INTEGER NOT NULL DEFAULT 0",
     feedback_state: 'TEXT', customer_note_at: 'TEXT', customer_note_unread: "INTEGER NOT NULL DEFAULT 0", first_action_at: 'TEXT', status_note: 'TEXT'
   },
-  notes: { visibility: "TEXT NOT NULL DEFAULT 'intern'", org_id: 'INTEGER', author_type: "TEXT NOT NULL DEFAULT 'staff'" },
+  notes: { visibility: "TEXT NOT NULL DEFAULT 'intern'", org_id: 'INTEGER', author_type: "TEXT NOT NULL DEFAULT 'staff'", acc_relevant: 'INTEGER NOT NULL DEFAULT 0', acc_marked_by: 'TEXT', acc_marked_at: 'TEXT' },
   users: { extra_perms: "TEXT NOT NULL DEFAULT '[]'", revoked_perms: "TEXT NOT NULL DEFAULT '[]'", department: 'TEXT', phone: 'TEXT',
     must_change_pw: "INTEGER NOT NULL DEFAULT 0", created_by: 'INTEGER', prev_login: 'TEXT' },
   sessions: { area_until: 'TEXT' },
@@ -191,6 +195,11 @@ async function migrate(db) {
     const val = async (k) => { const r = await db.prepare('SELECT value FROM settings WHERE key = ?').bind(k).first(); const v = r ? jparse(r.value, null) : null; return v === null || v === '' ? DEFAULT_SETTINGS[k] : v; };
     for (const [col, key] of Object.entries(ORG_TERMS)) await db.prepare(`UPDATE orgs SET ${col} = ? WHERE ${col} IS NULL`).bind(await val(key)).run();
     await db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES ('_org_terms_v2', '1', ?, 'system')").bind(nowIso()).run();
+  }
+  // Einmalig: bisherige Einzel-Notiz der Abrechnungsfälle in die neue Notizliste übernehmen
+  if (!(await db.prepare("SELECT value FROM settings WHERE key = '_acc_notes_v1'").first())) {
+    await db.prepare("INSERT INTO acc_notes (item_id, text, author_name, created_at) SELECT id, note, 'Buchhaltung', updated_at FROM billing_items WHERE note IS NOT NULL AND trim(note) != ''").run();
+    await db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES ('_acc_notes_v1', '1', ?, 'system')").bind(nowIso()).run();
   }
   // Admin hat immer alle Rechte (auch neu hinzugekommene)
   await db.prepare("UPDATE roles SET perms = ?, name = 'Admin', builtin = 1 WHERE key = 'admin'").bind(JSON.stringify(PERM_KEYS)).run();

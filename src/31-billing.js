@@ -114,6 +114,24 @@ async function runMonthlyInvoices(ctx, { force = false } = {}) {
   }
   return n;
 }
+/* ---------- Notizen der Buchhaltung + vom Vertrieb angeheftete Notizen ---------- */
+// Notizen zu einem Abrechnungsfall: eigene Notizen der Buchhaltung und für die Buchhaltung markierte Notizen der Anfrage
+async function accNotesFor(ctx, { itemIds = [], invoiceId = null, requestIds = [] }) {
+  const db = ctx.db, out = [];
+  if (invoiceId) for (const n of await DB.all(db, 'SELECT * FROM acc_notes WHERE invoice_id = ? ORDER BY id DESC', invoiceId)) out.push({ ...n, kind: 'rechnung' });
+  for (const id of uniq(itemIds.filter(Boolean))) for (const n of await DB.all(db, 'SELECT * FROM acc_notes WHERE item_id = ? ORDER BY id DESC', id)) out.push({ ...n, kind: 'fall' });
+  for (const rid of uniq(requestIds.filter(Boolean))) for (const n of await DB.all(db, 'SELECT n.id, n.text, n.created_at, n.acc_marked_by, n.acc_marked_at, u.name AS author_name FROM notes n LEFT JOIN users u ON u.id = n.user_id WHERE n.request_id = ? AND n.acc_relevant = 1 ORDER BY n.id DESC', rid)) out.push({ ...n, kind: 'vertrieb', request_number: toNumber(rid) });
+  // angeheftete Vertriebsnotizen zuerst, danach neueste zuerst
+  return out.sort((a, b) => ((b.kind === 'vertrieb') - (a.kind === 'vertrieb')) || (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
+}
+async function addAccNote(ctx, { invoiceId = null, itemId = null, text }) {
+  text = str(text, 4000); need(text, 400, 'Bitte einen Text für die Notiz eingeben.');
+  const u = ctx._staff;
+  const id = await DB.insert(ctx.db, 'acc_notes', { invoice_id: invoiceId, item_id: itemId, text, user_id: u ? u.id : null, author_name: u ? u.name : 'System', created_at: nowIso() });
+  await audit(ctx, 'buchhaltung_notiz', invoiceId ? 'rechnung' : 'abrechnung', invoiceId || itemId, { text: text.slice(0, 200) });
+  return id;
+}
+
 // Abrechnungsfall stornieren. Ist der Fall schon abgerechnet, wird die Rechnung storniert (Stornorechnung)
 // und weitere Fälle derselben Rechnung werden sofort mit einer korrigierten Rechnung neu abgerechnet.
 async function cancelBillingItem(ctx, itemId, reason) {
