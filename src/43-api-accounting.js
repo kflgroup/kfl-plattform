@@ -132,30 +132,48 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     if (q.status) { where.push('p.status = ?'); args.push(q.status); }
     if (q.supplier) { where.push('p.supplier_id = ?'); args.push(toInt(q.supplier)); }
     if (q.q) { const like = '%' + q.q + '%'; where.push('(p.number LIKE ? OR s.name LIKE ?)'); args.push(like, like); }
-    return out({ ok: true, invoices: await DB.all(db, `SELECT p.*, s.name AS supplier_name FROM purchase_invoices p JOIN suppliers s ON s.id = p.supplier_id WHERE ${where.join(' AND ')} ORDER BY p.id DESC LIMIT 1000`, ...args) });
+    return out({ ok: true, invoices: await DB.all(db, `SELECT p.*, s.name AS supplier_name, fa.number AS account_number, fa.name AS account_name, fe.number AS entry_number, fd.number AS doc_number FROM purchase_invoices p JOIN suppliers s ON s.id = p.supplier_id LEFT JOIN fibu_accounts fa ON fa.id = p.account_id LEFT JOIN fibu_entries fe ON fe.id = p.entry_id LEFT JOIN fibu_docs fd ON fd.id = p.doc_id WHERE ${where.join(' AND ')} ORDER BY p.id DESC LIMIT 1000`, ...args) });
   }
   if ((path === '/purchase' && method === 'POST') || ((m = path.match(/^\/purchase\/(\d+)$/)) && method === 'PATCH')) {
     manage();
     const o = {};
     if (body.supplier_id !== undefined) { need(await DB.one(db, 'SELECT id FROM suppliers WHERE id = ?', toInt(body.supplier_id)), 400, 'Bitte einen Lieferanten wählen.'); o.supplier_id = toInt(body.supplier_id); }
-    for (const k of ['number', 'category', 'note']) if (body[k] !== undefined) o[k] = str(body[k], 300);
+    for (const k of ['number', 'category', 'note', 'text']) if (body[k] !== undefined) o[k] = str(body[k], 300);
+    if (body.account_id !== undefined && body.account_id !== '') { const acc = await DB.one(db, "SELECT * FROM fibu_accounts WHERE id = ? AND status = 'offen'", toInt(body.account_id)); need(acc, 400, 'Bitte ein offenes Konto wählen.'); need(acc.type === 'aufwand' || acc.type === 'aktiv', 400, 'Eingangsrechnungen werden auf Aufwands- oder Aktivkonten gebucht.'); o.account_id = acc.id; }
+    if (body.vat_rate !== undefined && body.vat_rate !== '') { const r = toNum(body.vat_rate); need([0, 7, 19].includes(r), 400, 'Umsatzsteuer: 0, 7 oder 19 %.'); o.vat_rate = r; }
     for (const k of ['date', 'due_date']) if (body[k] !== undefined) { need(!body[k] || /^\d{4}-\d{2}-\d{2}$/.test(body[k]), 400, 'Ungültiges Datum.'); o[k] = body[k] || null; }
     if (body.net !== undefined || body.gross !== undefined || body.vat !== undefined) {
-      const net = toNum(body.net, 0), vat = body.vat !== undefined && body.vat !== '' ? toNum(body.vat, 0) : round2(net * 0.19), gross = body.gross !== undefined && body.gross !== '' ? toNum(body.gross, 0) : round2(net + vat);
+      const rate = o.vat_rate != null ? o.vat_rate : 19;
+      let net = toNum(body.net, 0), vat = body.vat !== undefined && body.vat !== '' ? toNum(body.vat, 0) : null, gross = body.gross !== undefined && body.gross !== '' ? toNum(body.gross, 0) : null;
+      // Brutto angegeben, Netto leer → Netto und Umsatzsteuer aus dem Steuersatz berechnen
+      if (gross && !net) { net = round2(gross / (1 + rate / 100)); if (vat === null) vat = round2(gross - net); }
+      if (vat === null) vat = round2(net * rate / 100); if (gross === null) gross = round2(net + vat);
       Object.assign(o, { net: round2(net), vat: round2(vat), gross: round2(gross) });
     }
-    if (body.file && body.file.base64) o.file_id = await putFile(ctx, { name: body.file.name || 'eingangsrechnung.pdf', mime: body.file.type || 'application/pdf', bytes: unb64(body.file.base64), ownerType: 'purchase' });
+    if (body.file && body.file.base64) { need(/pdf/i.test(body.file.type || 'application/pdf'), 400, 'Bitte den Beleg als PDF hochladen.'); o.file_id = await putFile(ctx, { name: body.file.name || 'eingangsrechnung.pdf', mime: 'application/pdf', bytes: unb64(body.file.base64), ownerType: 'purchase' }); }
     o.updated_at = nowIso();
-    if (method === 'POST') { need(o.supplier_id, 400, 'Bitte einen Lieferanten wählen.'); const id = await DB.insert(db, 'purchase_invoices', { ...o, status: 'offen', created_by: u.id, created_at: nowIso() }); await audit(ctx, 'eingangsrechnung_erfasst', 'eingangsrechnung', id, { brutto: o.gross }); return out({ ok: true, id }); }
+    if (method === 'POST') {
+      need(o.supplier_id, 400, 'Bitte einen Lieferanten wählen.');
+      const id = await DB.insert(db, 'purchase_invoices', { ...o, status: 'offen', created_by: u.id, created_at: nowIso() });
+      await audit(ctx, 'eingangsrechnung_erfasst', 'eingangsrechnung', id, { brutto: o.gross });
+      // Auf Konto buchen und Beleg archivieren (wenn Konto gewählt)
+      let booking = null, bookingError = null;
+      if (o.account_id) { try { const eid = await fibuBookPurchase(ctx, id); booking = await DB.val(db, 'SELECT number FROM fibu_entries WHERE id = ?', eid); } catch (e) { bookingError = e.message; } }
+      const pi2 = await DB.one(db, 'SELECT doc_id FROM purchase_invoices WHERE id = ?', id);
+      return out({ ok: true, id, booking, bookingError, doc: pi2.doc_id ? await DB.val(db, 'SELECT number FROM fibu_docs WHERE id = ?', pi2.doc_id) : null });
+    }
+    const cur = await DB.one(db, 'SELECT entry_id FROM purchase_invoices WHERE id = ?', +m[1]); need(cur, 404, 'Nicht gefunden.');
+    if (cur.entry_id) need(!['supplier_id', 'net', 'vat', 'gross', 'account_id', 'date', 'vat_rate'].some((k) => o[k] !== undefined), 409, 'Die Eingangsrechnung ist bereits gebucht. Beträge, Konto und Datum lassen sich nur über ein Storno der Buchung ändern.');
     await DB.update(db, 'purchase_invoices', +m[1], o); await audit(ctx, 'eingangsrechnung_geaendert', 'eingangsrechnung', +m[1], Object.keys(o)); return out({ ok: true });
   }
-  if ((m = path.match(/^\/purchase\/(\d+)\/(schedule|unschedule|paid|file)$/))) {
+  if ((m = path.match(/^\/purchase\/(\d+)\/(schedule|unschedule|paid|file|book)$/))) {
     const pi = await DB.one(db, 'SELECT * FROM purchase_invoices WHERE id = ?', +m[1]); need(pi, 404, 'Nicht gefunden.');
     if (m[2] === 'file' && method === 'GET') { need(pi.file_id, 404, 'Keine Datei.'); return fileResponse(await getFile(ctx, pi.file_id), q.download === '1'); }
     manage();
     if (m[2] === 'schedule') { need(['offen'].includes(pi.status), 409, 'Nur offene Rechnungen können zur Zahlung vorgemerkt werden.'); const sup = await DB.one(db, 'SELECT iban FROM suppliers WHERE id = ?', pi.supplier_id); need(ibanValid(sup && sup.iban), 400, 'Beim Lieferanten ist keine gültige IBAN hinterlegt.'); await DB.update(db, 'purchase_invoices', pi.id, { status: 'zur_zahlung', pay_date: /^\d{4}-\d{2}-\d{2}$/.test(body.pay_date || '') ? body.pay_date : berlinDate(nowMs()), updated_at: nowIso() }); }
     if (m[2] === 'unschedule') { need(pi.status === 'zur_zahlung', 409, 'Nicht vorgemerkt.'); await DB.update(db, 'purchase_invoices', pi.id, { status: 'offen', pay_date: null, updated_at: nowIso() }); }
-    if (m[2] === 'paid') await DB.update(db, 'purchase_invoices', pi.id, { status: 'bezahlt', paid_at: nowIso(), updated_at: nowIso() });
+    if (m[2] === 'paid') { await DB.update(db, 'purchase_invoices', pi.id, { status: 'bezahlt', paid_at: nowIso(), updated_at: nowIso() }); await fibuBookPurchasePaid(ctx, pi.id, /^\d{4}-\d{2}-\d{2}$/.test(body.date || '') ? body.date : null); }
+    if (m[2] === 'book') { requirePerm(u, 'fibu_book'); if (body.account_id) { const acc = await DB.one(db, "SELECT id FROM fibu_accounts WHERE id = ? AND status = 'offen'", toInt(body.account_id)); need(acc, 400, 'Bitte ein offenes Konto wählen.'); await DB.update(db, 'purchase_invoices', pi.id, { account_id: acc.id }); } const eid = await fibuBookPurchase(ctx, pi.id); if (pi.status === 'bezahlt') await fibuBookPurchasePaid(ctx, pi.id, berlinDate(msOf(pi.paid_at || nowIso()))); return out({ ok: true, booking: await DB.val(db, 'SELECT number FROM fibu_entries WHERE id = ?', eid) }); }
     await audit(ctx, 'eingangsrechnung_' + m[2], 'eingangsrechnung', pi.id, null);
     return out({ ok: true });
   }
@@ -165,7 +183,7 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     const pr = await DB.one(db, 'SELECT * FROM payruns WHERE id = ?', +m[1]); need(pr, 404, 'Nicht gefunden.');
     if (m[2] === 'file' && method === 'GET') { need(pr.file_id, 404, 'Noch nicht freigegeben.'); await audit(ctx, 'sepa_heruntergeladen', 'zahlungsliste', pr.id, null); return fileResponse(await getFile(ctx, pr.file_id), true); }
     if (m[2] === 'release' && method === 'POST') { requirePerm(u, 'acc_release'); await releasePayrun(ctx, pr.id, body.exec_date); return out({ ok: true }); }
-    if (m[2] === 'paid' && method === 'POST') { manage(); need(pr.status === 'freigegeben', 409, 'Bitte zuerst freigeben.'); for (const i of jparse(pr.items, [])) await DB.update(db, 'purchase_invoices', i.id, { status: 'bezahlt', paid_at: nowIso() }); await DB.update(db, 'payruns', pr.id, { status: 'ausgefuehrt' }); await audit(ctx, 'zahlungsliste_ausgefuehrt', 'zahlungsliste', pr.id, null); return out({ ok: true }); }
+    if (m[2] === 'paid' && method === 'POST') { manage(); need(pr.status === 'freigegeben', 409, 'Bitte zuerst freigeben.'); for (const i of jparse(pr.items, [])) { await DB.update(db, 'purchase_invoices', i.id, { status: 'bezahlt', paid_at: nowIso() }); await fibuBookPurchasePaid(ctx, i.id, pr.exec_date || null); } await DB.update(db, 'payruns', pr.id, { status: 'ausgefuehrt' }); await audit(ctx, 'zahlungsliste_ausgefuehrt', 'zahlungsliste', pr.id, null); return out({ ok: true }); }
   }
   if (path === '/orgs' && method === 'GET') return out({ ok: true, orgs: await DB.all(db, 'SELECT id, name, billing_mode, billing_email, payment_terms_days, reminder_due_days, dunning_fee_1, dunning_fee_2, dunning_due_days, dunning_due_days_2, lead_price FROM orgs WHERE deleted = 0 ORDER BY name') });
   return fail(404, 'Nicht gefunden.');

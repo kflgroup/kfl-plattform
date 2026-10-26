@@ -5,7 +5,7 @@
 
 const BACKUP_TABLES = ['requests', 'notes', 'events', 'assignments', 'offers', 'partner_events', 'orgs', 'org_notes', 'partner_users', 'partner_notes', 'users', 'roles',
   'settings', 'audit', 'news_posts', 'news_reads', 'notifications', 'chats', 'chat_members', 'chat_messages', 'absences', 'tickets', 'ticket_messages', 'sys_issues', 'archive',
-  'billing_items', 'invoices', 'dunnings', 'payments', 'suppliers', 'purchase_invoices', 'payruns', 'surveys', 'files', 'mail_outbox', 'geo_cache'];
+  'billing_items', 'invoices', 'dunnings', 'payments', 'suppliers', 'purchase_invoices', 'payruns', 'surveys', 'files', 'mail_outbox', 'geo_cache', 'acc_notes', 'fibu_accounts', 'fibu_entries', 'fibu_lines', 'fibu_docs', 'fibu_periods'];
 const SECRET_COLS = { users: ['pass_hash', 'pass_salt', 'invite_hash'], partner_users: ['pass_hash', 'pass_salt', 'invite_hash'] };
 
 async function securityReport(ctx) {

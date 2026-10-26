@@ -86,6 +86,18 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS billing_items (id INTEGER PRIMARY KEY AUTOINCREMENT, org_id INTEGER NOT NULL, request_id INTEGER, assignment_id INTEGER,
     description TEXT NOT NULL, amount_net REAL NOT NULL, status TEXT NOT NULL DEFAULT 'offen', invoice_id INTEGER, note TEXT,
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+  // Finanzbuchhaltung: Konten, Buchungen (Kopf + Zeilen Soll/Haben), Belegarchiv, Abschlüsse
+  `CREATE TABLE IF NOT EXISTS fibu_accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT NOT NULL UNIQUE, name TEXT NOT NULL, type TEXT NOT NULL,
+    sys TEXT, status TEXT NOT NULL DEFAULT 'offen', note TEXT, closed_at TEXT, closed_by TEXT, created_by TEXT, created_at TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS fibu_entries (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT NOT NULL UNIQUE, date TEXT NOT NULL, period TEXT NOT NULL,
+    text TEXT NOT NULL, doc_id INTEGER, source TEXT NOT NULL DEFAULT 'manuell', source_id TEXT, reverses INTEGER, reversed_by INTEGER,
+    created_by TEXT, created_at TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS fibu_lines (id INTEGER PRIMARY KEY AUTOINCREMENT, entry_id INTEGER NOT NULL, account_id INTEGER NOT NULL,
+    debit REAL NOT NULL DEFAULT 0, credit REAL NOT NULL DEFAULT 0)`,
+  `CREATE TABLE IF NOT EXISTS fibu_docs (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT NOT NULL UNIQUE, date TEXT NOT NULL, kind TEXT NOT NULL,
+    title TEXT NOT NULL, amount REAL, counterparty TEXT, ref TEXT, file_id INTEGER, sha256 TEXT, size INTEGER, note TEXT, created_by TEXT, created_at TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS fibu_periods (id INTEGER PRIMARY KEY AUTOINCREMENT, period TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, status TEXT NOT NULL,
+    report TEXT, file_id INTEGER, doc_id INTEGER, closed_by TEXT, closed_at TEXT, reopened_by TEXT, reopened_at TEXT)`,
   // Notizen der Buchhaltung zu Rechnungen und Abrechnungsfällen
   `CREATE TABLE IF NOT EXISTS acc_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_id INTEGER, item_id INTEGER, text TEXT NOT NULL,
     user_id INTEGER, author_name TEXT, created_at TEXT NOT NULL)`,
@@ -130,6 +142,9 @@ const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_tmsg ON ticket_messages(ticket_id)`,
   `CREATE INDEX IF NOT EXISTS idx_bill ON billing_items(org_id, status)`,
   `CREATE INDEX IF NOT EXISTS idx_accnotes ON acc_notes(invoice_id, item_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_fibu_lines ON fibu_lines(account_id, entry_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_fibu_entries ON fibu_entries(period, date)`,
+  `CREATE INDEX IF NOT EXISTS idx_fibu_src ON fibu_entries(source, source_id)`,
   `CREATE INDEX IF NOT EXISTS idx_inv_org ON invoices(org_id, status)`,
   `CREATE INDEX IF NOT EXISTS idx_chatmsg ON chat_messages(chat_id, id)`,
   `CREATE INDEX IF NOT EXISTS idx_pev ON partner_events(request_id)`
@@ -149,6 +164,7 @@ const EXTRA_COLUMNS = {
   sessions: { area_until: 'TEXT' },
   mail_outbox: { server_reply: 'TEXT' },
   offers: { score_detail: 'TEXT' },
+  purchase_invoices: { account_id: 'INTEGER', vat_rate: 'REAL', doc_id: 'INTEGER', entry_id: 'INTEGER', pay_entry_id: 'INTEGER', text: 'TEXT' },
   orgs: { reminder_due_days: 'INTEGER', dunning_fee_1: 'REAL', dunning_fee_2: 'REAL', dunning_due_days: 'INTEGER', dunning_due_days_2: 'INTEGER' },
   invoices: { mail_status: 'TEXT', mail_error: 'TEXT', intro: 'TEXT' },
   billing_items: { cancel_reason: 'TEXT', cancelled_at: 'TEXT', cancelled_by: 'TEXT', prev_status: 'TEXT' }
@@ -158,7 +174,7 @@ const OLD_STATUS_MAP = { neu: 'eingang', in_bearbeitung: 'in_bearbeitung', angeb
 const OLD_ROLE_MAP = { admin: 'admin', bearbeiter: 'teamleitung', team_angebote: 'vertrieb', team_ankauf: 'vertrieb' };
 
 // Rechte, die nach dem Start hinzukamen: welche festen Rollen sie automatisch bekommen
-const NEW_ROLE_PERMS = { acc_cancel: ['gf', 'buchhaltung'] };
+const NEW_ROLE_PERMS = { acc_cancel: ['gf', 'buchhaltung'], fibu_view: ['gf', 'buchhaltung'], fibu_book: ['gf', 'buchhaltung'], fibu_manage: ['gf'] };
 
 let migrated = false;
 async function migrate(db) {
@@ -202,6 +218,10 @@ async function migrate(db) {
     await db.prepare("INSERT INTO acc_notes (item_id, text, author_name, created_at) SELECT id, note, 'Buchhaltung', updated_at FROM billing_items WHERE note IS NOT NULL AND trim(note) != ''").run();
     await db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES ('_acc_notes_v1', '1', ?, 'system')").bind(nowIso()).run();
   }
+  // Kontenrahmen anlegen (fehlende Standardkonten ergänzen)
+  for (const [number, name, type, sys] of FIBU_DEFAULT_ACCOUNTS) await db.prepare('INSERT OR IGNORE INTO fibu_accounts (number, name, type, sys, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(number, name, type, sys, 'System', nowIso()).run();
+  // Beginn der Finanzbuchhaltung merken (ab diesem Monat gibt es automatische Abschlüsse)
+  await db.prepare("INSERT OR IGNORE INTO settings (key, value, updated_at, updated_by) VALUES ('_fibu_start', ?, ?, 'system')").bind(JSON.stringify(berlinDate(nowMs()).slice(0, 7)), nowIso()).run();
   // Admin hat immer alle Rechte (auch neu hinzugekommene)
   await db.prepare("UPDATE roles SET perms = ?, name = 'Admin', builtin = 1 WHERE key = 'admin'").bind(JSON.stringify(PERM_KEYS)).run();
   // Alte Rollen und Status übernehmen (einmalig)

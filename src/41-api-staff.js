@@ -498,6 +498,7 @@ async function handleStaffApi(ctx, url) {
   }
 
   /* ---------- Buchhaltung ---------- */
+  if (path.startsWith('/fibu/')) return handleFibu(ctx, u, path.slice(5), method, body, q, url);
   if (path.startsWith('/acc/')) return handleAccounting(ctx, u, path.slice(4), method, body, q, url);
 
   /* ---------- Statistik ---------- */

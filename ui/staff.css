@@ -185,3 +185,19 @@ html,body{overflow-x:clip}
 .score-detail div{display:flex;justify-content:space-between;gap:8px}
 .score-detail b{font-variant-numeric:tabular-nums}
 @media (max-width:760px){.score-row{grid-template-columns:1fr 90px}.score-row input[type=range]{grid-column:1 / -1;order:3}}
+
+/* Finanzbuchhaltung */
+.kpi b.neg,td.neg{color:var(--red)}
+.kpi b.pos{color:var(--green)}
+tr.is-muted td{color:var(--steel-2)}
+.opening-list{display:flex;flex-direction:column;max-height:420px;overflow:auto;border:1px solid var(--line-2);border-radius:10px}
+.opening-row{display:grid;grid-template-columns:minmax(0,1fr) 140px;gap:12px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line-2);font-size:14px}
+.opening-row:last-child{border-bottom:0}
+.opening-row input{text-align:right;min-height:36px}
+pre.sample{background:var(--sunken);border-radius:10px;padding:10px 12px;max-height:240px;overflow:auto}
+
+.fibu-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));overflow:hidden}
+.fibu-kpis .kpi{min-width:0;border-bottom:1px solid var(--line-2)}
+.fibu-kpis .kpi b{font-size:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:900px){.fibu-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.acct-cell div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}

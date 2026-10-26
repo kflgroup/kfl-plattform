@@ -5,6 +5,7 @@ Router
   .on(/^#\/anfragen\/(\d+)/, (no) => pageRequest(no))
   .on(/^#\/anfragen(\?.*)?$/, () => pageRequests())
   .on(/^#\/buchhaltung\/?([a-z]*)/, (t) => pageAccounting(t || 'uebersicht'))
+  .on(/^#\/fibu\/?([a-z]*)/, (t) => pageFibu(t || 'uebersicht'))
   .on(/^#\/partner\/(\d+)/, (id) => pagePartner(id))
   .on(/^#\/partner(\?.*)?$/, () => pagePartners())
   .on(/^#\/statistik\/?([a-z]*)/, (t) => pageStats(t))

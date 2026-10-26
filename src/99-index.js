@@ -42,6 +42,8 @@ async function runJobs(ctx, { force } = {}) {
   // Tagesabschluss zur eingestellten Uhrzeit
   const [ch, cm] = String(s.day_close_time || '18:00').split(':').map((x) => toInt(x, 0));
   if (force === 'tagesabschluss' || (hm >= ch * 60 + cm && await jobDue(ctx.db, 'tagesabschluss', day))) { await safe('tagesabschluss', () => runDayClose(ctx)); await jobDone(ctx.db, 'tagesabschluss', day, res.tagesabschluss); }
+  // Finanzbuchhaltung: Monatsabschluss am 1. (ab 1:00 Uhr) für den Vormonat, Jahresabschluss am 1. Januar
+  if (force === 'fibu' || (hm >= 60 && await jobDue(ctx.db, 'fibu', day))) { await safe('fibu', () => runFibuJobs(ctx, { force: force === 'fibu' })); await jobDone(ctx.db, 'fibu', day, res.fibu); }
   // Sammelrechnungen am letzten Tag des Monats
   const month = day.slice(0, 7);
   const isLast = p.d === lastDayOfMonth(p.y, p.m);

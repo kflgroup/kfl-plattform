@@ -51,6 +51,7 @@ async function createInvoice(ctx, { org = null, recipient = null, lines, kind = 
   for (const l of norm) if (l.billing_item_id) await DB.update(ctx.db, 'billing_items', l.billing_item_id, { status: 'abgerechnet', invoice_id: id, updated_at: t });
   for (const rid of uniq(norm.map((l) => l.request_id).filter(Boolean))) { await DB.update(ctx.db, 'requests', rid, { billed: 1 }); await reqEvent(ctx, rid, 'in_rechnung_gestellt', number); }
   await audit(ctx, 'rechnung_erstellt', 'rechnung', number, { brutto: gross, empfaenger: rc.name, art: kind });
+  await fibuBookInvoice(ctx, id); // Forderung an Erlöse + Umsatzsteuer, Beleg ins Archiv
   if (send) await sendInvoiceMail(ctx, id, sendTo);
   return id;
 }
@@ -192,7 +193,8 @@ async function addPayment(ctx, id, { amount, date, method, note }) {
   need(inv && inv.status !== 'storniert', 404, 'Rechnung nicht gefunden.');
   const a = round2(toNum(amount, 0)); need(a !== 0, 400, 'Bitte gib einen Betrag an.');
   const d = /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : berlinDate(nowMs());
-  await DB.insert(ctx.db, 'payments', { invoice_id: id, amount: a, date: d, method: str(method, 40) || 'Überweisung', note: str(note, 300), created_by: ctx._staff ? ctx._staff.id : null, created_at: nowIso() });
+  const payId = await DB.insert(ctx.db, 'payments', { invoice_id: id, amount: a, date: d, method: str(method, 40) || 'Überweisung', note: str(note, 300), created_by: ctx._staff ? ctx._staff.id : null, created_at: nowIso() });
+  await fibuBookPayment(ctx, id, a, d, payId); // Bank an Forderungen
   const paid = round2((await DB.val(ctx.db, 'SELECT SUM(amount) FROM payments WHERE invoice_id = ?', id)) || 0);
   const total = round2(inv.gross + inv.fees);
   const status = paid >= total - 0.005 ? 'bezahlt' : paid > 0 ? 'teilbezahlt' : 'offen';
@@ -216,7 +218,8 @@ async function sendDunning(ctx, id, { auto = false } = {}) {
   const fileId = await putFile(ctx, { name: `${inv.number}-${DUNNING_LEVELS[level].replace(/\W+/g, '-')}.pdf`, mime: 'application/pdf', bytes: pdf, ownerType: 'dunning', ownerId: id });
   const rc = jparse(inv.recipient, {});
   const t = nowIso();
-  await DB.insert(ctx.db, 'dunnings', { invoice_id: id, level, fee, due_date: due, file_id: fileId, sent_at: t, sent_to: rc.email || null, created_by: ctx._staff ? ctx._staff.id : null, created_at: t });
+  const dunId = await DB.insert(ctx.db, 'dunnings', { invoice_id: id, level, fee, due_date: due, file_id: fileId, sent_at: t, sent_to: rc.email || null, created_by: ctx._staff ? ctx._staff.id : null, created_at: t });
+  if (fee) await fibuBookDunningFee(ctx, id, fee, dunId); // Forderung an sonstige Erträge
   await DB.update(ctx.db, 'invoices', id, { dunning_level: level, last_dunning_at: t, fees, updated_at: t });
   if (emailOk(rc.email)) await sendMail(ctx, { category: 'invoice', to: rc.email, toName: rc.name, replyTo: { email: s.company_email, name: `${s.company_name} Buchhaltung` }, subject: `${DUNNING_LEVELS[level]} zur Rechnung ${inv.number}`, title: `${DUNNING_LEVELS[level]} zur Rechnung ${inv.number}`,
     body: `<p>Sehr geehrte Damen und Herren,</p><p>${level === 1 ? 'zu unserer Rechnung' : 'trotz unserer Erinnerung ist die Rechnung'} <strong>${esc(inv.number)}</strong> vom ${esc(fmtDateDE(inv.issue_date))} ${level === 1 ? 'konnten wir noch keinen vollständigen Zahlungseingang feststellen' : 'weiterhin offen'}. Bitte überweisen Sie den offenen Betrag von <strong>${esc(money(open))}</strong>${fee ? ` (inkl. Mahngebühr ${esc(money(fee))})` : ''} bis zum <strong>${esc(fmtDateDE(due))}</strong>.</p><p>Sollten Sie bereits gezahlt haben, betrachten Sie dieses Schreiben bitte als gegenstandslos.</p><p>Mit freundlichen Grüßen<br>${esc(s.company_name)} – Buchhaltung</p>`,

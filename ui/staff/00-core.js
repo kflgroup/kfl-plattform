@@ -14,6 +14,7 @@ const NAV = [
   { key: 'start', href: '#/', label: 'Start', icon: 'home' },
   { key: 'anfragen', href: '#/anfragen', label: 'Anfragen', icon: 'inbox', perm: ['req_view'], count: 'open' },
   { key: 'buchhaltung', href: '#/buchhaltung', label: 'Buchhaltung', icon: 'euro', perm: ['acc_view'], count: 'bill' },
+  { key: 'fibu', href: '#/fibu', label: 'Finanzbuchhaltung', icon: 'file', perm: ['fibu_view'] },
   { key: 'partner', href: '#/partner', label: 'Geschäftspartner', icon: 'partner', perm: ['partner_view'] },
   { key: 'statistik', href: '#/statistik', label: 'Statistik', icon: 'chart', perm: ['stats_view', 'team_stats', 'partner_stats'] },
   { key: 'support', href: '#/support', label: 'Support', icon: 'support', perm: ['support_view'], count: 'tickets' },

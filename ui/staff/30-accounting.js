@@ -211,8 +211,9 @@ async function accPurchase(P, tab) {
       ${sel('supplier', s.suppliers.map((x) => [x.id, x.name]), q.supplier, { empty: 'Alle Lieferanten', attrs: 'data-change="piFilterChange" aria-label="Lieferant"' })}<button class="btn btn-sm btn-dark" type="submit">Suchen</button>
       <span class="spacer"></span>${mng ? html`<button class="btn btn-sm btn-primary" type="button" data-act="piNew">${icon('plus')}Eingangsrechnung erfassen</button>` : ''}</form>
     ${d.invoices.length ? html`<div class="table-wrap"><table class="table"><thead><tr><th>Lieferant</th><th>Nummer</th><th>Datum</th><th>Fällig</th><th class="r">Brutto</th><th>Status</th><th></th></tr></thead><tbody>${d.invoices.map((p) => html`<tr>
-      <td><b>${p.supplier_name}</b>${p.category ? html`<span class="cell-sub">${p.category}</span>` : ''}</td><td>${p.number || '–'}</td><td>${fDate(p.date)}</td><td>${fDate(p.due_date)}${p.pay_date ? html`<span class="cell-sub">Zahlung am ${fDate(p.pay_date)}</span>` : ''}</td><td class="r num">${fEur(p.gross)}<span class="cell-sub">netto ${fEur(p.net)}</span></td><td>${st(PI_STATUS, p.status)}</td>
+      <td><b>${p.supplier_name}</b>${p.category ? html`<span class="cell-sub">${p.category}</span>` : ''}${p.entry_number ? html`<span class="cell-sub">${icon('check')} ${p.account_number} ${p.account_name} · ${p.entry_number}${p.doc_number ? ' · ' + p.doc_number : ''}</span>` : can('fibu_view') ? html`<span class="cell-sub">${badge('nicht gebucht', 'warn')}</span>` : ''}</td><td>${p.number || '–'}</td><td>${fDate(p.date)}</td><td>${fDate(p.due_date)}${p.pay_date ? html`<span class="cell-sub">Zahlung am ${fDate(p.pay_date)}</span>` : ''}</td><td class="r num">${fEur(p.gross)}<span class="cell-sub">netto ${fEur(p.net)}</span></td><td>${st(PI_STATUS, p.status)}</td>
       <td class="r nowrap">${p.file_id ? html`<a class="btn btn-sm btn-ghost" target="_blank" rel="noopener" href="${fileUrl(`/acc/purchase/${p.id}/file`)}">${icon('file')}Beleg</a>` : ''}
+        ${can('fibu_book') && !p.entry_id ? html`<button class="btn btn-sm btn-primary" data-act="piBook" data-id="${p.id}" data-acc="${p.account_id || ''}">Auf Konto buchen</button>` : ''}
         ${mng && p.status === 'offen' ? html`<button class="btn btn-sm" data-act="piSchedule" data-id="${p.id}" data-due="${p.due_date || ''}">Zur Zahlung vormerken</button>` : ''}
         ${mng && p.status === 'zur_zahlung' ? html`<button class="btn btn-sm btn-ghost" data-act="piUnschedule" data-id="${p.id}">Vormerkung lösen</button>` : ''}
         ${mng && ['offen', 'zur_zahlung'].includes(p.status) ? html`<button class="btn btn-sm btn-ghost" data-act="piPaid" data-id="${p.id}">Bezahlt</button>` : ''}</td></tr>`)}</tbody></table></div>`
@@ -221,14 +222,28 @@ async function accPurchase(P, tab) {
 }
 SUBMIT.piFilter = (d) => setHashQuery(d, '#/buchhaltung/eingang');
 CHANGE.piFilterChange = (el) => SUBMIT.piFilter(formData(el.form));
+// Konten für Eingangsrechnungen (Aufwand und Aktiv, nur offene)
+async function fibuExpenseAccounts() { if (!can('fibu_view')) return []; const d = await GET('/fibu/accounts'); return d.accounts.filter((a) => a.status === 'offen' && (a.type === 'aufwand' || (a.type === 'aktiv' && !a.sys))); }
 ACT.piNew = async () => {
   const sups = (S.suppliers || []).filter((x) => x.active);
   if (!sups.length) { toast('Bitte lege zuerst einen Lieferanten an.', 'err'); location.hash = '#/buchhaltung/lieferanten'; return; }
-  const d = await ask({ title: 'Eingangsrechnung erfassen', wide: true, ok: 'Speichern', fields: html`<div class="grid-2">${field('Lieferant', sel('supplier_id', sups.map((x) => [x.id, x.name]), '', { attrs: 'required' }))}${field('Rechnungsnummer', inp('number', '', { req: true }))}
-    ${field('Rechnungsdatum', inp('date', todayISO(), { type: 'date', req: true }))}${field('Fällig am', inp('due_date', addDays(todayISO(), 14), { type: 'date' }))}
-    ${field('Netto', inp('net', '', { req: true, ph: '0,00' }))}${field('USt (leer = 19 %)', inp('vat', '', { ph: 'automatisch' }))}${field('Kategorie', inp('category', '', { ph: 'z. B. Marketing, Software' }))}${field('Beleg (PDF)', raw('<input type="file" name="file" accept="application/pdf,image/*">'))}</div>${field('Notiz', area('note', '', { rows: 2 }))}` });
-  if (!d) return; const file = await fileField(d._form.elements.file, { max: 8 }); delete d._form;
-  await POST('/acc/purchase', { ...d, file }); toast('Eingangsrechnung erfasst.'); reload();
+  const accs = await fibuExpenseAccounts(), bookable = can('fibu_book') && accs.length;
+  const d = await ask({ title: 'Eingangsrechnung erfassen', wide: true, ok: bookable ? 'Erfassen und buchen' : 'Speichern', fields: html`<div class="grid-2">${field('Lieferant *', sel('supplier_id', sups.map((x) => [x.id, x.name]), '', { attrs: 'required' }))}${field('Rechnungsnummer *', inp('number', '', { req: true }))}
+    ${field('Rechnungsdatum *', inp('date', todayISO(), { type: 'date', req: true }))}${field('Fällig am', inp('due_date', addDays(todayISO(), 14), { type: 'date' }))}
+    ${field('Bruttobetrag *', inp('gross', '', { req: true, ph: '0,00', attrs: 'inputmode="decimal"' }), 'Rechnungsbetrag inkl. Umsatzsteuer')}${field('Umsatzsteuer', sel('vat_rate', [['19', '19 %'], ['7', '7 %'], ['0', '0 % (ohne USt / Kleinunternehmer)']], '19'), 'Netto und Vorsteuer werden berechnet')}
+    ${bookable ? field('Konto (Aufwand) *', sel('account_id', accs.map((a) => [a.id, `${a.number} · ${a.name}`]), '', { empty: 'Bitte wählen', attrs: 'required' }), 'Die Rechnung wird direkt auf dieses Konto gebucht') : ''}${field('Buchungstext', inp('text', '', { ph: 'z. B. Social-Media-Kampagne Oktober' }))}
+    ${field('Kategorie', inp('category', '', { ph: 'z. B. Marketing, Software' }))}${field('Beleg (PDF) *', raw('<input type="file" name="file" accept="application/pdf" required>'), 'Wird nummeriert im Belegarchiv abgelegt')}</div>${field('Notiz', area('note', '', { rows: 2 }))}` });
+  if (!d) return; const file = await fileField(d._form.elements.file, { max: 10 }); delete d._form;
+  if (!file) return toast('Bitte den Beleg als PDF hochladen.', 'err');
+  const r = await POST('/acc/purchase', { ...d, file });
+  if (r.bookingError) toast(`Erfasst, aber nicht gebucht: ${r.bookingError}`, 'err');
+  else toast(r.booking ? `Erfasst und gebucht (${r.booking}) · Beleg ${r.doc}` : 'Eingangsrechnung erfasst.');
+  reload();
+};
+ACT.piBook = async (b) => {
+  const accs = await fibuExpenseAccounts();
+  const d = await ask({ title: 'Eingangsrechnung buchen', ok: 'Buchen', text: 'Aufwand (netto) und Vorsteuer an Verbindlichkeiten. Der Beleg wird ins Belegarchiv übernommen.', fields: field('Konto (Aufwand)', sel('account_id', accs.map((a) => [a.id, `${a.number} · ${a.name}`]), b.dataset.acc || '', { empty: 'Bitte wählen', attrs: 'required' })) });
+  if (!d) return; const r = await POST(`/acc/purchase/${b.dataset.id}/book`, { account_id: d.account_id }); toast(`Gebucht: ${r.booking}`); reload();
 };
 ACT.piSchedule = async (b) => { const d = await ask({ title: 'Zur Zahlung vormerken', text: 'Vorgemerkte Rechnungen landen beim Tagesabschluss auf der Zahlungsliste zur Freigabe durch die Geschäftsführung.', ok: 'Vormerken', fields: field('Zahlung am', inp('pay_date', b.dataset.due && b.dataset.due > todayISO() ? b.dataset.due : todayISO(), { type: 'date', req: true })) }); if (!d) return; await POST(`/acc/purchase/${b.dataset.id}/schedule`, d); toast('Vorgemerkt.'); reload(); };
 ACT.piUnschedule = async (b) => { await POST(`/acc/purchase/${b.dataset.id}/unschedule`); reload(); };

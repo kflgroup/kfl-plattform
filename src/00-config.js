@@ -32,6 +32,9 @@ const PERMISSIONS = [
   { key: 'acc_view',          group: 'Buchhaltung', label: 'Buchhaltung sehen' },
   { key: 'acc_manage',        group: 'Buchhaltung', label: 'Rechnungen, Mahnungen, Zahlungen, Lieferanten verwalten' },
   { key: 'acc_cancel',        group: 'Buchhaltung', label: 'Abrechnungsfälle und Rechnungen stornieren' },
+  { key: 'fibu_view',         group: 'Finanzbuchhaltung', label: 'Finanzbuchhaltung sehen (Konten, Buchungen, Belegarchiv, Abschlüsse)' },
+  { key: 'fibu_book',         group: 'Finanzbuchhaltung', label: 'Konten anlegen, buchen, Eingangsrechnungen erfassen, Belege hochladen' },
+  { key: 'fibu_manage',       group: 'Finanzbuchhaltung', label: 'Konten schließen, Anfangsbestände, Import alter Buchführung, Abschlüsse erstellen' },
   { key: 'acc_settings',      group: 'Buchhaltung', label: 'Zahlungsziel, Mahngebühren, Zahlungsbedingungen festlegen' },
   { key: 'acc_release',       group: 'Buchhaltung', label: 'Zahlungsliste freigeben (Bank-Export)' },
   // Geschäftspartner
@@ -70,8 +73,8 @@ const PERM_KEYS = PERMISSIONS.map((p) => p.key);
 const ROLE_PERMS = (() => {
   const vertrieb = ['req_view', 'req_edit', 'req_contact', 'req_message', 'req_spam_report', 'support_view', 'support_manage', 'partner_view'];
   const teamleitung = [...vertrieb, 'req_partner', 'req_assign', 'req_spam_confirm', 'req_status_force', 'team_stats', 'users_view', 'users_create_vt'];
-  const buchhaltung = ['acc_view', 'acc_manage', 'acc_cancel', 'partner_view'];
-  const gf = [...new Set([...teamleitung, ...buchhaltung, 'acc_settings', 'acc_release', 'partner_manage', 'partner_terms', 'partner_stats',
+  const buchhaltung = ['acc_view', 'acc_manage', 'acc_cancel', 'fibu_view', 'fibu_book', 'partner_view'];
+  const gf = [...new Set([...teamleitung, ...buchhaltung, 'fibu_manage', 'acc_settings', 'acc_release', 'partner_manage', 'partner_terms', 'partner_stats',
     'stats_view', 'stats_shop', 'support_changes', 'links_view', 'users_create', 'news_publish', 'news_partner'])];
   return { admin: PERM_KEYS.slice(), gf, teamleitung, vertrieb, buchhaltung };
 })();
@@ -251,6 +254,22 @@ const DEFAULT_SETTINGS = {
   link_privacy: 'https://kfl-group.com/policies/privacy-policy',
   link_my_requests: 'https://kfl-group.com/pages/meine-anfragen'
 };
+
+/* ---------- Finanzbuchhaltung ---------- */
+// Kontenrahmen (angelehnt an SKR03, vereinfacht). sys = feste Rolle für automatische Buchungen.
+const FIBU_TYPES = { aktiv: 'Aktivkonto (Vermögen)', passiv: 'Passivkonto (Kapital/Schulden)', aufwand: 'Aufwandskonto', ertrag: 'Ertragskonto' };
+const FIBU_DEFAULT_ACCOUNTS = [
+  ['1000', 'Kasse', 'aktiv', 'kasse'], ['1200', 'Bank', 'aktiv', 'bank'], ['1400', 'Forderungen aus Lieferungen und Leistungen', 'aktiv', 'forderungen'],
+  ['1576', 'Abziehbare Vorsteuer 19 %', 'aktiv', 'vorsteuer'], ['1571', 'Abziehbare Vorsteuer 7 %', 'aktiv', 'vorsteuer7'],
+  ['1600', 'Verbindlichkeiten aus Lieferungen und Leistungen', 'passiv', 'verbindlichkeiten'], ['1776', 'Umsatzsteuer 19 %', 'passiv', 'umsatzsteuer'], ['1771', 'Umsatzsteuer 7 %', 'passiv', 'umsatzsteuer7'],
+  ['1800', 'Privatentnahmen', 'passiv', null], ['1890', 'Privateinlagen', 'passiv', null], ['0880', 'Eigenkapital', 'passiv', 'eigenkapital'],
+  ['8400', 'Erlöse Vermittlung 19 % USt', 'ertrag', 'erloese'], ['2700', 'Sonstige Erträge (z. B. Mahngebühren)', 'ertrag', 'mahngebuehren'],
+  ['4210', 'Miete', 'aufwand', null], ['4500', 'Fahrzeugkosten', 'aufwand', null], ['4600', 'Werbekosten', 'aufwand', null], ['4920', 'Telefon und Internet', 'aufwand', null],
+  ['4930', 'Bürobedarf', 'aufwand', null], ['4964', 'Software und IT-Dienste', 'aufwand', null], ['4970', 'Nebenkosten des Geldverkehrs', 'aufwand', null],
+  ['4950', 'Rechts- und Beratungskosten', 'aufwand', null], ['4900', 'Sonstige betriebliche Aufwendungen', 'aufwand', null],
+  ['9000', 'Saldenvorträge (Eröffnung)', 'passiv', 'eroeffnung']
+];
+const FIBU_DOC_KINDS = { eingangsrechnung: 'Eingangsrechnung', ausgangsrechnung: 'Ausgangsrechnung', kontoauszug: 'Kontoauszug', quittung: 'Quittung / Kassenbeleg', vertrag: 'Vertrag', abschluss: 'Abschluss', import: 'Import alte Buchführung', sonstiges: 'Sonstiger Beleg' };
 
 // Faktoren der automatischen Angebotsauswahl
 const SCORE_FACTORS = [
