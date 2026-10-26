@@ -101,7 +101,7 @@ ACT.itemReopen = async (b) => {
 SUBMIT.itemSave = async (d) => { await POST(`/acc/items/${d.id}/note`, { text: d.note }); if (d.amount !== undefined) await POST(`/acc/items/${d.id}/amount`, { amount: d.amount, description: d.description }); closeModal(); toast('Gespeichert.'); reload(); };
 ACT.itemBill = async (b) => {
   const monthly = b.dataset.mode === 'monatlich';
-  if (!(await confirmBox('Rechnung versenden?', monthly ? 'Dieser Partner zahlt monatlich: Der Fall kommt in die Sammelablage und wird am Monatsende mit allen anderen Fällen abgerechnet. Das Zahlungsziel beginnt dann.' : 'Die Rechnung wird erstellt und sofort per E-Mail (rechnung@) an die Rechnungsadresse des Partners geschickt.', monthly ? 'In Sammelablage legen' : 'Rechnung erstellen und senden'))) return;
+  if (!(await confirmBox('Rechnung versenden?', monthly ? 'Dieser Partner zahlt monatlich: Der Fall kommt in die Sammelablage und wird am Monatsende mit allen anderen Fällen abgerechnet. Das Zahlungsziel beginnt dann.' : 'Die Rechnung wird erstellt und sofort per E-Mail (von noreplay@kfl-group.com) an die Rechnungsadresse des Partners geschickt.', monthly ? 'In Sammelablage legen' : 'Rechnung erstellen und senden'))) return;
   const r = await POST(`/acc/items/${b.dataset.id}/bill`); closeModal();
   if (r.mode === 'monatlich') toast('In die Sammelablage gelegt.');
   else if (r.mail === 'gesendet') toast(`Rechnung erstellt und an ${r.sentTo} versendet.`);
@@ -145,7 +145,7 @@ ACT.openInvoice = async (b) => {
 SUBMIT.payAdd = async (d) => { const r = await POST(`/acc/invoices/${d.id}/payment`, d); closeModal(); toast(r.status === 'bezahlt' ? 'Zahlung gebucht – Rechnung ist bezahlt.' : 'Teilzahlung gebucht.'); reload(); };
 ACT.dunning = async (b) => {
   const lvl = +b.dataset.level;
-  if (!(await confirmBox(`${S.config.dunningLevels[lvl]} senden?`, lvl === 1 ? 'Eine freundliche Zahlungserinnerung geht per E-Mail an den Partner und erscheint in seinen News.' : 'Ab der 1. Mahnung wird die eingestellte Mahngebühr berechnet. Das Schreiben geht per E-Mail (rechnung@) und erscheint in den Partner-News.', 'Senden'))) return;
+  if (!(await confirmBox(`${S.config.dunningLevels[lvl]} senden?`, lvl === 1 ? 'Eine freundliche Zahlungserinnerung geht per E-Mail an den Partner und erscheint in seinen News.' : 'Ab der 1. Mahnung wird die eingestellte Mahngebühr berechnet. Das Schreiben geht per E-Mail (von noreplay@kfl-group.com) und erscheint in den Partner-News.', 'Senden'))) return;
   const r = await POST(`/acc/invoices/${b.dataset.id}/dunning`); closeModal(); toast(`${S.config.dunningLevels[r.level]} versendet${r.fee ? ' · Gebühr ' + fEur(r.fee) : ''}.`); reload();
 };
 ACT.invCancel = async (b) => { const d = await ask({ title: 'Rechnung stornieren?', text: 'Es wird eine Stornorechnung erzeugt. Verknüpfte Abrechnungsfälle werden wieder geöffnet.', ok: 'Stornieren', danger: true, fields: field('Grund', inp('reason', '', { req: true })) }); if (!d) return; await POST(`/acc/invoices/${b.dataset.id}/cancel`, d); closeModal(); toast('Storniert.'); reload(); };

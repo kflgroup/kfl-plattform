@@ -39,13 +39,22 @@ class PdfDoc {
   newPage() { this.cur = []; this.pages.push(this.cur); return this; }
   // y wird von oben gemessen (mm-ähnlich bequemer): top in pt
   text(x, top, s, o = {}) {
-    const size = o.size || 10, bold = !!o.bold; let tx = x;
+    const size = o.size || 10, bold = !!o.bold || !!o.italic; let tx = x;
+    if (o.spacing) { let cx = o.align === 'right' ? x - (textWidth(s, size, bold) + o.spacing * (String(s).length - 1)) : x; for (const ch of String(s)) { this.text(cx, top, ch, { ...o, spacing: 0, align: 'left' }); cx += textWidth(ch, size, bold) + o.spacing; } return cx - x; }
     const w = textWidth(s, size, bold);
     if (o.align === 'right') tx = x - w; else if (o.align === 'center') tx = x - w / 2;
-    this.cur.push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf ${rgb(o.color || '#1a1a1a')} rg ${tx.toFixed(2)} ${(this.H - top - size).toFixed(2)} Td (${pdfEscape(pdfBytesOf(s))}) Tj ET`);
+    this.cur.push(`BT /${o.italic ? 'F3' : bold ? 'F2' : 'F1'} ${size} Tf ${rgb(o.color || '#1a1a1a')} rg ${tx.toFixed(2)} ${(this.H - top - size).toFixed(2)} Td (${pdfEscape(pdfBytesOf(s))}) Tj ET`);
     return w;
   }
   line(x1, t1, x2, t2, o = {}) { this.cur.push(`${rgb(o.color || '#dadada')} RG ${o.w || 0.6} w ${x1.toFixed(2)} ${(this.H - t1).toFixed(2)} m ${x2.toFixed(2)} ${(this.H - t2).toFixed(2)} l S`); }
+  // Fläche mit abgerundeten Ecken
+  rrect(x, top, w, h, r, o = {}) {
+    const k = 0.5523 * r, y0 = this.H - top - h, f = (n) => n.toFixed(2);
+    this.cur.push(`${rgb(o.fill || '#f4f4f4')} rg ${f(x + r)} ${f(y0)} m ${f(x + w - r)} ${f(y0)} l ${f(x + w - r + k)} ${f(y0)} ${f(x + w)} ${f(y0 + r - k)} ${f(x + w)} ${f(y0 + r)} c ${f(x + w)} ${f(y0 + h - r)} l ${f(x + w)} ${f(y0 + h - r + k)} ${f(x + w - r + k)} ${f(y0 + h)} ${f(x + w - r)} ${f(y0 + h)} c ${f(x + r)} ${f(y0 + h)} l ${f(x + r - k)} ${f(y0 + h)} ${f(x)} ${f(y0 + h - r + k)} ${f(x)} ${f(y0 + h - r)} c ${f(x)} ${f(y0 + r)} l ${f(x)} ${f(y0 + r - k)} ${f(x + r - k)} ${f(y0)} ${f(x + r)} ${f(y0)} c f`);
+  }
+  // Parallelogramm (Tempo-Strich des Logos)
+  skew(x, top, w, h, slant, o = {}) { const y0 = this.H - top - h, f = (n) => n.toFixed(2); this.cur.push(`${rgb(o.fill || '#ffffff')} rg ${f(x)} ${f(y0)} m ${f(x + w)} ${f(y0)} l ${f(x + w + slant)} ${f(y0 + h)} l ${f(x + slant)} ${f(y0 + h)} l h f`); }
+  page(i) { this.cur = this.pages[i]; return this; }
   rect(x, top, w, h, o = {}) { this.cur.push(`${rgb(o.fill || '#f4f4f4')} rg ${x.toFixed(2)} ${(this.H - top - h).toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re f`); }
   wrap(s, width, size = 10, bold = false) {
     const lines = [];
@@ -66,11 +75,12 @@ class PdfDoc {
     const catalog = add(null), pagesId = add(null);
     const f1 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
     const f2 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+    const f3 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-BoldOblique /Encoding /WinAnsiEncoding >>');
     const kids = [];
     for (const p of this.pages) {
       const content = p.join('\n');
       const cId = add(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
-      kids.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${this.W} ${this.H}] /Resources << /Font << /F1 ${f1} 0 R /F2 ${f2} 0 R >> >> /Contents ${cId} 0 R >>`));
+      kids.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${this.W} ${this.H}] /Resources << /Font << /F1 ${f1} 0 R /F2 ${f2} 0 R /F3 ${f3} 0 R >> >> /Contents ${cId} 0 R >>`));
     }
     objs[catalog - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
     objs[pagesId - 1] = `<< /Type /Pages /Kids [${kids.map((k) => k + ' 0 R').join(' ')}] /Count ${kids.length} >>`;
@@ -84,75 +94,144 @@ class PdfDoc {
 }
 const mm = (v) => v * 2.8346;
 
-/* ---------- Geschäftsbrief (DIN 5008, vereinfacht) ---------- */
-function pdfLetterBase(doc, s, recipient, meta, title) {
-  const L = mm(25), R = doc.W - mm(20);
-  doc.rect(0, 0, doc.W, mm(4), { fill: '#ff6c01' });
-  doc.text(L, mm(14), s.company_name, { size: 20, bold: true });
-  doc.text(L, mm(22), 'Kaufen · Finanzieren · Leasen', { size: 9, color: '#6b6b70' });
-  doc.text(R, mm(14), [s.company_street, `${s.company_zip} ${s.company_city}`].join(', '), { size: 8.5, align: 'right', color: '#6b6b70' });
-  doc.text(R, mm(18.5), [s.company_email, s.company_web].filter(Boolean).join(' · '), { size: 8.5, align: 'right', color: '#6b6b70' });
-  // Absenderzeile + Empfänger
-  doc.text(L, mm(45), `${s.company_name} · ${s.company_street} · ${s.company_zip} ${s.company_city}`, { size: 7, color: '#6b6b70' });
-  doc.line(L, mm(49), L + mm(85), mm(49), { color: '#dadada', w: 0.4 });
+/* ---------- Geschäftsbrief im KFL-Design (DIN 5008 Form B, Infospalte rechts) ---------- */
+const PDF_C = { orange: '#ff6c01', ink: '#16171a', grey: '#6b6e74', light: '#9a9da3', line: '#e3e4e7', wash: '#f5f6f7', owash: '#fff3ea' };
+// KFL-Logo als Vektor: orange Kachel, „KFL“ kursiv mit Tempo-Strich, KAUFEN / FINANZIEREN / LEASEN
+function pdfLogo(doc, x, top, size) {
+  const u = size / 100;
+  doc.rrect(x, top, size, size, 6 * u, { fill: PDF_C.orange });
+  doc.text(x + 9 * u, top + 10 * u, 'KFL', { size: 36 * u, italic: true, color: '#ffffff' });
+  doc.skew(x + 68 * u, top + 30 * u, 20 * u, 4.2 * u, 2.4 * u, { fill: '#ffffff' });
+  doc.text(x + 10 * u, top + 52 * u, 'KAUFEN', { size: 13.2 * u, bold: true, color: '#ffffff', spacing: 0.25 * u });
+  doc.text(x + 10.4 * u, top + 67 * u, 'FINANZIEREN', { size: 8.6 * u, bold: true, color: '#ffd9bd', spacing: 0.35 * u });
+  doc.text(x + 10 * u, top + 77 * u, 'LEASEN', { size: 13.2 * u, bold: true, color: '#ffffff', spacing: 0.25 * u });
+}
+const caps = (doc, x, top, t, o = {}) => doc.text(x, top, String(t).toUpperCase(), { size: 5.8, bold: true, color: PDF_C.light, spacing: 0.45, ...o });
+// Infospalte rechts: Firma, Kontakt, Steuer, Bank – liefert die Unterkante
+function pdfSidebar(doc, s, x, top, w) {
+  let y = top;
+  doc.text(x, y, s.company_name, { size: 11.5, bold: true, color: PDF_C.ink }); y += 14;
+  caps(doc, x, y, 'Kaufen · Finanzieren · Leasen'); y += 12;
+  for (const l of [s.company_street, `${s.company_zip} ${s.company_city}`]) { doc.text(x, y, l, { size: 8.2, color: PDF_C.ink }); y += 10.5; }
+  y += 6;
+  const block = (label, lines) => { lines = lines.filter(Boolean); if (!lines.length) return; caps(doc, x, y, label); y += 8.5; for (const l of lines) for (const wl of doc.wrap(l, w, 8.2)) { doc.text(x, y, wl, { size: 8.2, color: PDF_C.ink }); y += 10.5; } y += 6; };
+  block('Telefon', [s.company_phone]);
+  block('E-Mail', [s.company_email]);
+  block('Web', [s.company_web]);
+  block('USt-IdNr.', [s.company_vat_id]);
+  block('Steuernummer', [s.company_tax_no]);
+  block('Bankverbindung', [s.company_bank, s.company_iban ? fmtIban(s.company_iban) : '', s.company_bic ? 'BIC ' + s.company_bic : '']);
+  return y;
+}
+const fmtIban = (v) => String(v || '').replace(/\s+/g, '').replace(/(.{4})/g, '$1 ').trim();
+function pdfLetterBase(doc, s, recipient, meta, title, o = {}) {
+  const L = mm(22), R = doc.W - mm(16), SX = doc.W - mm(58), SW = R - SX;
+  doc.rect(0, 0, mm(3), doc.H, { fill: PDF_C.orange });
+  pdfLogo(doc, SX, mm(14), mm(24));
+  const sideEnd = pdfSidebar(doc, s, SX, mm(44), SW);
+  // Absenderzeile + Anschriftfeld (Fensterposition DIN 5008 Form B)
+  doc.text(L, mm(46), `${s.company_name} · ${s.company_street} · ${s.company_zip} ${s.company_city}`, { size: 6.8, color: PDF_C.grey });
+  doc.line(L, mm(49.2), L + mm(85), mm(49.2), { color: PDF_C.line, w: 0.5 });
   let y = mm(52);
-  for (const l of [recipient.name, recipient.extra, recipient.street, `${recipient.zip || ''} ${recipient.city || ''}`.trim(), recipient.country && recipient.country !== 'Deutschland' ? recipient.country : ''].filter(Boolean)) { doc.text(L, y, l, { size: 10.5 }); y += 14; }
-  // Infoblock rechts
-  let iy = mm(52);
-  for (const [k, v] of meta) { if (!v) continue; doc.text(R - mm(42), iy, k, { size: 8.5, color: '#6b6b70' }); doc.text(R, iy, v, { size: 8.5, align: 'right', bold: k === 'Fällig am' }); iy += 12.5; }
-  doc.text(L, mm(100), title, { size: 16, bold: true });
-  return { L, R, y: mm(112) };
+  for (const l of [recipient.name, recipient.extra, recipient.street, `${recipient.zip || ''} ${recipient.city || ''}`.trim(), recipient.country && recipient.country !== 'Deutschland' ? recipient.country : ''].filter(Boolean)) { doc.text(L, y, l, { size: 10.5, color: PDF_C.ink, bold: l === recipient.name }); y += 14; }
+  // Titel
+  let ty = Math.max(mm(98), sideEnd + mm(4));
+  if (o.kicker) caps(doc, L, ty, o.kicker, { color: o.kickerColor || PDF_C.orange, size: 6.8 });
+  doc.text(L, ty + 10, title, { size: 22, bold: true, color: PDF_C.ink });
+  if (o.number) doc.text(L + textWidth(title, 22, true) + 8, ty + 18.5, o.number, { size: 11, bold: true, color: PDF_C.orange });
+  // Kennzahlen-Leiste (Nummer, Datum, Fälligkeit …)
+  const cells = meta.filter(([, v]) => v);
+  const by = ty + 44, bh = 32;
+  const nat = cells.map(([k, v]) => Math.max(textWidth(String(k).toUpperCase(), 5.8, true) + String(k).length * 0.45, textWidth(v, 9.2, true)) + 24);
+  const extra = Math.max(0, (R - L) - nat.reduce((a, b) => a + b, 0)) / Math.max(1, cells.length);
+  const xs = nat.reduce((a, w, i) => { a.push(i ? a[i - 1] + nat[i - 1] + extra : L); return a; }, []);
+  doc.rrect(L, by, R - L, bh, 5, { fill: PDF_C.wash });
+  cells.forEach(([k, v, hl], i) => {
+    const cx = xs[i] + 12;
+    caps(doc, cx, by + 7, k, { color: hl ? PDF_C.orange : PDF_C.light });
+    doc.text(cx, by + 16, v, { size: 9.2, bold: true, color: hl ? PDF_C.orange : PDF_C.ink });
+    if (i) doc.line(cx - 12, by + 7, cx - 12, by + bh - 7, { color: '#dcdde0', w: 0.5 });
+  });
+  return { L, R, y: by + bh + 22 };
 }
 function pdfFooter(doc, s) {
-  const L = mm(25), top = doc.H - mm(24);
-  doc.line(L, top - 6, doc.W - mm(20), top - 6, { color: '#dadada', w: 0.4 });
+  const L = mm(22), R = doc.W - mm(16), top = doc.H - mm(22);
+  doc.line(L, top - 8, R, top - 8, { color: PDF_C.line, w: 0.5 });
   const cols = [
-    [s.company_name, s.company_street, `${s.company_zip} ${s.company_city}`, s.company_owners ? 'Gesellschafter: ' + s.company_owners : ''],
-    [s.company_email, s.company_phone ? 'Tel. ' + s.company_phone : '', s.company_web, s.company_register],
-    [s.company_tax_no ? 'Steuernummer: ' + s.company_tax_no : '', s.company_vat_id ? 'USt-IdNr.: ' + s.company_vat_id : '', '', ''],
-    [s.company_bank, s.company_iban ? 'IBAN: ' + s.company_iban : '', s.company_bic ? 'BIC: ' + s.company_bic : '', '']
-  ];
-  cols.forEach((c, i) => { let y = top; for (const l of c.filter(Boolean)) { doc.text(L + i * mm(43), y, l, { size: 6.8, color: '#6b6b70' }); y += 8.5; } });
+    ['Anschrift', [s.company_name, s.company_street, `${s.company_zip} ${s.company_city}`, s.company_owners ? 'Gesellschafter: ' + s.company_owners : '']],
+    ['Kontakt', [s.company_email, s.company_phone ? 'Tel. ' + s.company_phone : '', s.company_web]],
+    ['Steuer', [s.company_vat_id ? 'USt-IdNr. ' + s.company_vat_id : '', s.company_tax_no ? 'St.-Nr. ' + s.company_tax_no : '', s.company_register]],
+    ['Bankverbindung', [s.company_bank, s.company_iban ? 'IBAN ' + fmtIban(s.company_iban) : '', s.company_bic ? 'BIC ' + s.company_bic : '']]
+  ].filter(([, l]) => l.some(Boolean));
+  const cw = (R - L) / cols.length;
+  cols.forEach(([h, lines], i) => { const x = L + i * cw; caps(doc, x, top, h, { size: 5.4 }); let y = top + 8.5; for (const l of lines.filter(Boolean)) { doc.text(x, y, l, { size: 6.6, color: PDF_C.grey }); y += 8.4; } });
 }
+// Seitenzahlen nachträglich auf alle Seiten setzen
+function pdfPageNumbers(doc) { const n = doc.pages.length; if (n < 2) return; doc.pages.forEach((_, i) => { doc.page(i); doc.text(doc.W - mm(16), doc.H - mm(9), `Seite ${i + 1} von ${n}`, { size: 6.6, align: 'right', color: PDF_C.light }); }); doc.page(n - 1); }
 
 function renderInvoicePdf(s, inv) {
   const doc = new PdfDoc();
   const rc = jparse(inv.recipient, {}), lines = jparse(inv.lines, []);
   const isCredit = inv.kind === 'storno';
+  const period = inv.service_from && inv.service_to && inv.service_from !== inv.service_to;
   const meta = [['Rechnungsnummer', inv.number], ['Rechnungsdatum', fmtDateDE(inv.issue_date)],
-    ['Leistungszeitraum', inv.service_from && inv.service_to && inv.service_from !== inv.service_to ? `${fmtDateDE(inv.service_from)} – ${fmtDateDE(inv.service_to)}` : ''],
-    ['Leistungsdatum', inv.service_from && (!inv.service_to || inv.service_from === inv.service_to) ? fmtDateDE(inv.service_from) : ''],
-    ['Kundennummer', rc.customer_no], ['Ihre USt-IdNr.', rc.vat_id], ['Fällig am', isCredit ? '' : fmtDateDE(inv.due_date)]];
-  let { L, R, y } = pdfLetterBase(doc, s, rc, meta, (isCredit ? 'Stornorechnung ' : 'Rechnung ') + inv.number);
-  const intro = inv.intro || s.invoice_intro;
-  for (const l of doc.wrap(rc.salutation ? rc.salutation + '\n' + intro : intro, R - L, 10)) { doc.text(L, y, l, { size: 10 }); y += 13; }
-  y += 8;
-  const cx = { pos: L, desc: L + mm(10), qty: R - mm(52), unit: R - mm(26), total: R };
-  const head = () => { doc.rect(L - 4, y - 3, R - L + 8, 18, { fill: '#f4f4f4' }); doc.text(cx.pos, y + 1, 'Pos.', { size: 8.5, bold: true }); doc.text(cx.desc, y + 1, 'Beschreibung', { size: 8.5, bold: true }); doc.text(cx.qty, y + 1, 'Menge', { size: 8.5, bold: true, align: 'right' }); doc.text(cx.unit, y + 1, 'Einzelpreis', { size: 8.5, bold: true, align: 'right' }); doc.text(cx.total, y + 1, 'Gesamt (netto)', { size: 8.5, bold: true, align: 'right' }); y += 22; };
+    [period ? 'Leistungszeitraum' : 'Leistungsdatum', period ? `${fmtDateDE(inv.service_from)} – ${fmtDateDE(inv.service_to)}` : inv.service_from ? fmtDateDE(inv.service_from) : ''],
+    ['Kundennummer', rc.customer_no], ['Ihre USt-IdNr.', rc.vat_id], isCredit ? ['Bezug', String(inv.note || '').replace(/^Storno zu /, '')] : ['Fällig am', fmtDateDE(inv.due_date), true]];
+  let { L, R, y } = pdfLetterBase(doc, s, rc, meta, isCredit ? 'Stornorechnung' : 'Rechnung', { kicker: isCredit ? 'Gutschrift / Storno' : '', kickerColor: '#c4291c', number: inv.number });
+  doc.text(L, y, rc.salutation || 'Sehr geehrte Damen und Herren,', { size: 10, color: PDF_C.ink }); y += 18;
+  const ref = isCredit ? String(inv.note || '').replace(/^Storno zu /, '') : '';
+  for (const l of doc.wrap(inv.intro || (isCredit ? `hiermit stornieren wir die Rechnung ${ref}. Die folgenden Positionen werden gutgeschrieben:` : s.invoice_intro), R - L, 10)) { doc.text(L, y, l, { size: 10, color: PDF_C.ink }); y += 13.5; }
+  y += 12;
+  const cx = { pos: L + 8, desc: L + mm(12), qty: R - mm(58), unit: R - mm(30), total: R - 8 };
+  const head = () => {
+    doc.rrect(L, y - 5, R - L, 20, 4, { fill: PDF_C.ink });
+    const h = (x, t, al) => caps(doc, x, y + 1.5, t, { color: '#ffffff', size: 6.2, align: al });
+    h(cx.pos, 'Pos.'); h(cx.desc, 'Beschreibung'); h(cx.qty, 'Menge', 'right'); h(cx.unit, 'Einzelpreis', 'right'); h(cx.total, 'Gesamt netto', 'right');
+    y += 26;
+  };
   head();
   lines.forEach((ln, i) => {
-    const descLines = doc.wrap(ln.description, cx.qty - cx.desc - mm(16), 9.5);
-    if (y + descLines.length * 12 > doc.H - mm(70)) { pdfFooter(doc, s); doc.newPage(); y = mm(25); head(); }
-    doc.text(cx.pos, y, String(i + 1), { size: 9.5 });
-    descLines.forEach((dl, k) => doc.text(cx.desc, y + k * 12, dl, { size: 9.5 }));
-    doc.text(cx.qty, y, String(ln.qty ?? 1).replace('.', ','), { size: 9.5, align: 'right' });
-    doc.text(cx.unit, y, money(ln.unit), { size: 9.5, align: 'right' });
-    doc.text(cx.total, y, money(ln.total), { size: 9.5, align: 'right' });
-    y += Math.max(1, descLines.length) * 12 + 6;
-    doc.line(L, y - 3, R, y - 3, { color: '#eeeeee', w: 0.4 });
+    const descLines = doc.wrap(ln.description, cx.qty - cx.desc - mm(14), 9.5);
+    if (y + descLines.length * 12.5 > doc.H - mm(36)) { pdfFooter(doc, s); doc.newPage(); doc.rect(0, 0, mm(3), doc.H, { fill: PDF_C.orange }); y = mm(22); head(); }
+    if (i % 2 === 1) doc.rect(L, y - 6, R - L, descLines.length * 12.5 + 10, { fill: '#fafafb' });
+    doc.text(cx.pos, y, String(i + 1).padStart(2, '0'), { size: 9.5, color: PDF_C.light, bold: true });
+    descLines.forEach((dl, k) => doc.text(cx.desc, y + k * 12.5, dl, { size: 9.5, color: PDF_C.ink, bold: k === 0 && descLines.length > 1 }));
+    doc.text(cx.qty, y, String(ln.qty ?? 1).replace('.', ','), { size: 9.5, align: 'right', color: PDF_C.ink });
+    doc.text(cx.unit, y, money(ln.unit), { size: 9.5, align: 'right', color: PDF_C.ink });
+    doc.text(cx.total, y, money(ln.total), { size: 9.5, align: 'right', bold: true, color: PDF_C.ink });
+    y += Math.max(1, descLines.length) * 12.5 + 8;
+    doc.line(L, y - 4, R, y - 4, { color: PDF_C.line, w: 0.5 });
   });
-  y += 6;
-  const tot = [['Summe netto', money(inv.net)], [inv.vat_rate ? `zzgl. ${String(inv.vat_rate).replace('.', ',')} % USt.` : 'Umsatzsteuer', money(inv.vat)]];
-  for (const [k, v] of tot) { doc.text(cx.unit, y, k, { size: 9.5, align: 'right', color: '#6b6b70' }); doc.text(cx.total, y, v, { size: 9.5, align: 'right' }); y += 14; }
-  doc.line(cx.qty - mm(20), y, R, y, { color: '#1a1a1a', w: 0.8 }); y += 6;
-  doc.text(cx.unit, y, 'Rechnungsbetrag', { size: 11, bold: true, align: 'right' }); doc.text(cx.total, y, money(inv.gross), { size: 11, bold: true, align: 'right' }); y += 26;
-  if (!inv.vat_rate && !s.vat_enabled) { doc.text(L, y, 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.', { size: 9, color: '#6b6b70' }); y += 14; }
+  y += 10;
+  // Summen rechts, Gesamtbetrag als orange Fläche
+  const TX = R - mm(78);
+  const tot = [['Zwischensumme netto', money(inv.net)], [inv.vat_rate ? `zzgl. ${String(inv.vat_rate).replace('.', ',')} % Umsatzsteuer` : 'Umsatzsteuer', money(inv.vat)]];
+  if (y > doc.H - mm(95)) { pdfFooter(doc, s); doc.newPage(); doc.rect(0, 0, mm(3), doc.H, { fill: PDF_C.orange }); y = mm(22); }
+  for (const [k, v] of tot) { doc.text(TX + 10, y, k, { size: 9.2, color: PDF_C.grey }); doc.text(R - 10, y, v, { size: 9.2, align: 'right', color: PDF_C.ink }); y += 15; }
+  y += 4;
+  doc.rrect(TX, y - 7, R - TX, 30, 5, { fill: isCredit ? '#c4291c' : PDF_C.orange });
+  caps(doc, TX + 10, y + 5, isCredit ? 'Gutschriftsbetrag' : 'Rechnungsbetrag', { color: '#ffffff', size: 6.8 });
+  doc.text(R - 10, y - 0.5, money(inv.gross), { size: 15, bold: true, align: 'right', color: '#ffffff' });
+  y += 44;
+  if (!inv.vat_rate && !s.vat_enabled) { doc.text(L, y, 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.', { size: 8.8, color: PDF_C.grey }); y += 16; }
+  // Zahlungshinweis
   if (!isCredit) {
-    const terms = `Zahlbar ohne Abzug bis zum ${fmtDateDE(inv.due_date)}. ${s.invoice_footer || ''}`;
-    for (const l of doc.wrap(terms, R - L, 9.5)) { doc.text(L, y, l, { size: 9.5 }); y += 12.5; }
-    if (s.company_iban) { y += 4; doc.text(L, y, `Bankverbindung: ${[s.company_bank, 'IBAN ' + s.company_iban, s.company_bic ? 'BIC ' + s.company_bic : ''].filter(Boolean).join(' · ')}`, { size: 9.5 }); y += 12.5; doc.text(L, y, `Verwendungszweck: ${inv.number}`, { size: 9.5, bold: true }); }
+    const rows = [['Zahlbar bis', `${fmtDateDE(inv.due_date)} ohne Abzug`], ['Verwendungszweck', inv.number], s.company_iban ? ['IBAN', fmtIban(s.company_iban)] : null, s.company_bank ? ['Bank', [s.company_bank, s.company_bic ? 'BIC ' + s.company_bic : ''].filter(Boolean).join(' · ')] : null].filter(Boolean);
+    const bh = 22 + rows.length * 13;
+    doc.rrect(L, y, R - L, bh, 6, { fill: PDF_C.owash });
+    doc.rect(L + 7, y + 8, 2.2, bh - 16, { fill: PDF_C.orange });
+    caps(doc, L + 16, y + 9, 'Zahlungsinformationen', { color: PDF_C.orange });
+    rows.forEach(([k, v], i) => { doc.text(L + 16, y + 21 + i * 13, k, { size: 8.8, color: PDF_C.grey }); doc.text(L + mm(40), y + 21 + i * 13, v, { size: 8.8, bold: true, color: PDF_C.ink }); });
+    y += bh + 16;
+    for (const l of doc.wrap(s.invoice_footer || '', R - L, 8.8)) { doc.text(L, y, l, { size: 8.8, color: PDF_C.grey }); y += 12; }
+  } else { for (const l of doc.wrap('Der Betrag wird mit der ursprünglichen Rechnung verrechnet. Sollte diese bereits bezahlt sein, erstatten wir Ihnen den Betrag.', R - L, 8.8)) { doc.text(L, y, l, { size: 8.8, color: PDF_C.grey }); y += 12; } }
+  y += 14;
+  if (y < doc.H - mm(40)) {
+    doc.text(L, y, 'Vielen Dank für die gute Zusammenarbeit.', { size: 10, color: PDF_C.ink }); y += 22;
+    doc.text(L, y, 'Ihr ', { size: 10, color: PDF_C.ink }); doc.text(L + textWidth('Ihr ', 10, false), y, 'KFL', { size: 10, italic: true, color: PDF_C.orange }); doc.text(L + textWidth('Ihr ', 10, false) + textWidth('KFL', 10, true) + 3, y, 'Team', { size: 10, color: PDF_C.ink });
   }
   pdfFooter(doc, s);
+  pdfPageNumbers(doc);
   return doc.finish();
 }
 
@@ -160,7 +239,7 @@ function renderDunningPdf(s, inv, level, fee, dueDate, openAmount) {
   const doc = new PdfDoc();
   const rc = jparse(inv.recipient, {});
   const title = DUNNING_LEVELS[level] || 'Mahnung';
-  let { L, R, y } = pdfLetterBase(doc, s, rc, [['Datum', fmtDateDE(nowIso())], ['Rechnungsnummer', inv.number], ['Kundennummer', rc.customer_no], ['Fällig am', fmtDateDE(dueDate)]], `${title} zur Rechnung ${inv.number}`);
+  let { L, R, y } = pdfLetterBase(doc, s, rc, [['Datum', fmtDateDE(nowIso())], ['Rechnungsnummer', inv.number], ['Kundennummer', rc.customer_no], ['Zahlbar bis', fmtDateDE(dueDate), true]], title, { kicker: level === 1 ? 'Zahlungserinnerung' : 'Mahnung', kickerColor: level >= 2 ? '#c4291c' : PDF_C.orange, number: inv.number });
   const text = level === 1
     ? `Sehr geehrte Damen und Herren,\n\nsicher ist es Ihrer Aufmerksamkeit entgangen: Zu unserer Rechnung ${inv.number} vom ${fmtDateDE(inv.issue_date)} konnten wir bis heute keinen vollständigen Zahlungseingang feststellen. Wir bitten Sie freundlich, den offenen Betrag bis zum ${fmtDateDE(dueDate)} zu überweisen. Sollten Sie die Zahlung bereits veranlasst haben, betrachten Sie dieses Schreiben bitte als gegenstandslos.`
     : `Sehr geehrte Damen und Herren,\n\ntrotz unserer bisherigen Erinnerung ist die Rechnung ${inv.number} vom ${fmtDateDE(inv.issue_date)} weiterhin nicht vollständig beglichen. Wir fordern Sie auf, den Gesamtbetrag einschließlich der Mahngebühr bis zum ${fmtDateDE(dueDate)} zu überweisen.`;
@@ -173,6 +252,7 @@ function renderDunningPdf(s, inv, level, fee, dueDate, openAmount) {
   if (s.company_iban) { doc.text(L, y, `Bankverbindung: ${[s.company_bank, 'IBAN ' + s.company_iban, s.company_bic ? 'BIC ' + s.company_bic : ''].filter(Boolean).join(' · ')}`, { size: 9.5 }); y += 13; doc.text(L, y, `Verwendungszweck: ${inv.number}`, { size: 9.5, bold: true }); y += 20; }
   doc.text(L, y, 'Mit freundlichen Grüßen', { size: 10 }); doc.text(L, y + 14, `${s.company_name} – Buchhaltung`, { size: 10 });
   pdfFooter(doc, s);
+  pdfPageNumbers(doc);
   return doc.finish();
 }
 

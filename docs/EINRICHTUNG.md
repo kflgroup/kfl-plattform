@@ -42,7 +42,7 @@ Worker `tiny-lab-d971kfl-forms` → Einstellungen → **Variablen und Secrets** 
 | `SETUP_TOKEN` | nur nötig, falls die Datenbank leer startet (ohne Altdaten) |
 | `SMTP_USER` | E-Mail-Postfach für den Versand: `noreplay@kfl-group.com` (IONOS) |
 | `SMTP_PASS` | Passwort dieses IONOS-Postfachs |
-| `SMTP_PASS_RECHNUNG`, `SMTP_PASS_VERMITTLUNG`, `SMTP_PASS_SUPPORT` | optional: Passwörter der Postfächer rechnung@, vermittlung@, support@ (sonst wird über noreplay@ mit passender Antwortadresse gesendet) |
+| `SMTP_PASS_VERMITTLUNG`, `SMTP_PASS_SUPPORT` | optional: Passwörter der Postfächer vermittlung@, support@ (Rechnungen gehen immer über noreplay@, Antworten an info@) (sonst wird über noreplay@ mit passender Antwortadresse gesendet) |
 | `BREVO_API_KEY` | optional: Alternative zum Postfach (Brevo) |
 | `SHOPIFY_ADMIN_TOKEN` | optional: Admin-API-Token (Lesezugriff Bestellungen) für die Webshop-Statistik |
 | `SHOPIFY_SHOP` | optional, Standard `3r1qns-2d.myshopify.com` |

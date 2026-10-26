@@ -143,7 +143,7 @@ const EXTRA_COLUMNS = {
   users: { extra_perms: "TEXT NOT NULL DEFAULT '[]'", revoked_perms: "TEXT NOT NULL DEFAULT '[]'", department: 'TEXT', phone: 'TEXT',
     must_change_pw: "INTEGER NOT NULL DEFAULT 0", created_by: 'INTEGER', prev_login: 'TEXT' },
   sessions: { area_until: 'TEXT' },
-  invoices: { mail_status: 'TEXT', mail_error: 'TEXT' },
+  invoices: { mail_status: 'TEXT', mail_error: 'TEXT', intro: 'TEXT' },
   billing_items: { cancel_reason: 'TEXT', cancelled_at: 'TEXT', cancelled_by: 'TEXT', prev_status: 'TEXT' }
 };
 

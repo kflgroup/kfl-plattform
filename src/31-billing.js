@@ -40,9 +40,9 @@ async function createInvoice(ctx, { org = null, recipient = null, lines, kind = 
   const t = nowIso();
   const inv = { number, org_id: org ? org.id : null, kind, status: 'offen', issue_date: today, service_from: serviceFrom || today, service_to: serviceTo || serviceFrom || today,
     due_date: kind === 'storno' ? today : addDaysDate(today, terms.days), net, vat_rate: vatRate, vat, gross, paid: 0, fees: 0, dunning_level: 0, recipient: JSON.stringify(rc),
-    lines: JSON.stringify(norm), note: note || null, created_by: ctx._staff ? ctx._staff.id : null, created_at: t, updated_at: t };
+    lines: JSON.stringify(norm), note: note || null, intro: intro || null, created_by: ctx._staff ? ctx._staff.id : null, created_at: t, updated_at: t };
   const id = await DB.insert(ctx.db, 'invoices', inv);
-  inv.id = id; inv.intro = intro;
+  inv.id = id;
   const pdf = renderInvoicePdf(s, inv);
   const fileId = await putFile(ctx, { name: `${number}.pdf`, mime: 'application/pdf', bytes: pdf, ownerType: 'invoice', ownerId: id });
   await DB.update(ctx.db, 'invoices', id, { file_id: fileId });
@@ -58,10 +58,17 @@ async function sendInvoiceMail(ctx, id, sendTo) {
   const rc = jparse(inv.recipient, {});
   const to = sendTo || rc.email;
   if (!emailOk(to)) { await DB.update(ctx.db, 'invoices', id, { mail_status: 'keine_adresse', mail_error: 'Keine Rechnungs-E-Mail hinterlegt', updated_at: nowIso() }); return { ok: false, status: 'keine_adresse', error: 'Keine Rechnungs-E-Mail hinterlegt' }; }
+  // Noch nie versendete Rechnung: PDF im aktuellen Briefbogen neu erzeugen (Inhalt unverändert)
+  if (!inv.sent_at) {
+    const pdf = renderInvoicePdf(s, inv);
+    const fileId = await putFile(ctx, { name: `${inv.number}.pdf`, mime: 'application/pdf', bytes: pdf, ownerType: 'invoice', ownerId: id });
+    await DB.update(ctx.db, 'invoices', id, { file_id: fileId }); inv.file_id = fileId;
+  }
   const f = await getFile(ctx, inv.file_id);
   const isStorno = inv.kind === 'storno';
   const r = await sendMail(ctx, { category: 'invoice', to, toName: rc.name, subject: `${isStorno ? 'Stornorechnung' : 'Rechnung'} ${inv.number} der ${s.company_name}`, title: `${isStorno ? 'Stornorechnung' : 'Ihre Rechnung'} ${inv.number}`,
     body: `<p>Sehr geehrte Damen und Herren,</p><p>anbei erhalten Sie ${isStorno ? 'die Stornorechnung' : 'unsere Rechnung'} <strong>${esc(inv.number)}</strong> vom ${esc(fmtDateDE(inv.issue_date))} über <strong>${esc(money(inv.gross))}</strong>${isStorno ? '' : `, zahlbar bis ${esc(fmtDateDE(inv.due_date))}`}.</p>${mailTable(jparse(inv.lines, []).map((l) => [l.description, money(l.total)]))}<p>Mit freundlichen Grüßen<br>${esc(s.company_name)} – Buchhaltung</p>`,
+    replyTo: { email: s.company_email, name: `${s.company_name} Buchhaltung` },
     attachments: f ? [{ name: `${inv.number}.pdf`, base64: b64(f.bytes) }] : [] });
   // Nur bei erfolgreichem Versand als „versendet“ markieren
   const err = r.ok ? null : r.status === 'nicht_konfiguriert' ? 'E-Mail-Versand ist nicht eingerichtet (Postfach-Zugang fehlt)' : (r.error || 'Versand fehlgeschlagen');

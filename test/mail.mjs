@@ -2,7 +2,7 @@
 import { makeD1, makeR2, installFetch, SECRET, client, check } from './harness.mjs';
 const worker = (await import('./wk.mjs')).default;
 installFetch();
-const sent = []; const opts = { rejectFrom: ['rechnung@kfl-group.com'], user: 'noreplay@kfl-group.com', pass: 'Postfach-Passwort1' };
+const sent = []; const opts = { rejectFrom: ['vermittlung@kfl-group.com'], user: 'noreplay@kfl-group.com', pass: 'Postfach-Passwort1' };
 let tls = 0;
 globalThis.__kflConnect = ({ hostname, port }) => {
   const enc = new TextEncoder(), dec = new TextDecoder();
@@ -54,9 +54,9 @@ for (const [kind, name] of [['einzel', 'Einzelhändler Meyer'], ['organisation',
   check(html.includes(name) && html.includes('#/einladung/' + inv.link.split('/').pop()) && /Einladung zum KFL-Partner-Dashboard/.test(decWord(header(m.data, 'Subject'))), `${kind}: E-Mail enthält Einladungslink, Firmenname und Betreff`);
 }
 check(tls === sent.length && tls >= 2, 'Verbindung jeweils per STARTTLS verschlüsselt');
-r = await c.post('/api/mail/test', { to: 'tobias@test.de', category: 'invoice' }, { who: 'admin' });
+r = await c.post('/api/mail/test', { to: 'tobias@test.de', category: 'partner' }, { who: 'admin' });
 const fb = sent[sent.length - 1];
-check(r.status === 'gesendet' && fb.from === 'noreplay@kfl-group.com' && /rechnung@kfl-group\.com/.test(header(fb.data, 'Reply-To')), 'Nicht erlaubter Absender (rechnung@) → über noreplay@ mit Antwortadresse rechnung@', { r, from: fb.from, rt: header(fb.data, 'Reply-To') });
+check(r.status === 'gesendet' && fb.from === 'noreplay@kfl-group.com' && /vermittlung@kfl-group\.com/.test(header(fb.data, 'Reply-To')), 'Nicht erlaubter Absender (vermittlung@) → über noreplay@ mit Antwortadresse vermittlung@', { r, from: fb.from, rt: header(fb.data, 'Reply-To') });
 opts.pass = 'falsch';
 r = await c.post('/api/mail/test', { to: 'tobias@test.de' }, { who: 'admin' });
 check(r.status === 'fehler' && /AUTH/.test(r.error), 'Falsches Postfach-Passwort wird klar gemeldet', r.error);

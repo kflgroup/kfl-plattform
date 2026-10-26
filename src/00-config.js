@@ -175,7 +175,7 @@ const DEFAULT_SETTINGS = {
   company_iban: '',
   company_bic: '',
   // Absender
-  mail_from_invoice: 'rechnung@kfl-group.com',
+  mail_from_invoice: 'noreplay@kfl-group.com',
   mail_from_system: 'noreplay@kfl-group.com',
   mail_from_partner: 'vermittlung@kfl-group.com',
   mail_from_support: 'support@kfl-group.com',
