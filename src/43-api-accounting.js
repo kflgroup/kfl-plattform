@@ -94,7 +94,7 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     const inv = await DB.one(db, 'SELECT * FROM invoices WHERE id = ?', +m[1]); need(inv, 404, 'Rechnung nicht gefunden.');
     const sub = m[2] || '';
     if (!sub && method === 'GET') {
-      return out({ ok: true, invoice: { ...inv, recipient: jparse(inv.recipient, {}), lines: jparse(inv.lines, []), open: round2(inv.gross + inv.fees - inv.paid) },
+      return out({ ok: true, invoice: { ...inv, recipient: jparse(inv.recipient, {}), lines: jparse(inv.lines, []), open: round2(inv.gross + inv.fees - inv.paid), mail_to: await invoiceMailTo(ctx, inv) },
         payments: await DB.all(db, 'SELECT p.*, u.name AS author FROM payments p LEFT JOIN users u ON u.id = p.created_by WHERE p.invoice_id = ? ORDER BY p.id', inv.id),
         dunnings: await DB.all(db, 'SELECT d.*, u.name AS author FROM dunnings d LEFT JOIN users u ON u.id = d.created_by WHERE d.invoice_id = ? ORDER BY d.id', inv.id) });
     }
@@ -103,7 +103,7 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     if (sub === 'payment' && method === 'POST') { manage(); return out({ ok: true, ...(await addPayment(ctx, inv.id, body)) }); }
     if (sub === 'dunning' && method === 'POST') { manage(); return out({ ok: true, ...(await sendDunning(ctx, inv.id)) }); }
     if (sub === 'cancel' && method === 'POST') { requirePerm(u, 'acc_cancel'); need(str(body.reason, 300).length >= 3, 400, 'Bitte gib einen Grund für das Storno an.'); return out({ ok: true, id: await cancelInvoice(ctx, inv.id, str(body.reason, 300)) }); }
-    if (sub === 'resend' && method === 'POST') { manage(); const r = await sendInvoiceMail(ctx, inv.id, emailOk(body.email) ? body.email : null); await audit(ctx, 'rechnung_erneut_gesendet', 'rechnung', inv.number, { an: body.email || null }); return out({ ok: true, mail: r && r.status, error: r && r.error }); }
+    if (sub === 'resend' && method === 'POST') { manage(); const r = await sendInvoiceMail(ctx, inv.id, emailOk(body.email) ? body.email : null); await audit(ctx, 'rechnung_erneut_gesendet', 'rechnung', inv.number, { an: body.email || null }); return out({ ok: true, mail: r && r.status, error: r && r.error, to: emailOk(body.email) ? body.email : await invoiceMailTo(ctx, inv) }); }
   }
   if (path === '/monthly-run' && method === 'POST') { manage(); const n = await runMonthlyInvoices(ctx, { force: true }); await audit(ctx, 'sammelrechnungen_manuell', 'buchhaltung', null, { anzahl: n }); return out({ ok: true, count: n }); }
 

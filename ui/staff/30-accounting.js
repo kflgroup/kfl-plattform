@@ -133,14 +133,14 @@ ACT.openInvoice = async (b) => {
   const nextLevel = (i.dunning_level || 0) + 1;
   modal({ title: `Rechnung ${i.number}`, wide: true, body: html`<div class="row-between"><div>${invStatus({ ...i, overdue: live && i.due_date < todayISO() })}</div>
       <div class="row"><a class="btn btn-sm" target="_blank" rel="noopener" href="${fileUrl(`/acc/invoices/${i.id}/pdf`)}">${icon('eye')}PDF ansehen</a><a class="btn btn-sm" href="${fileUrl(`/acc/invoices/${i.id}/pdf`, { download: 1 })}">${icon('download')}Herunterladen</a></div></div>
-    <div class="grid-2 mt"><div>${kv([['Empfänger', i.recipient.name], ['Anschrift', [i.recipient.street, [i.recipient.zip, i.recipient.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')], ['E-Mail', i.recipient.email], ['USt-IdNr.', i.recipient.vat_id], ['Versendet', i.sent_at ? `${fDT(i.sent_at)} an ${i.sent_to}` : html`<span class="badge t-warn">nicht versendet</span>${i.mail_error ? html`<span class="cell-sub">${i.mail_error}</span>` : ''}`]])}</div>
+    <div class="grid-2 mt"><div>${kv([['Empfänger', i.recipient.name], ['Anschrift', [i.recipient.street, [i.recipient.zip, i.recipient.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')], ['Rechnungs-E-Mail', i.mail_to || i.recipient.email || html`<span class="badge t-err">keine hinterlegt</span>`], ['USt-IdNr.', i.recipient.vat_id], ['Versendet', i.sent_at ? `${fDT(i.sent_at)} an ${i.sent_to}` : html`<span class="badge t-warn">nicht versendet</span>${i.mail_error ? html`<span class="cell-sub">${i.mail_error}</span>` : ''}`]])}</div>
       <div>${kv([['Rechnungsdatum', fDate(i.issue_date)], ['Leistungszeitraum', i.service_from ? `${fDate(i.service_from)}${i.service_to ? ' – ' + fDate(i.service_to) : ''}` : ''], ['Fällig am', fDate(i.due_date)], ['Netto', fEur(i.net)], [`USt ${fNum(i.vat_rate)} %`, fEur(i.vat)], ['Brutto', html`<b>${fEur(i.gross)}</b>`], ['Mahngebühren', i.fees ? fEur(i.fees) : ''], ['Bezahlt', fEur(i.paid)], ['Offen', html`<b>${fEur(i.open)}</b>`]])}</div></div>
     <h3 class="mt-l">Positionen</h3><table class="table"><thead><tr><th>Leistung</th><th class="r">Menge</th><th class="r">Einzelpreis</th><th class="r">Summe</th></tr></thead><tbody>${i.lines.map((l) => html`<tr><td>${l.description}</td><td class="r">${fNum(l.qty, 2)}</td><td class="r num">${fEur(l.unit)}</td><td class="r num">${fEur(l.total)}</td></tr>`)}</tbody></table>
     <div class="grid-2 mt-l"><div><h3>Zahlungen</h3>${d.payments.length ? html`<ul class="timeline mt">${d.payments.map((p) => html`<li><div><div class="tl-meta">${fDate(p.date)} · ${p.method}${p.author ? ' · ' + p.author : ''}</div><b class="num">${fEur(p.amount)}</b>${p.note ? html` <span class="muted">${p.note}</span>` : ''}</div></li>`)}</ul>` : html`<p class="muted small mt">Noch kein Zahlungseingang.</p>`}
         ${mng && live ? html`<form class="inline-form mt" data-submit="payAdd"><input type="hidden" name="id" value="${i.id}">${field('Betrag', inp('amount', i.open.toFixed(2).replace('.', ','), { req: true }))}${field('Datum', inp('date', todayISO(), { type: 'date' }))}${field('Art', sel('method', ['Überweisung', 'Lastschrift', 'Bar', 'Verrechnung', 'Kulanz'], 'Überweisung'))}<button class="btn btn-ok" type="submit">Zahlung buchen</button></form>` : ''}</div>
       <div><h3>Mahnwesen</h3>${d.dunnings.length ? html`<ul class="timeline mt">${d.dunnings.map((m) => html`<li><div><div class="tl-meta">${fDT(m.created_at)}${m.author ? ' · ' + m.author : ' · automatisch'}</div>${S.config.dunningLevels[m.level] || 'Stufe ' + m.level}${m.fee ? ` · Gebühr ${fEur(m.fee)}` : ''} · fällig ${fDate(m.due_date)} ${m.file_id ? html`<a class="link small" target="_blank" rel="noopener" href="${fileUrl(`/acc/invoices/${i.id}/dunning-pdf/${m.id}`)}">PDF</a>` : ''}</div></li>`)}</ul>` : html`<p class="muted small mt">Noch nicht angemahnt.</p>`}
         ${mng && live && nextLevel > 3 ? html`<p class="small muted mt">Letzte Mahnstufe erreicht – weiter mit Inkasso bzw. gerichtlichem Mahnverfahren.</p>` : ''}${mng && live && nextLevel <= 3 ? html`<button class="btn btn-sm mt" data-act="dunning" data-id="${i.id}" data-level="${nextLevel}">${icon('bell')}${nextLevel === 1 ? 'Zahlungserinnerung senden' : S.config.dunningLevels[nextLevel] + ' senden'}</button>` : ''}</div></div>`,
-    foot: mng || can('acc_cancel') ? html`${can('acc_cancel') && i.kind !== 'storno' && i.status !== 'storniert' ? html`<button class="btn btn-ghost" data-act="invCancel" data-id="${i.id}">Stornieren</button>` : ''}<span class="spacer"></span>${mng ? html`<button class="btn ${notSent(i) ? 'btn-primary' : ''}" data-act="invResend" data-id="${i.id}">${icon('mail')}${notSent(i) ? 'Jetzt senden' : 'Erneut senden'}</button>` : ''}<button class="btn btn-dark" data-close>Schließen</button>` : html`<button class="btn btn-dark" data-close>Schließen</button>` });
+    foot: mng || can('acc_cancel') ? html`${can('acc_cancel') && i.kind !== 'storno' && i.status !== 'storniert' ? html`<button class="btn btn-ghost" data-act="invCancel" data-id="${i.id}">Stornieren</button>` : ''}<span class="spacer"></span>${mng ? html`<button class="btn ${notSent(i) ? 'btn-primary' : ''}" data-act="invResend" data-id="${i.id}" data-to="${i.mail_to || ''}" data-no="${i.number}">${icon('mail')}${notSent(i) ? 'Jetzt senden' : 'Erneut senden'}</button>` : ''}<button class="btn btn-dark" data-close>Schließen</button>` : html`<button class="btn btn-dark" data-close>Schließen</button>` });
 };
 SUBMIT.payAdd = async (d) => { const r = await POST(`/acc/invoices/${d.id}/payment`, d); closeModal(); toast(r.status === 'bezahlt' ? 'Zahlung gebucht – Rechnung ist bezahlt.' : 'Teilzahlung gebucht.'); reload(); };
 ACT.dunning = async (b) => {
@@ -149,7 +149,25 @@ ACT.dunning = async (b) => {
   const r = await POST(`/acc/invoices/${b.dataset.id}/dunning`); closeModal(); toast(`${S.config.dunningLevels[r.level]} versendet${r.fee ? ' · Gebühr ' + fEur(r.fee) : ''}.`); reload();
 };
 ACT.invCancel = async (b) => { const d = await ask({ title: 'Rechnung stornieren?', text: 'Es wird eine Stornorechnung erzeugt. Verknüpfte Abrechnungsfälle werden wieder geöffnet.', ok: 'Stornieren', danger: true, fields: field('Grund', inp('reason', '', { req: true })) }); if (!d) return; await POST(`/acc/invoices/${b.dataset.id}/cancel`, d); closeModal(); toast('Storniert.'); reload(); };
-ACT.invResend = async (b) => { const d = await ask({ title: 'Rechnung erneut senden', ok: 'Senden', fields: field('An E-Mail (leer = Rechnungsadresse)', inp('email', '', { type: 'email' })) }); if (!d) return; const r = await POST(`/acc/invoices/${b.dataset.id}/resend`, d); toast(r.mail === 'gesendet' ? 'Rechnung gesendet.' : `Nicht versendet: ${r.error || 'E-Mail-Versand nicht eingerichtet'}`, r.mail === 'gesendet' ? 'ok' : 'err'); closeModal(); reload(); };
+// „Jetzt senden“: direkt an die hinterlegte Rechnungs-E-Mail des Partners; andere Adresse nur auf Wunsch
+async function invSend(id, email) {
+  const r = await POST(`/acc/invoices/${id}/resend`, email ? { email } : {});
+  closeModal(); closeModal();
+  if (r.mail === 'gesendet') toast(`Rechnung an ${r.to || email || 'die Rechnungsadresse'} versendet.`);
+  else toast(`Nicht versendet: ${r.error || 'E-Mail-Versand nicht eingerichtet'}`, 'err');
+  reload();
+}
+ACT.invResend = async (b) => {
+  const to = b.dataset.to;
+  if (!to) return ACT.invResendOther(b);
+  const ok = await ask({ title: `Rechnung ${b.dataset.no || ''} senden`, ok: 'Jetzt senden', text: '', fields: html`<p class="lead">Die Rechnung wird mit PDF an die hinterlegte Rechnungs-E-Mail gesendet:</p><p class="strong">${to}</p><p class="small"><button class="link" type="button" data-act="invResendOther" data-id="${b.dataset.id}" data-no="${b.dataset.no || ''}">An eine andere Adresse senden</button></p>` });
+  if (ok) await invSend(b.dataset.id);
+};
+ACT.invResendOther = async (b) => {
+  closeModal();
+  const d = await ask({ title: 'An andere Adresse senden', ok: 'Senden', fields: field('E-Mail-Adresse', inp('email', '', { type: 'email', req: true })) });
+  if (d) await invSend(b.dataset.id, d.email);
+};
 ACT.newInvoice = async () => {
   const orgs = (await GET('/acc/orgs')).orgs;
   const line = () => html`<tr><td><input name="ld[]" placeholder="Leistung" required></td><td><input name="lq[]" value="1" size="4"></td><td><input name="lu[]" placeholder="0,00" size="8" required></td></tr>`;

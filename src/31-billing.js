@@ -54,11 +54,17 @@ async function createInvoice(ctx, { org = null, recipient = null, lines, kind = 
   if (send) await sendInvoiceMail(ctx, id, sendTo);
   return id;
 }
+// Zieladresse für Rechnungs-E-Mails: aktuelle Rechnungs-E-Mail des Partners, sonst die Adresse auf der Rechnung
+async function invoiceMailTo(ctx, inv) {
+  const org = inv.org_id ? await DB.one(ctx.db, 'SELECT billing_email, email FROM orgs WHERE id = ?', inv.org_id) : null;
+  const cand = [org && org.billing_email, jparse(inv.recipient, {}).email, org && org.email].find((e) => emailOk(e));
+  return cand || null;
+}
 async function sendInvoiceMail(ctx, id, sendTo) {
   const s = await settingsOf(ctx);
   const inv = await DB.one(ctx.db, 'SELECT * FROM invoices WHERE id = ?', id);
   const rc = jparse(inv.recipient, {});
-  const to = sendTo || rc.email;
+  const to = sendTo || (await invoiceMailTo(ctx, inv));
   if (!emailOk(to)) { await DB.update(ctx.db, 'invoices', id, { mail_status: 'keine_adresse', mail_error: 'Keine Rechnungs-E-Mail hinterlegt', updated_at: nowIso() }); return { ok: false, status: 'keine_adresse', error: 'Keine Rechnungs-E-Mail hinterlegt' }; }
   // Noch nie versendete Rechnung: PDF im aktuellen Briefbogen neu erzeugen (Inhalt unverändert)
   if (!inv.sent_at) {
