@@ -57,14 +57,17 @@ async function sendInvoiceMail(ctx, id, sendTo) {
   const inv = await DB.one(ctx.db, 'SELECT * FROM invoices WHERE id = ?', id);
   const rc = jparse(inv.recipient, {});
   const to = sendTo || rc.email;
-  if (!emailOk(to)) { await DB.update(ctx.db, 'invoices', id, { note: (inv.note ? inv.note + ' · ' : '') + 'Keine Rechnungs-E-Mail hinterlegt' }); return { ok: false }; }
+  if (!emailOk(to)) { await DB.update(ctx.db, 'invoices', id, { mail_status: 'keine_adresse', mail_error: 'Keine Rechnungs-E-Mail hinterlegt', updated_at: nowIso() }); return { ok: false, status: 'keine_adresse', error: 'Keine Rechnungs-E-Mail hinterlegt' }; }
   const f = await getFile(ctx, inv.file_id);
   const isStorno = inv.kind === 'storno';
   const r = await sendMail(ctx, { category: 'invoice', to, toName: rc.name, subject: `${isStorno ? 'Stornorechnung' : 'Rechnung'} ${inv.number} der ${s.company_name}`, title: `${isStorno ? 'Stornorechnung' : 'Ihre Rechnung'} ${inv.number}`,
     body: `<p>Sehr geehrte Damen und Herren,</p><p>anbei erhalten Sie ${isStorno ? 'die Stornorechnung' : 'unsere Rechnung'} <strong>${esc(inv.number)}</strong> vom ${esc(fmtDateDE(inv.issue_date))} über <strong>${esc(money(inv.gross))}</strong>${isStorno ? '' : `, zahlbar bis ${esc(fmtDateDE(inv.due_date))}`}.</p>${mailTable(jparse(inv.lines, []).map((l) => [l.description, money(l.total)]))}<p>Mit freundlichen Grüßen<br>${esc(s.company_name)} – Buchhaltung</p>`,
     attachments: f ? [{ name: `${inv.number}.pdf`, base64: b64(f.bytes) }] : [] });
-  await DB.update(ctx.db, 'invoices', id, { sent_at: nowIso(), sent_to: to, updated_at: nowIso() });
-  return r;
+  // Nur bei erfolgreichem Versand als „versendet“ markieren
+  const err = r.ok ? null : r.status === 'nicht_konfiguriert' ? 'E-Mail-Versand ist nicht eingerichtet (Postfach-Zugang fehlt)' : (r.error || 'Versand fehlgeschlagen');
+  await DB.update(ctx.db, 'invoices', id, { ...(r.ok ? { sent_at: nowIso() } : {}), sent_to: to, mail_status: r.status, mail_error: err, updated_at: nowIso() });
+  if (!r.ok) await notifyStaff(ctx, { perm: 'acc_manage' }, { kind: 'fehler', title: `Rechnung ${inv.number} nicht versendet`, body: `An ${to}: ${err}`, link: '#/buchhaltung/rechnungen' });
+  return { ...r, error: err };
 }
 
 // „Rechnung versenden“ für einen Abrechnungsfall

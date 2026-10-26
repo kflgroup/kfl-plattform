@@ -49,7 +49,7 @@ async function pageStart() {
     k.overdue !== undefined && ['Rechnungen überfällig', k.overdue, '#/buchhaltung/rechnungen?overdue=1', k.overdue > 0]
   ].filter(Boolean);
   const unread = feedItems(d.news, 'ungelesen').length;
-  P.show(html`<div class="hello"><div><h1>${greeting()}, ${S.user.name.split(' ')[0]}</h1><p class="sub muted">${S.user.roleLabel}${S.user.prevLogin ? ` · letzte Anmeldung ${fDT(S.user.prevLogin)}` : ''}</p></div>
+  P.show(html`${canAny('settings_all', 'acc_view') ? mailWarn() : ''}<div class="hello"><div><h1>${greeting()}, ${S.user.name.split(' ')[0]}</h1><p class="sub muted">${S.user.roleLabel}${S.user.prevLogin ? ` · letzte Anmeldung ${fDT(S.user.prevLogin)}` : ''}</p></div>
       <div class="date"><b>${fLong(new Date())}</b>KW ${d.week} · ${d.year}</div></div>
     ${tiles.length ? html`<div class="kpis">${tiles.map(([l, v, href, hot]) => html`<a class="kpi ${hot ? 'hot' : ''}" href="${href}"><b>${fNum(v)}</b><span>${l}</span></a>`)}</div>` : ''}
     ${(d.absenceRequests || []).map((a) => html`<div class="note-box mt">${icon('users')}<div class="spacer"><b>${a.user_name}</b> bittet dich um Vertretung vom ${fDate(a.from_date)} bis ${fDate(a.to_date)}.${a.note ? html` „${a.note}“` : ''}</div>

@@ -38,7 +38,7 @@ async function handleStaffApi(ctx, url) {
   if (path === '/session' && method === 'GET') {
     const u = await currentStaff(ctx);
     const cnt = await DB.val(db, 'SELECT COUNT(*) FROM users');
-    return out({ ok: true, user: staffPublic(u), needsSetup: cnt === 0, setupConfigured: !!env.SETUP_TOKEN, config: publicConfig() });
+    return out({ ok: true, user: staffPublic(u), needsSetup: cnt === 0, setupConfigured: !!env.SETUP_TOKEN, mailReady: !!mailProvider(env), config: publicConfig() });
   }
   if (path === '/setup' && method === 'POST') {
     need((await DB.val(db, 'SELECT COUNT(*) FROM users')) === 0, 403, 'Die Ersteinrichtung ist bereits abgeschlossen.');

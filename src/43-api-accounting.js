@@ -64,6 +64,7 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     if (m[2] === 'note') { await DB.update(db, 'billing_items', it.id, { note: str(body.text, 2000), updated_at: nowIso() }); await audit(ctx, 'fall_notiz', 'abrechnung', it.id, null); return out({ ok: true }); }
     if (m[2] === 'amount') { need(it.status === 'offen' || it.status === 'gesammelt', 409, 'Bereits abgerechnet.'); const a = toNum(body.amount); need(a !== null && a >= 0, 400, 'Ungültiger Betrag.'); await DB.update(db, 'billing_items', it.id, { amount_net: round2(a), description: str(body.description, 500) || it.description, updated_at: nowIso() }); await audit(ctx, 'fall_betrag', 'abrechnung', it.id, { netto: a }); return out({ ok: true }); }
     const r = await billItem(ctx, it.id); await audit(ctx, 'rechnung_versenden', 'abrechnung', it.id, r);
+    if (r.invoiceId) { const iv = await DB.one(db, 'SELECT mail_status, mail_error, sent_to FROM invoices WHERE id = ?', r.invoiceId); r.mail = iv.mail_status; r.mailError = iv.mail_error; r.sentTo = iv.sent_to; }
     return out({ ok: true, ...r });
   }
 
@@ -79,7 +80,7 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     if (q.to) { where.push('i.issue_date <= ?'); args.push(q.to); }
     if (q.q) { const like = '%' + q.q + '%'; where.push("(i.number LIKE ? OR i.recipient LIKE ? OR i.lines LIKE ?)"); args.push(like, like, like); }
     const sort = { number: 'i.number', date: 'i.issue_date', due: 'i.due_date', recipient: "json_extract(i.recipient,'$.name')", gross: 'i.gross', status: 'i.status' }[q.sort] || 'i.id';
-    const rows = await DB.all(db, `SELECT i.id, i.number, i.org_id, i.kind, i.status, i.issue_date, i.due_date, i.net, i.vat, i.gross, i.paid, i.fees, i.dunning_level, i.last_dunning_at, i.sent_at, i.sent_to, i.recipient FROM invoices i WHERE ${where.join(' AND ')} ORDER BY ${sort} ${q.dir === 'asc' ? 'ASC' : 'DESC'}, i.id DESC LIMIT 1000`, ...args);
+    const rows = await DB.all(db, `SELECT i.id, i.number, i.org_id, i.kind, i.status, i.issue_date, i.due_date, i.net, i.vat, i.gross, i.paid, i.fees, i.dunning_level, i.last_dunning_at, i.sent_at, i.sent_to, i.mail_status, i.mail_error, i.recipient FROM invoices i WHERE ${where.join(' AND ')} ORDER BY ${sort} ${q.dir === 'asc' ? 'ASC' : 'DESC'}, i.id DESC LIMIT 1000`, ...args);
     return out({ ok: true, invoices: rows.map((r) => ({ ...r, recipient: jparse(r.recipient, {}), open: round2(r.gross + r.fees - r.paid), overdue: ['offen', 'teilbezahlt'].includes(r.status) && r.due_date < berlinDate(nowMs()) })) });
   }
   if (path === '/invoices' && method === 'POST') {
@@ -102,7 +103,7 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     if (sub === 'payment' && method === 'POST') { manage(); return out({ ok: true, ...(await addPayment(ctx, inv.id, body)) }); }
     if (sub === 'dunning' && method === 'POST') { manage(); return out({ ok: true, ...(await sendDunning(ctx, inv.id)) }); }
     if (sub === 'cancel' && method === 'POST') { requirePerm(u, 'acc_cancel'); need(str(body.reason, 300).length >= 3, 400, 'Bitte gib einen Grund für das Storno an.'); return out({ ok: true, id: await cancelInvoice(ctx, inv.id, str(body.reason, 300)) }); }
-    if (sub === 'resend' && method === 'POST') { manage(); const r = await sendInvoiceMail(ctx, inv.id, emailOk(body.email) ? body.email : null); await audit(ctx, 'rechnung_erneut_gesendet', 'rechnung', inv.number, { an: body.email || null }); return out({ ok: true, mail: r && r.status }); }
+    if (sub === 'resend' && method === 'POST') { manage(); const r = await sendInvoiceMail(ctx, inv.id, emailOk(body.email) ? body.email : null); await audit(ctx, 'rechnung_erneut_gesendet', 'rechnung', inv.number, { an: body.email || null }); return out({ ok: true, mail: r && r.status, error: r && r.error }); }
   }
   if (path === '/monthly-run' && method === 'POST') { manage(); const n = await runMonthlyInvoices(ctx, { force: true }); await audit(ctx, 'sammelrechnungen_manuell', 'buchhaltung', null, { anzahl: n }); return out({ ok: true, count: n }); }
 

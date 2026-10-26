@@ -143,6 +143,7 @@ const EXTRA_COLUMNS = {
   users: { extra_perms: "TEXT NOT NULL DEFAULT '[]'", revoked_perms: "TEXT NOT NULL DEFAULT '[]'", department: 'TEXT', phone: 'TEXT',
     must_change_pw: "INTEGER NOT NULL DEFAULT 0", created_by: 'INTEGER', prev_login: 'TEXT' },
   sessions: { area_until: 'TEXT' },
+  invoices: { mail_status: 'TEXT', mail_error: 'TEXT' },
   billing_items: { cancel_reason: 'TEXT', cancelled_at: 'TEXT', cancelled_by: 'TEXT', prev_status: 'TEXT' }
 };
 
@@ -175,6 +176,13 @@ async function migrate(db) {
       const perms = jparse(row.perms, []); if (!perms.includes(perm)) { perms.push(perm); await db.prepare('UPDATE roles SET perms = ? WHERE key = ?').bind(JSON.stringify(perms), key).run(); }
     }
     await db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES (?, '1', ?, 'system')").bind(flag, nowIso()).run();
+  }
+  // Einmalig: Rechnungen, die als versendet markiert sind, obwohl keine E-Mail rausging, korrigieren
+  if (!(await db.prepare("SELECT value FROM settings WHERE key = '_fix_invoice_sent'").first())) {
+    await db.prepare(`UPDATE invoices SET mail_status = 'nicht_konfiguriert', mail_error = 'E-Mail-Versand war nicht eingerichtet', sent_at = NULL
+      WHERE sent_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM mail_outbox m WHERE m.category = 'invoice' AND m.status = 'gesendet' AND instr(m.subject, invoices.number) > 0)`).run();
+    await db.prepare("UPDATE invoices SET mail_status = 'gesendet' WHERE sent_at IS NOT NULL AND mail_status IS NULL").run();
+    await db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES ('_fix_invoice_sent', '1', ?, 'system')").bind(nowIso()).run();
   }
   // Admin hat immer alle Rechte (auch neu hinzugekommene)
   await db.prepare("UPDATE roles SET perms = ?, name = 'Admin', builtin = 1 WHERE key = 'admin'").bind(JSON.stringify(PERM_KEYS)).run();

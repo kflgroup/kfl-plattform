@@ -62,4 +62,24 @@ r = await c.post('/api/mail/test', { to: 'tobias@test.de' }, { who: 'admin' });
 check(r.status === 'fehler' && /AUTH/.test(r.error), 'Falsches Postfach-Passwort wird klar gemeldet', r.error);
 const ob = env.DB._sq.prepare("SELECT status, sender FROM mail_outbox ORDER BY id DESC LIMIT 1").get();
 check(ob.status === 'fehler', 'Fehlversuch steht im Postausgang');
+
+console.log('Rechnung ohne eingerichteten E-Mail-Versand');
+{
+  const w2 = (await import('./wk.mjs?nomail')).default;
+  const env2 = { DB: makeD1(), FILES: makeR2(), FORM_SECRET: SECRET, SETUP_TOKEN: 'setup-123' };
+  const c2 = client(w2, env2);
+  await c2.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123' }, { who: 'admin' });
+  check((await c2.get('/api/session', { who: 'admin' })).mailReady === false, 'Dashboard erkennt: E-Mail-Versand nicht eingerichtet');
+  const o = await c2.post('/api/orgs', { name: 'Musterfirma GmbH', kind: 'einzel', zip: '49451', email: 'kunde@test.de', brands: ['Audi'] }, { who: 'admin' });
+  env2.DB._sq.prepare("INSERT INTO billing_items (org_id, description, amount_net, status, created_at, updated_at) VALUES (?, 'Vermittlung Test', 49, 'offen', datetime('now'), datetime('now'))").run(o.id);
+  let r2 = await c2.post('/api/acc/items/1/bill', {}, { who: 'admin' });
+  const iv = env2.DB._sq.prepare('SELECT * FROM invoices WHERE id = ?').get(r2.invoiceId);
+  check(r2.mail === 'nicht_konfiguriert' && /nicht eingerichtet/.test(r2.mailError) && !iv.sent_at && iv.mail_status === 'nicht_konfiguriert', 'Rechnung wird NICHT als versendet markiert, Grund wird gemeldet', { r2, sent: iv.sent_at });
+  r2 = await c2.get('/api/news', { who: 'admin' });
+  check(r2.notifications.some((n) => /nicht versendet/.test(n.title)), 'Buchhaltung bekommt eine Benachrichtigung');
+  env2.SMTP_USER = 'noreplay@kfl-group.com'; env2.SMTP_PASS = 'Postfach-Passwort1'; opts.pass = 'Postfach-Passwort1';
+  r2 = await c2.post(`/api/acc/invoices/${iv.id}/resend`, {}, { who: 'admin' });
+  const iv2 = env2.DB._sq.prepare('SELECT * FROM invoices WHERE id = ?').get(iv.id);
+  check(r2.mail === 'gesendet' && iv2.sent_at && iv2.mail_status === 'gesendet' && sent[sent.length - 1].to[0] === 'kunde@test.de', 'Nach Einrichtung: „Jetzt senden“ verschickt die Rechnung an die Rechnungsadresse', r2);
+}
 console.log(check.fails ? `\n${check.fails} FEHLER` : '\nMAIL-TEST BESTANDEN');

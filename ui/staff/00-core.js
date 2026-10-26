@@ -70,7 +70,7 @@ function setHashQuery(q, base) { const b = base || location.hash.split('?')[0]; 
 /* ---------- Sitzung ---------- */
 async function loadSession() {
   const s = await GET('/session');
-  S.config = s.config; S.user = s.user; App.config = s.config;
+  S.config = s.config; S.user = s.user; S.mailReady = s.mailReady !== false; App.config = s.config;
   return s;
 }
 async function refreshCounts() {
