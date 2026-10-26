@@ -686,62 +686,74 @@ const OLD_ROLE_MAP = { admin: 'admin', bearbeiter: 'teamleitung', team_angebote:
 const NEW_ROLE_PERMS = { acc_cancel: ['gf', 'buchhaltung'], fibu_view: ['gf', 'buchhaltung'], fibu_book: ['gf', 'buchhaltung'], fibu_manage: ['gf'] };
 
 let migrated = false;
+// Fingerabdruck des Datenbankschemas: \u00e4ndert sich bei jeder Schema-/Rechte-/Konten\u00e4nderung \u2192 Migration l\u00e4uft genau dann erneut
+const MIGRATION_ID = (() => {
+  const src = JSON.stringify([SCHEMA, INDEXES, EXTRA_COLUMNS, NEW_ROLE_PERMS, FIBU_DEFAULT_ACCOUNTS, PERM_KEYS, Object.keys(STAFF_ROLES)]);
+  let h = 2166136261; for (let i = 0; i < src.length; i++) { h ^= src.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return 'm' + h.toString(36) + '.' + src.length;
+})();
+const setFlagStmt = (db, key, value = '1') => db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES (?, ?, ?, 'system')").bind(key, value, nowIso());
+// Cloudflare D1 (Free-Plan) erlaubt nur 50 Abfragen je Aufruf \u2192 Migration in wenigen Sammelabfragen (db.batch z\u00e4hlt als eine)
 async function migrate(db) {
   if (migrated) return;
-  for (const sql of SCHEMA) await db.prepare(sql).run();
-  for (const [table, cols] of Object.entries(EXTRA_COLUMNS)) {
-    const have = new Set(((await db.prepare(`PRAGMA table_info(${table})`).all()).results || []).map((c) => c.name));
-    for (const [col, type] of Object.entries(cols)) if (!have.has(col)) await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`).run();
-  }
-  for (const sql of INDEXES) await db.prepare(sql).run();
-  // Rollen (feste Rollen, Rechte durch Admin anpassbar)
-  for (const [key, r] of Object.entries(STAFF_ROLES)) {
-    await db.prepare('INSERT OR IGNORE INTO roles (key, name, perms, builtin) VALUES (?, ?, ?, 1)').bind(key, r.label, JSON.stringify(ROLE_PERMS[key])).run();
-  }
+  try { const v = await db.prepare("SELECT value FROM settings WHERE key = '_schema_v'").first(); if (v && v.value === MIGRATION_ID) { migrated = true; return; } } catch (e) { /* neue Datenbank */ }
+  await db.batch(SCHEMA.map((sql) => db.prepare(sql)));
+  const tables = Object.keys(EXTRA_COLUMNS);
+  const info = await db.batch(tables.map((t) => db.prepare(`SELECT name FROM pragma_table_info('${t}')`)));
+  const alters = [];
+  tables.forEach((t, i) => { const have = new Set(((info[i] && info[i].results) || []).map((c) => c.name)); for (const [col, type] of Object.entries(EXTRA_COLUMNS[t])) if (!have.has(col)) alters.push(db.prepare(`ALTER TABLE ${t} ADD COLUMN ${col} ${type}`)); });
+  if (alters.length) await db.batch(alters);
+  await db.batch([
+    ...INDEXES.map((sql) => db.prepare(sql)),
+    // Rollen (feste Rollen, Rechte durch Admin anpassbar)
+    ...Object.entries(STAFF_ROLES).map(([key, r]) => db.prepare('INSERT OR IGNORE INTO roles (key, name, perms, builtin) VALUES (?, ?, ?, 1)').bind(key, r.label, JSON.stringify(ROLE_PERMS[key])))
+  ]);
+  const flags = new Set((((await db.prepare("SELECT key FROM settings WHERE key LIKE '\\_%' ESCAPE '\\'").all()).results) || []).map((r) => r.key));
+  const ops = [];
   // Neue Rechte einmalig den vorgesehenen festen Rollen erg\u00e4nzen (vom Admin sp\u00e4ter \u00e4nderbar)
-  for (const [perm, roles] of Object.entries(NEW_ROLE_PERMS)) {
-    const flag = '_perm_' + perm;
-    if (await db.prepare('SELECT value FROM settings WHERE key = ?').bind(flag).first()) continue;
-    for (const key of roles) {
-      const row = await db.prepare('SELECT perms FROM roles WHERE key = ?').bind(key).first();
-      if (!row) continue;
-      const perms = jparse(row.perms, []); if (!perms.includes(perm)) { perms.push(perm); await db.prepare('UPDATE roles SET perms = ? WHERE key = ?').bind(JSON.stringify(perms), key).run(); }
+  const todo = Object.entries(NEW_ROLE_PERMS).filter(([perm]) => !flags.has('_perm_' + perm));
+  if (todo.length) {
+    const roles = new Map((((await db.prepare('SELECT key, perms FROM roles').all()).results) || []).map((r) => [r.key, jparse(r.perms, [])]));
+    const changed = new Set();
+    for (const [perm, keys] of todo) {
+      for (const key of keys) { const perms = roles.get(key); if (perms && !perms.includes(perm)) { perms.push(perm); changed.add(key); } }
+      ops.push(setFlagStmt(db, '_perm_' + perm));
     }
-    await db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES (?, '1', ?, 'system')").bind(flag, nowIso()).run();
+    for (const key of changed) ops.unshift(db.prepare('UPDATE roles SET perms = ? WHERE key = ?').bind(JSON.stringify(roles.get(key)), key));
   }
   // Einmalig: Rechnungen, die als versendet markiert sind, obwohl keine E-Mail rausging, korrigieren
-  if (!(await db.prepare("SELECT value FROM settings WHERE key = '_fix_invoice_sent'").first())) {
-    await db.prepare(`UPDATE invoices SET mail_status = 'nicht_konfiguriert', mail_error = 'E-Mail-Versand war nicht eingerichtet', sent_at = NULL
-      WHERE sent_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM mail_outbox m WHERE m.category = 'invoice' AND m.status = 'gesendet' AND instr(m.subject, invoices.number) > 0)`).run();
-    await db.prepare("UPDATE invoices SET mail_status = 'gesendet' WHERE sent_at IS NOT NULL AND mail_status IS NULL").run();
-    await db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES ('_fix_invoice_sent', '1', ?, 'system')").bind(nowIso()).run();
-  }
+  if (!flags.has('_fix_invoice_sent')) ops.push(
+    db.prepare(`UPDATE invoices SET mail_status = 'nicht_konfiguriert', mail_error = 'E-Mail-Versand war nicht eingerichtet', sent_at = NULL
+      WHERE sent_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM mail_outbox m WHERE m.category = 'invoice' AND m.status = 'gesendet' AND instr(m.subject, invoices.number) > 0)`),
+    db.prepare("UPDATE invoices SET mail_status = 'gesendet' WHERE sent_at IS NOT NULL AND mail_status IS NULL"),
+    setFlagStmt(db, '_fix_invoice_sent'));
   // Einmalig: Standard-Konditionen (Zahlungsziel, Mahnfristen, Mahngeb\u00fchren) bei allen Gesch\u00e4ftspartnern hinterlegen
-  if (!(await db.prepare("SELECT value FROM settings WHERE key = '_org_terms_v2'").first())) {
-    const val = async (k) => { const r = await db.prepare('SELECT value FROM settings WHERE key = ?').bind(k).first(); const v = r ? jparse(r.value, null) : null; return v === null || v === '' ? DEFAULT_SETTINGS[k] : v; };
-    for (const [col, key] of Object.entries(ORG_TERMS)) await db.prepare(`UPDATE orgs SET ${col} = ? WHERE ${col} IS NULL`).bind(await val(key)).run();
-    await db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES ('_org_terms_v2', '1', ?, 'system')").bind(nowIso()).run();
+  if (!flags.has('_org_terms_v2')) {
+    const keys = Object.values(ORG_TERMS);
+    const rows = (((await db.prepare(`SELECT key, value FROM settings WHERE key IN (${keys.map(() => '?').join(',')})`).bind(...keys).all()).results) || []);
+    const cur = Object.fromEntries(rows.map((r) => [r.key, jparse(r.value, null)]));
+    for (const [col, key] of Object.entries(ORG_TERMS)) { const v = cur[key]; ops.push(db.prepare(`UPDATE orgs SET ${col} = ? WHERE ${col} IS NULL`).bind(v === null || v === undefined || v === '' ? DEFAULT_SETTINGS[key] : v)); }
+    ops.push(setFlagStmt(db, '_org_terms_v2'));
   }
   // Einmalig: bisherige Einzel-Notiz der Abrechnungsf\u00e4lle in die neue Notizliste \u00fcbernehmen
-  if (!(await db.prepare("SELECT value FROM settings WHERE key = '_acc_notes_v1'").first())) {
-    await db.prepare("INSERT INTO acc_notes (item_id, text, author_name, created_at) SELECT id, note, 'Buchhaltung', updated_at FROM billing_items WHERE note IS NOT NULL AND trim(note) != ''").run();
-    await db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES ('_acc_notes_v1', '1', ?, 'system')").bind(nowIso()).run();
-  }
+  if (!flags.has('_acc_notes_v1')) ops.push(
+    db.prepare("INSERT INTO acc_notes (item_id, text, author_name, created_at) SELECT id, note, 'Buchhaltung', updated_at FROM billing_items WHERE note IS NOT NULL AND trim(note) != ''"),
+    setFlagStmt(db, '_acc_notes_v1'));
   // Kontenrahmen anlegen (fehlende Standardkonten erg\u00e4nzen)
-  for (const [number, name, type, sys] of FIBU_DEFAULT_ACCOUNTS) await db.prepare('INSERT OR IGNORE INTO fibu_accounts (number, name, type, sys, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(number, name, type, sys, 'System', nowIso()).run();
+  for (const [number, name, type, sys] of FIBU_DEFAULT_ACCOUNTS) ops.push(db.prepare('INSERT OR IGNORE INTO fibu_accounts (number, name, type, sys, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(number, name, type, sys, 'System', nowIso()));
   // Beginn der Finanzbuchhaltung merken (ab diesem Monat gibt es automatische Abschl\u00fcsse)
-  await db.prepare("INSERT OR IGNORE INTO settings (key, value, updated_at, updated_by) VALUES ('_fibu_start', ?, ?, 'system')").bind(JSON.stringify(berlinDate(nowMs()).slice(0, 7)), nowIso()).run();
+  if (!flags.has('_fibu_start')) ops.push(setFlagStmt(db, '_fibu_start', JSON.stringify(berlinDate(nowMs()).slice(0, 7))));
   // Admin hat immer alle Rechte (auch neu hinzugekommene)
-  await db.prepare("UPDATE roles SET perms = ?, name = 'Admin', builtin = 1 WHERE key = 'admin'").bind(JSON.stringify(PERM_KEYS)).run();
+  ops.push(db.prepare("UPDATE roles SET perms = ?, name = 'Admin', builtin = 1 WHERE key = 'admin'").bind(JSON.stringify(PERM_KEYS)));
   // Alte Rollen und Status \u00fcbernehmen (einmalig)
-  const done = await db.prepare("SELECT value FROM settings WHERE key = '_migrated_v2'").first();
-  if (!done) {
-    for (const [o, n] of Object.entries(OLD_ROLE_MAP)) if (o !== n) await db.prepare('UPDATE users SET role_key = ? WHERE role_key = ?').bind(n, o).run();
-    for (const [o, n] of Object.entries(OLD_STATUS_MAP)) if (o !== n) await db.prepare("UPDATE requests SET status = ? WHERE status = ? AND type IN ('deal','sell')").bind(n, o).run();
-    await db.prepare("DELETE FROM roles WHERE key IN ('bearbeiter','team_angebote','team_ankauf') AND key NOT IN (SELECT role_key FROM users)").run();
-    await migrateOldTickets(db);
-    await db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES ('_migrated_v2', '1', ?, 'system')").bind(nowIso()).run();
+  if (!flags.has('_migrated_v2')) {
+    for (const [o, n] of Object.entries(OLD_ROLE_MAP)) if (o !== n) ops.push(db.prepare('UPDATE users SET role_key = ? WHERE role_key = ?').bind(n, o));
+    for (const [o, n] of Object.entries(OLD_STATUS_MAP)) if (o !== n) ops.push(db.prepare("UPDATE requests SET status = ? WHERE status = ? AND type IN ('deal','sell')").bind(n, o));
+    ops.push(db.prepare("DELETE FROM roles WHERE key IN ('bearbeiter','team_angebote','team_ankauf') AND key NOT IN (SELECT role_key FROM users)"));
   }
+  await db.batch(ops);
+  if (!flags.has('_migrated_v2')) { await migrateOldTickets(db); await setFlagStmt(db, '_migrated_v2').run(); }
+  await setFlagStmt(db, '_schema_v', MIGRATION_ID).run();
   migrated = true;
 }
 // Alte Support-/Widerruf-/Partner-Eintr\u00e4ge aus der Anfragetabelle werden Support-Tickets

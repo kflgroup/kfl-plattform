@@ -1,0 +1,20 @@
+// Datenbank-Migration passt in das D1-Limit (Free-Plan: 50 Abfragen je Aufruf)
+import { makeD1, makeR2, installFetch, SECRET, client, check } from './harness.mjs';
+installFetch();
+const w1 = (await import('./wk.mjs?m1')).default;
+const env = { DB: makeD1(), FILES: makeR2(), FORM_SECRET: SECRET, SETUP_TOKEN: 'setup-123' };
+console.log('Migration im D1-Limit');
+env.DB._q = 0; await w1.fetch(new Request('https://w.test/health'), env);
+check(env.DB._q <= 15, `Neue Datenbank: Migration mit ${env.DB._q} Abfragen`);
+const w2 = (await import('./wk.mjs?m2')).default;
+env.DB._q = 0; await w2.fetch(new Request('https://w.test/health'), env);
+check(env.DB._q <= 2, `Neuer Worker-Start, Schema aktuell: ${env.DB._q} Abfrage(n)`);
+env.DB._sq.prepare("UPDATE settings SET value = 'alt' WHERE key = '_schema_v'").run();
+env.DB._sq.prepare("DELETE FROM settings WHERE key IN ('_perm_fibu_view','_perm_fibu_book','_perm_fibu_manage','_fibu_start')").run();
+env.DB._sq.prepare("DROP TABLE fibu_accounts").run();
+const w3 = (await import('./wk.mjs?m3')).default;
+env.DB._q = 0; const r = await w3.fetch(new Request('https://w.test/health'), env);
+const acc = env.DB._sq.prepare('SELECT COUNT(*) n FROM fibu_accounts').get().n;
+const gf = JSON.parse(env.DB._sq.prepare("SELECT perms FROM roles WHERE key = 'gf'").get().perms);
+check(r.status === 200 && env.DB._q <= 15 && acc > 20 && gf.includes('fibu_manage'), `Update bestehender Datenbank: ${env.DB._q} Abfragen, ${acc} Konten, Rechte ergänzt`);
+console.log(check.fails ? `\n${check.fails} FEHLER` : '\nMIGRATIONS-TEST BESTANDEN');

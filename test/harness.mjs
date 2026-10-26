@@ -4,12 +4,15 @@ import { createHmac } from 'node:crypto';
 
 export function makeD1() {
   const sq = new DatabaseSync(':memory:');
+  // Zählt Abfragen wie Cloudflare D1 (db.batch = eine Abfrage), um das Limit je Aufruf zu prüfen
+  const D = { _q: 0 };
   const stmt = (sql) => { let args = []; const st = {
     bind(...a) { args = a.map((x) => (x === undefined ? null : typeof x === 'boolean' ? (x ? 1 : 0) : x)); return st; },
-    async run() { const r = sq.prepare(sql).run(...args); return { success: true, meta: { changes: r.changes, last_row_id: Number(r.lastInsertRowid) } }; },
-    async first() { const r = sq.prepare(sql).get(...args); return r ? { ...r } : null; },
-    async all() { return { results: sq.prepare(sql).all(...args).map((r) => ({ ...r })) }; } }; return st; };
-  return { prepare: stmt, batch: async (list) => Promise.all(list.map((s) => s.run())), _sq: sq };
+    _all() { return { results: sq.prepare(sql).all(...args).map((r) => ({ ...r })) }; },
+    async run() { D._q++; const r = sq.prepare(sql).run(...args); return { success: true, meta: { changes: r.changes, last_row_id: Number(r.lastInsertRowid) } }; },
+    async first() { D._q++; const r = sq.prepare(sql).get(...args); return r ? { ...r } : null; },
+    async all() { D._q++; return { results: sq.prepare(sql).all(...args).map((r) => ({ ...r })) }; } }; return st; };
+  return Object.assign(D, { prepare: stmt, batch: async (list) => { D._q++; sq.exec('BEGIN'); try { const out = list.map((s) => s._all()); sq.exec('COMMIT'); return out; } catch (e) { sq.exec('ROLLBACK'); throw e; } }, _sq: sq });
 }
 export function makeR2() { const m = new Map(); return { async put(k, v) { m.set(k, new Uint8Array(v)); }, async get(k) { const v = m.get(k); return v ? { arrayBuffer: async () => v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength) } : null; }, async delete(k) { m.delete(k); }, _m: m }; }
 
@@ -32,6 +35,7 @@ export const nowSec = () => String(Math.floor((globalThis.__KFL_NOW ?? Date.now(
 export function setNow(isoOrMs) { globalThis.__KFL_NOW = typeof isoOrMs === 'number' ? isoOrMs : Date.parse(isoOrMs); }
 export function advance(hours) { globalThis.__KFL_NOW += hours * 3600e3; }
 
+export const QMAX = { n: 0, path: '' };
 export function client(worker, env) {
   const jar = {};
   const call = async (method, path, body, { who, origin, raw } = {}) => {
@@ -41,7 +45,9 @@ export function client(worker, env) {
     if (!isPublic) headers['X-KFL'] = '1';
     if (who && jar[who]) headers.Cookie = jar[who];
     headers['CF-Connecting-IP'] = '203.0.113.' + (who ? who.length : 1);
+    if (env.DB) env.DB._q = 0;
     const res = await worker.fetch(new Request('https://w.test' + path, { method, headers, body: method === 'GET' ? undefined : JSON.stringify(body || {}) }), env);
+    if (env.DB && env.DB._q > (QMAX.n || 0)) Object.assign(QMAX, { n: env.DB._q, path: method + ' ' + path });
     const sc = res.headers.get('Set-Cookie'); if (sc && who) jar[who] = sc.split(';')[0];
     if (raw) return res;
     let j = null; const ct = res.headers.get('Content-Type') || '';
@@ -51,4 +57,5 @@ export function client(worker, env) {
   return { call, jar, get: (p, o) => call('GET', p, null, o), post: (p, b, o) => call('POST', p, b, o), patch: (p, b, o) => call('PATCH', p, b, o), del: (p, b, o) => call('DELETE', p, b, o) };
 }
 export function check(cond, msg, extra) { if (cond) { console.log('  ✓ ' + msg); return true; } console.log('  ✗ ' + msg + (extra !== undefined ? '  → ' + JSON.stringify(extra).slice(0, 600) : '')); process.exitCode = 1; check.fails = (check.fails || 0) + 1; return false; }
-export async function cron(worker, env) { const p = []; await worker.scheduled({}, env, { waitUntil: (x) => p.push(x) }); await Promise.all(p); }
+export async function cron(worker, env) { const p = []; if (env.DB) env.DB._q = 0; await worker.scheduled({}, env, { waitUntil: (x) => p.push(x) }); await Promise.all(p); if (env.DB && env.DB._q > (QMAX.n || 0)) Object.assign(QMAX, { n: env.DB._q, path: 'cron' }); }
+process.on('exit', () => { if (QMAX.n) console.log(`  · max. D1-Abfragen je Aufruf: ${QMAX.n} (${QMAX.path})`); });
