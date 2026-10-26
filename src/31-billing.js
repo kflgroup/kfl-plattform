@@ -100,20 +100,25 @@ async function billItem(ctx, itemId) {
   const id = await createInvoice(ctx, { org, lines: [{ description: it.description, qty: 1, unit: it.amount_net, billing_item_id: it.id, request_id: it.request_id }], kind: 'einzel', serviceFrom: berlinDate(msOf(it.created_at)) });
   return { mode: 'einzel', invoiceId: id };
 }
-async function runMonthlyInvoices(ctx, { force = false } = {}) {
+// Sammelrechnungen je Partner für einen Monat (YYYY-MM). Je Aufruf höchstens „max“ Partner (Abfragelimit je Aufruf) –
+// der Rest folgt im nächsten Durchlauf. Rückgabe: erstellte Rechnungen und ob noch Partner offen sind.
+async function runMonthlyInvoices(ctx, { month = null, max = 1 } = {}) {
   const p = berlinParts(nowMs());
-  const from = `${p.y}-${String(p.m).padStart(2, '0')}-01`, to = `${p.y}-${String(p.m).padStart(2, '0')}-${String(lastDayOfMonth(p.y, p.m)).padStart(2, '0')}`;
-  const orgs = await DB.all(ctx.db, "SELECT DISTINCT org_id FROM billing_items WHERE status = 'gesammelt'");
+  const ym = month || `${p.y}-${String(p.m).padStart(2, '0')}`;
+  const y = +ym.slice(0, 4), m = +ym.slice(5, 7);
+  const from = `${ym}-01`, to = `${ym}-${String(lastDayOfMonth(y, m)).padStart(2, '0')}`;
+  const until = isoOf(berlinToUtc(y, m + 1, 1)); // nur Fälle bis Monatsende (Berliner Zeit)
+  const orgs = await DB.all(ctx.db, "SELECT DISTINCT org_id FROM billing_items WHERE status = 'gesammelt' AND created_at < ? ORDER BY org_id LIMIT ?", until, max + 1);
   let n = 0;
-  for (const { org_id } of orgs) {
+  for (const { org_id } of orgs.slice(0, max)) {
     const org = await DB.one(ctx.db, 'SELECT * FROM orgs WHERE id = ?', org_id);
-    const items = await DB.all(ctx.db, "SELECT * FROM billing_items WHERE org_id = ? AND status = 'gesammelt' ORDER BY id", org_id);
-    if (!items.length) continue;
-    await createInvoice(ctx, { org, kind: 'sammel', serviceFrom: from, serviceTo: to, intro: `Monatliche Sammelrechnung für ${String(p.m).padStart(2, '0')}/${p.y}. Wir berechnen Ihnen die erfolgreichen Vermittlungen dieses Monats:`,
+    const items = await DB.all(ctx.db, "SELECT * FROM billing_items WHERE org_id = ? AND status = 'gesammelt' AND created_at < ? ORDER BY id", org_id, until);
+    if (!items.length || !org) continue;
+    await createInvoice(ctx, { org, kind: 'sammel', serviceFrom: from, serviceTo: to, intro: `Monatliche Sammelrechnung für ${String(m).padStart(2, '0')}/${y}. Wir berechnen Ihnen die erfolgreichen Vermittlungen dieses Monats:`,
       lines: items.map((it) => ({ description: it.description, qty: 1, unit: it.amount_net, billing_item_id: it.id, request_id: it.request_id })) });
     n++;
   }
-  return n;
+  return { count: n, pending: orgs.length > max };
 }
 /* ---------- Notizen der Buchhaltung + vom Vertrieb angeheftete Notizen ---------- */
 // Notizen zu einem Abrechnungsfall: eigene Notizen der Buchhaltung und für die Buchhaltung markierte Notizen der Anfrage

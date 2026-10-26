@@ -44,9 +44,12 @@ async function backupPassword(ctx) { const sealed = await rawSetting(ctx.db, '_b
 async function createBackup(ctx, { kind = 'auto' } = {}) {
   const s = await settingsOf(ctx);
   const data = { meta: { app: 'KFL Plattform', version: APP_VERSION, created_at: nowIso(), kind }, tables: {} };
-  for (const tbl of BACKUP_TABLES) {
+  // Alle Tabellen in einer Sammelabfrage lesen (zählt bei Cloudflare als eine Abfrage); bei Fehler tabellenweise
+  let all = null;
+  try { all = await ctx.db.batch(BACKUP_TABLES.map((t) => ctx.db.prepare(`SELECT * FROM ${t}`))); } catch (e) { all = null; }
+  for (const [i, tbl] of BACKUP_TABLES.entries()) {
     try {
-      let rows = await DB.all(ctx.db, `SELECT * FROM ${tbl}`);
+      let rows = all ? ((all[i] && all[i].results) || []) : await DB.all(ctx.db, `SELECT * FROM ${tbl}`);
       if (SECRET_COLS[tbl]) rows = rows.map((r) => { const c = { ...r }; for (const k of SECRET_COLS[tbl]) if (c[k]) c[k] = '[geschützt]'; return c; });
       if (tbl === 'settings') rows = rows.map((r) => (r.key.startsWith('_') ? { ...r, value: '[geschützt]' } : r));
       data.tables[tbl] = rows;
@@ -84,11 +87,12 @@ async function createBackup(ctx, { kind = 'auto' } = {}) {
 async function retentionJobs(ctx) {
   const s = await settingsOf(ctx);
   const cut = isoOf(nowMs() - toInt(s.audit_retention_days, 30) * 86400e3);
-  await DB.run(ctx.db, 'DELETE FROM audit WHERE at < ?', cut);
-  await DB.run(ctx.db, 'DELETE FROM sessions WHERE expires_at < ?', nowIso());
-  await DB.run(ctx.db, 'DELETE FROM partner_sessions WHERE expires_at < ?', nowIso());
-  await DB.run(ctx.db, 'DELETE FROM notifications WHERE created_at < ? AND read_at IS NOT NULL', isoOf(nowMs() - 180 * 86400e3));
-  await DB.run(ctx.db, 'DELETE FROM mail_outbox WHERE created_at < ?', isoOf(nowMs() - 90 * 86400e3));
+  await ctx.db.batch([
+    ctx.db.prepare('DELETE FROM audit WHERE at < ?').bind(cut),
+    ctx.db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(nowIso()),
+    ctx.db.prepare('DELETE FROM partner_sessions WHERE expires_at < ?').bind(nowIso()),
+    ctx.db.prepare('DELETE FROM notifications WHERE created_at < ? AND read_at IS NOT NULL').bind(isoOf(nowMs() - 180 * 86400e3)),
+    ctx.db.prepare('DELETE FROM mail_outbox WHERE created_at < ?').bind(isoOf(nowMs() - 90 * 86400e3))]);
   // Anfragen nach Aufbewahrungsfrist (Datenschutz, Standard 24 Monate)
   const days = toInt(ctx.env.RETENTION_DAYS || 730, 730);
   const old = await DB.all(ctx.db, 'SELECT id FROM requests WHERE created_at < ?', isoOf(nowMs() - days * 86400e3));

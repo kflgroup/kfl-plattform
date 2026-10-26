@@ -182,7 +182,12 @@ async function fibuClosePeriod(ctx, period, { auto = false, silent = false } = {
   need((isYear ? `${period}-12-31` : fibuMonthEnd(period)) < today, 409, 'Ein Zeitraum kann erst nach seinem Ende abgeschlossen werden.');
   const ex = await DB.one(ctx.db, 'SELECT * FROM fibu_periods WHERE period = ?', period);
   need(!ex || ex.status !== 'abgeschlossen', 409, 'Dieser Zeitraum ist bereits abgeschlossen.');
-  if (isYear) for (let m = 1; m <= 12; m++) { const p = `${period}-${String(m).padStart(2, '0')}`; if (!(await DB.one(ctx.db, "SELECT id FROM fibu_periods WHERE period = ? AND status = 'abgeschlossen'", p)) && fibuMonthEnd(p) < today) await fibuClosePeriod(ctx, p, { auto: true, silent: true }).catch(() => null); }
+  // Jahresabschluss: noch offene Monate seit Beginn der Finanzbuchhaltung vorher abschließen (das Jahr sperrt ohnehin alle Monate)
+  if (isYear) {
+    const start = jparse(await rawSetting(ctx.db, '_fibu_start'), `${period}-01`);
+    const done = new Set((await DB.all(ctx.db, "SELECT period FROM fibu_periods WHERE period LIKE ? AND status = 'abgeschlossen'", `${period}-%`)).map((r) => r.period));
+    for (let m = 1; m <= 12; m++) { const p = `${period}-${String(m).padStart(2, '0')}`; if (p >= start && !done.has(p) && fibuMonthEnd(p) < today) await fibuClosePeriod(ctx, p, { auto: true, silent: true }).catch(() => null); }
+  }
   const s = await settingsOf(ctx);
   const report = await fibuReport(ctx, period);
   const pdf = renderFibuReportPdf(s, report);
@@ -204,18 +209,23 @@ async function fibuReopenPeriod(ctx, period) {
   await audit(ctx, 'abschluss_wieder_geoeffnet', 'abschluss', period, null);
   return { ok: true };
 }
-// Täglicher Ablauf: Vormonat am 1. (ab 1:00 Uhr) abschließen, Vorjahr am 1. Januar
+// Täglicher Ablauf: Vormonat am 1. (ab 1:00 Uhr) abschließen, Vorjahr am 1. Januar.
+// Je Aufruf höchstens ein Abschluss (Abfragelimit je Aufruf) – fehlende Monate werden in den nächsten Durchläufen nachgeholt.
 async function runFibuJobs(ctx, { force = false } = {}) {
   const p = berlinParts(nowMs()), today = berlinDate(nowMs());
-  if (!force && p.h < 1) return 'noch nicht fällig';
+  if (!force && p.h < 1) return { result: 'noch nicht fällig', pending: false };
   let start = jparse(await rawSetting(ctx.db, '_fibu_start'), null);
   if (!start) { start = today.slice(0, 7); await setRawSetting(ctx.db, '_fibu_start', JSON.stringify(start)); }
-  const out = [];
   const prev = prevPeriod(today.slice(0, 7));
-  if (prev >= start && !(await DB.one(ctx.db, 'SELECT id FROM fibu_periods WHERE period = ?', prev))) out.push((await fibuClosePeriod(ctx, prev, { auto: true })).period);
-  const lastYear = String(p.y - 1);
-  if (`${lastYear}-12` >= start && !(await DB.one(ctx.db, 'SELECT id FROM fibu_periods WHERE period = ?', lastYear))) out.push((await fibuClosePeriod(ctx, lastYear, { auto: true })).period);
-  return out.length ? out.join(', ') : 'nichts fällig';
+  const have = new Set((await DB.all(ctx.db, 'SELECT period FROM fibu_periods WHERE period >= ?', start.slice(0, 4))).map((r) => r.period));
+  const todo = [];
+  for (let m = start; m <= prev; m = nextPeriod(m)) if (!have.has(m)) todo.push(m);
+  for (let y = +start.slice(0, 4); y < p.y; y++) if (!have.has(String(y))) todo.push(String(y));
+  // Monate eines Jahres vor dem Jahresabschluss
+  todo.sort((a, b) => (a.slice(0, 4) === b.slice(0, 4) ? b.length - a.length : a < b ? -1 : 1));
+  if (!todo.length) return { result: 'nichts fällig', pending: false };
+  const r = await fibuClosePeriod(ctx, todo[0], { auto: true });
+  return { result: r.period, pending: todo.length > 1 };
 }
 
 /* ---------- Automatische Buchungen aus Rechnungen und Zahlungen ---------- */

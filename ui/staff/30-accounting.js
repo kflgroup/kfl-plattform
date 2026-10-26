@@ -121,7 +121,7 @@ ACT.itemBill = async (b) => {
   else toast(`Rechnung erstellt, aber NICHT versendet: ${r.mailError || 'E-Mail-Versand nicht eingerichtet'}`, 'err');
   reload();
 };
-ACT.monthlyRun = async () => { if (!(await confirmBox('Sammelrechnungen jetzt erstellen?', 'Normalerweise passiert das automatisch am Monatsende. Alle Fälle in der Sammelablage werden jetzt je Partner abgerechnet und versendet.', 'Jetzt erstellen'))) return; const r = await POST('/acc/monthly-run'); toast(`${r.count || 0} Sammelrechnung(en) erstellt.`); reload(); };
+ACT.monthlyRun = async () => { if (!(await confirmBox('Sammelrechnungen jetzt erstellen?', 'Normalerweise passiert das automatisch am Monatsende. Alle Fälle in der Sammelablage werden jetzt je Partner abgerechnet und versendet.', 'Jetzt erstellen'))) return; let n = 0; for (let i = 0; i < 200; i++) { const r = await POST('/acc/monthly-run'); n += r.count || 0; if (!r.pending) break; } toast(`${n} Sammelrechnung(en) erstellt.`); reload(); };
 
 async function accInvoices(P, tab) {
   const q = hashQuery();

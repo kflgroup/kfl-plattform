@@ -1,5 +1,5 @@
 // Zahlungsziel und Mahnwesen: Standard-Konditionen je Geschäftspartner, Rechte, automatischer Ablauf
-import { makeD1, makeR2, installFetch, SECRET, setNow, advance, client, check, cron } from './harness.mjs';
+import { makeD1, makeR2, installFetch, SECRET, setNow, advance, client, check, cron, ticks } from './harness.mjs';
 installFetch();
 setNow('2026-11-02T09:00:00Z'); // Montag
 
@@ -43,7 +43,7 @@ sq.prepare("INSERT INTO billing_items (org_id, description, amount_net, status, 
 r = await c.post('/api/acc/items/1/bill', {}, { who: 'bh' });
 const id = r.invoiceId; let inv = q1('SELECT * FROM invoices WHERE id = ?', id);
 check(inv.due_date === '2026-11-16' && inv.gross === 58.31, 'Rechnung fällig nach 14 Tagen (16.11.)', inv.due_date);
-const day = async (iso) => { setNow(iso); await cron(worker, env); return q1('SELECT * FROM invoices WHERE id = ?', id); };
+const day = async (iso) => { setNow(iso); await ticks(worker, env); return q1('SELECT * FROM invoices WHERE id = ?', id); };
 inv = await day('2026-11-16T10:00:00Z'); check(inv.dunning_level === 0, 'Am Fälligkeitstag noch keine Erinnerung');
 inv = await day('2026-11-17T10:00:00Z');
 let d = q1('SELECT * FROM dunnings WHERE invoice_id = ? ORDER BY id DESC', id);

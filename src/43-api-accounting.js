@@ -114,7 +114,7 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     if (sub === 'cancel' && method === 'POST') { requirePerm(u, 'acc_cancel'); need(str(body.reason, 300).length >= 3, 400, 'Bitte gib einen Grund für das Storno an.'); return out({ ok: true, id: await cancelInvoice(ctx, inv.id, str(body.reason, 300)) }); }
     if (sub === 'resend' && method === 'POST') { manage(); const r = await sendInvoiceMail(ctx, inv.id, emailOk(body.email) ? body.email : null); await audit(ctx, 'rechnung_erneut_gesendet', 'rechnung', inv.number, { an: body.email || null }); return out({ ok: true, mail: r && r.status, error: r && r.error, to: emailOk(body.email) ? body.email : await invoiceMailTo(ctx, inv) }); }
   }
-  if (path === '/monthly-run' && method === 'POST') { manage(); const n = await runMonthlyInvoices(ctx, { force: true }); await audit(ctx, 'sammelrechnungen_manuell', 'buchhaltung', null, { anzahl: n }); return out({ ok: true, count: n }); }
+  if (path === '/monthly-run' && method === 'POST') { manage(); const r = await runMonthlyInvoices(ctx, { max: 1 }); if (r.count) await audit(ctx, 'sammelrechnungen_manuell', 'buchhaltung', null, { anzahl: r.count }); return out({ ok: true, count: r.count, pending: r.pending }); }
 
   /* ---------- Lieferanten & Eingangsrechnungen ---------- */
   if (path === '/suppliers' && method === 'GET') return out({ ok: true, suppliers: await DB.all(db, 'SELECT s.*, (SELECT COUNT(*) FROM purchase_invoices p WHERE p.supplier_id = s.id) AS invoices FROM suppliers s ORDER BY s.active DESC, s.name') });

@@ -36,6 +36,7 @@ export function setNow(isoOrMs) { globalThis.__KFL_NOW = typeof isoOrMs === 'num
 export function advance(hours) { globalThis.__KFL_NOW += hours * 3600e3; }
 
 export const QMAX = { n: 0, path: '' };
+export const QOVER = new Map();
 export function client(worker, env) {
   const jar = {};
   const call = async (method, path, body, { who, origin, raw } = {}) => {
@@ -48,6 +49,7 @@ export function client(worker, env) {
     if (env.DB) env.DB._q = 0;
     const res = await worker.fetch(new Request('https://w.test' + path, { method, headers, body: method === 'GET' ? undefined : JSON.stringify(body || {}) }), env);
     if (env.DB && env.DB._q > (QMAX.n || 0)) Object.assign(QMAX, { n: env.DB._q, path: method + ' ' + path });
+    if (env.DB && env.DB._q > 50) { const k = method + ' ' + path.replace(/\d+/g, ':n').split('?')[0]; QOVER.set(k, Math.max(QOVER.get(k) || 0, env.DB._q)); }
     const sc = res.headers.get('Set-Cookie'); if (sc && who) jar[who] = sc.split(';')[0];
     if (raw) return res;
     let j = null; const ct = res.headers.get('Content-Type') || '';
@@ -57,5 +59,7 @@ export function client(worker, env) {
   return { call, jar, get: (p, o) => call('GET', p, null, o), post: (p, b, o) => call('POST', p, b, o), patch: (p, b, o) => call('PATCH', p, b, o), del: (p, b, o) => call('DELETE', p, b, o) };
 }
 export function check(cond, msg, extra) { if (cond) { console.log('  ✓ ' + msg); return true; } console.log('  ✗ ' + msg + (extra !== undefined ? '  → ' + JSON.stringify(extra).slice(0, 600) : '')); process.exitCode = 1; check.fails = (check.fails || 0) + 1; return false; }
-export async function cron(worker, env) { const p = []; if (env.DB) env.DB._q = 0; await worker.scheduled({}, env, { waitUntil: (x) => p.push(x) }); await Promise.all(p); if (env.DB && env.DB._q > (QMAX.n || 0)) Object.assign(QMAX, { n: env.DB._q, path: 'cron' }); }
-process.on('exit', () => { if (QMAX.n) console.log(`  · max. D1-Abfragen je Aufruf: ${QMAX.n} (${QMAX.path})`); });
+export async function cron(worker, env) { const p = []; if (env.DB) env.DB._q = 0; await worker.scheduled({}, env, { waitUntil: (x) => p.push(x) }); await Promise.all(p); if (process.env.QDEBUG && env.DB._q > 50) console.log('    [cron', new Date(globalThis.__KFL_NOW).toISOString(), env.DB._q, 'Abfragen]'); if (env.DB && env.DB._q > (QMAX.n || 0)) Object.assign(QMAX, { n: env.DB._q, path: 'cron' }); }
+// Mehrere aufeinanderfolgende Cron-Durchläufe (alle 5 Minuten; je Durchlauf höchstens ein großer Tagesjob)
+export async function ticks(worker, env, n = 6) { for (let i = 0; i < n; i++) await cron(worker, env); }
+process.on('exit', () => { if (process.env.QDEBUG) for (const [k, n] of QOVER) console.log(`    >50: ${n} ${k}`); if (QMAX.n) console.log(`  · max. D1-Abfragen je Aufruf: ${QMAX.n} (${QMAX.path})`); });

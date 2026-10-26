@@ -31,23 +31,31 @@ async function runJobs(ctx, { force } = {}) {
   await safe('archiv', async () => { const r = await ctx.db.prepare("UPDATE assignments SET archived = 1 WHERE archived = 0 AND status IN ('geschlossen','verloren','gescheitert') AND updated_at < ?").bind(isoOf(nowMs() - 24 * 3600e3)).run(); return r.meta ? r.meta.changes : 0; });
   await safe('support', () => runSupportJobs(ctx));
   const p = berlinParts(nowMs()), day = berlinDate(nowMs()), hm = p.h * 60 + p.mi;
+  // Höchstens ein großer Tagesjob je Durchlauf (alle 5 Minuten) – jeder Aufruf hat bei Cloudflare ein eigenes Abfragebudget
+  let heavy = false; const slot = () => force || !heavy;
   // Backup täglich ab 0:01 (Berliner Zeit)
-  if (force === 'backup' || (hm >= (s.backup_hour * 60 + s.backup_minute) && await jobDue(ctx.db, 'backup', day))) {
+  if (force === 'backup' || (slot() && hm >= (s.backup_hour * 60 + s.backup_minute) && await jobDue(ctx.db, 'backup', day))) {
     await safe('backup', () => createBackup(ctx, { kind: force === 'backup' ? 'manuell' : 'auto' }));
     await safe('aufbewahrung', () => retentionJobs(ctx));
-    await jobDone(ctx.db, 'backup', day, res.backup);
+    await jobDone(ctx.db, 'backup', day, res.backup); heavy = true;
   }
   // Automatische Mahnungen täglich ab 8:00
-  if (force === 'mahnung' || (hm >= 8 * 60 && await jobDue(ctx.db, 'mahnung', day))) { await safe('mahnung', () => runDunningJobs(ctx)); await jobDone(ctx.db, 'mahnung', day, res.mahnung); }
+  if (force === 'mahnung' || (slot() && hm >= 8 * 60 && await jobDue(ctx.db, 'mahnung', day))) { await safe('mahnung', () => runDunningJobs(ctx)); await jobDone(ctx.db, 'mahnung', day, res.mahnung); heavy = true; }
   // Tagesabschluss zur eingestellten Uhrzeit
   const [ch, cm] = String(s.day_close_time || '18:00').split(':').map((x) => toInt(x, 0));
-  if (force === 'tagesabschluss' || (hm >= ch * 60 + cm && await jobDue(ctx.db, 'tagesabschluss', day))) { await safe('tagesabschluss', () => runDayClose(ctx)); await jobDone(ctx.db, 'tagesabschluss', day, res.tagesabschluss); }
+  if (force === 'tagesabschluss' || (slot() && hm >= ch * 60 + cm && await jobDue(ctx.db, 'tagesabschluss', day))) { await safe('tagesabschluss', () => runDayClose(ctx)); await jobDone(ctx.db, 'tagesabschluss', day, res.tagesabschluss); heavy = true; }
   // Finanzbuchhaltung: Monatsabschluss am 1. (ab 1:00 Uhr) für den Vormonat, Jahresabschluss am 1. Januar
-  if (force === 'fibu' || (hm >= 60 && await jobDue(ctx.db, 'fibu', day))) { await safe('fibu', () => runFibuJobs(ctx, { force: force === 'fibu' })); await jobDone(ctx.db, 'fibu', day, res.fibu); }
+  if (force === 'fibu' || (slot() && hm >= 60 && await jobDue(ctx.db, 'fibu', day))) { await safe('fibu', () => runFibuJobs(ctx, { force: force === 'fibu' })); const f = res.fibu; if (f && typeof f === 'object') res.fibu = f.result; if (!(f && f.pending)) await jobDone(ctx.db, 'fibu', day, res.fibu); heavy = true; }
   // Sammelrechnungen am letzten Tag des Monats
   const month = day.slice(0, 7);
   const isLast = p.d === lastDayOfMonth(p.y, p.m);
-  if (force === 'monat' || (isLast && p.h >= toInt(s.monthly_run_hour, 23) && await jobDue(ctx.db, 'monatsrechnung', month))) { await safe('monatsrechnung', () => runMonthlyInvoices(ctx)); await jobDone(ctx.db, 'monatsrechnung', month, res.monatsrechnung); }
+  // je Durchlauf ein Partner; nicht fertig gewordene Läufe werden am 1. des Folgemonats bis 12 Uhr für den Vormonat fortgesetzt
+  const target = isLast && p.h >= toInt(s.monthly_run_hour, 23) ? month : (p.d === 1 && p.h < 12 ? prevPeriod(month) : null);
+  if (force === 'monat' || (slot() && target && await jobDue(ctx.db, 'monatsrechnung', target))) {
+    const tm = target || month; let pending = false, count = 0;
+    await safe('monatsrechnung', async () => { const r = await runMonthlyInvoices(ctx, { month: tm, max: force === 'monat' ? 50 : 1 }); pending = r.pending; count = r.count; return count; });
+    if (!pending) await jobDone(ctx.db, 'monatsrechnung', tm, count);
+  }
   return res;
 }
 

@@ -1,5 +1,5 @@
 // Finanzbuchhaltung: Konten, Buchungen, Belegarchiv, automatische Buchungen, Abschlüsse, Anfangsbestände, Import
-import { makeD1, makeR2, installFetch, SECRET, setNow, client, check, cron } from './harness.mjs';
+import { makeD1, makeR2, installFetch, SECRET, setNow, client, check, cron, ticks } from './harness.mjs';
 import fs from 'node:fs';
 installFetch();
 setNow('2026-10-05T09:00:00Z');
@@ -79,9 +79,9 @@ r = await c.post(`/api/fibu/accounts/${acc('4980').id}/reopen`, {}, { who: 'gf' 
 r = await c.post(`/api/fibu/accounts/${acc('4980').id}/reopen`, {}, { who: 'admin' }); check(r.ok && acc('4980').status === 'offen', 'Admin öffnet das Konto wieder');
 
 console.log('Monatsabschluss automatisch am 1. des Folgemonats');
-setNow('2026-10-31T23:30:00Z'); await relogin(); await cron(worker, env); // 0:30 Uhr Berliner Zeit
+setNow('2026-10-31T23:30:00Z'); await relogin(); await ticks(worker, env); // 0:30 Uhr Berliner Zeit
 check(!q1("SELECT id FROM fibu_periods WHERE period = '2026-10'"), 'Vor 1:00 Uhr noch kein Abschluss');
-setNow('2026-11-01T00:30:00Z'); await cron(worker, env); // 1:30 Uhr Berliner Zeit
+setNow('2026-11-01T00:30:00Z'); await ticks(worker, env); // 1:30 Uhr Berliner Zeit
 const per = q1("SELECT * FROM fibu_periods WHERE period = '2026-10'");
 const rep = JSON.parse(per.report);
 check(per && per.status === 'abgeschlossen' && per.closed_by === 'System (automatisch)', 'Oktober 2026 automatisch abgeschlossen');
@@ -100,7 +100,7 @@ r = await c.post('/api/fibu/periods/2026-10/close', {}, { who: 'gf' }); check(r.
 r = await c.post('/api/fibu/periods/2026-11/close', {}, { who: 'gf' }); check(r.status === 409, 'Laufender Monat kann noch nicht abgeschlossen werden');
 
 console.log('Jahresabschluss am 1. Januar');
-setNow('2027-01-01T02:00:00Z'); await relogin(); await cron(worker, env);
+setNow('2027-01-01T02:00:00Z'); await relogin(); await ticks(worker, env);
 check(q1("SELECT status FROM fibu_periods WHERE period = '2026'").status === 'abgeschlossen' && q1("SELECT status FROM fibu_periods WHERE period = '2026-12'").status === 'abgeschlossen', 'Dezember und Jahr 2026 automatisch abgeschlossen');
 r = await c.get('/api/news', { who: 'gf' }); check(r.notifications.some((n) => /Jahresabschluss 2026 liegt vor/.test(n.title)), 'Jahresabschluss als neue Nachricht an die GF');
 r = await c.get('/api/fibu/periods', { who: 'gf' }); check(r.years.find((y) => y.period === '2026').status === 'abgeschlossen' && r.months.find((x) => x.period === '2026-11').status === 'abgeschlossen', 'Übersicht der Abschlüsse');
