@@ -20,30 +20,35 @@ async function fibuNextNo(ctx, key, prefix, date) {
   const year = String(date || berlinDate(nowMs())).slice(0, 4);
   for (let guard = 0; guard < 50; guard++) {
     const k = `_fibu_no_${key}_${year}`;
-    const n = toInt(jparse(await rawSetting(ctx.db, k), 1), 1);
-    await setRawSetting(ctx.db, k, JSON.stringify(n + 1));
+    // Zähler in einer Abfrage erhöhen und lesen
+    const r = await ctx.db.prepare("INSERT INTO settings (key, value, updated_at, updated_by) VALUES (?, '2', ?, 'system') ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT), updated_at = excluded.updated_at RETURNING value").bind(k, nowIso()).first();
+    const n = toInt(r && r.value, 2) - 1;
     const number = `${prefix}-${year}-${String(n).padStart(5, '0')}`;
     const table = key === 'beleg' ? 'fibu_docs' : 'fibu_entries';
     if (!(await DB.one(ctx.db, `SELECT id FROM ${table} WHERE number = ?`, number))) return number;
   }
   throw new HttpError(500, 'Nummer konnte nicht vergeben werden.');
 }
+// Kontenrahmen je Aufruf einmal laden (spart Abfragen); nach Änderungen an Konten zurücksetzen
+async function fibuAccs(ctx) { if (!ctx._fibuAccs) ctx._fibuAccs = await DB.all(ctx.db, 'SELECT * FROM fibu_accounts'); return ctx._fibuAccs; }
+const fibuAccReset = (ctx) => { ctx._fibuAccs = null; };
 async function fibuAccountBySys(ctx, sys) {
-  const a = await DB.one(ctx.db, 'SELECT * FROM fibu_accounts WHERE sys = ?', sys);
+  const a = (await fibuAccs(ctx)).find((x) => x.sys === sys);
   need(a, 500, `Systemkonto „${sys}“ fehlt im Kontenrahmen.`);
   return a;
 }
 // Konto über Datensatz, interne ID (Zahl) oder Systemrolle/Kontonummer (Text)
 async function fibuAccount(ctx, ref) {
   if (ref && typeof ref === 'object') return ref;
-  const a = typeof ref === 'number' ? await DB.one(ctx.db, 'SELECT * FROM fibu_accounts WHERE id = ?', ref) : await DB.one(ctx.db, 'SELECT * FROM fibu_accounts WHERE sys = ? OR number = ?', String(ref), String(ref));
+  const list = await fibuAccs(ctx);
+  const a = typeof ref === 'number' ? list.find((x) => x.id === ref) : (list.find((x) => x.sys === String(ref)) || list.find((x) => x.number === String(ref)));
   need(a, 400, `Konto ${ref} nicht gefunden.`);
   return a;
 }
 // Periode gesperrt? (Monat abgeschlossen oder ganzes Jahr abgeschlossen)
 async function fibuClosed(ctx, period) {
-  const r = await DB.one(ctx.db, "SELECT id FROM fibu_periods WHERE status = 'abgeschlossen' AND (period = ? OR period = ?)", period, period.slice(0, 4));
-  return !!r;
+  if (!ctx._fibuClosed) ctx._fibuClosed = new Set((await DB.all(ctx.db, "SELECT period FROM fibu_periods WHERE status = 'abgeschlossen'")).map((r) => r.period));
+  return ctx._fibuClosed.has(period) || ctx._fibuClosed.has(period.slice(0, 4));
 }
 // Automatische Buchungen in gesperrte Perioden landen am ersten Tag der nächsten offenen Periode
 async function fibuOpenDate(ctx, date) {
@@ -74,7 +79,7 @@ async function fibuPost(ctx, { date, text, lines, docId = null, source = 'manuel
   need(Math.abs(sd - sc) < 0.005 && sd > 0, 400, `Soll (${money(sd)}) und Haben (${money(sc)}) müssen gleich sein.`);
   const number = await fibuNextNo(ctx, 'buchung', 'BU', date);
   const id = await DB.insert(ctx.db, 'fibu_entries', { number, date, period: fibuPeriod(date), text, doc_id: docId, source, source_id: sourceId == null ? null : String(sourceId), reverses, created_by: fibuWho(ctx), created_at: nowIso() });
-  for (const r of rows) await DB.insert(ctx.db, 'fibu_lines', { entry_id: id, ...r });
+  await ctx.db.batch(rows.map((r) => ctx.db.prepare('INSERT INTO fibu_lines (entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)').bind(id, r.account_id, r.debit, r.credit)));
   return id;
 }
 // Einfache Buchung „Soll an Haben“ mit optionaler Umsatzsteuer-Aufteilung (Betrag = brutto)
@@ -103,7 +108,7 @@ async function fibuReverse(ctx, id, reason) {
   const lines = await DB.all(ctx.db, 'SELECT * FROM fibu_lines WHERE entry_id = ?', id);
   const today = berlinDate(nowMs());
   const date = (await fibuClosed(ctx, e.period)) ? today : (e.date > today ? e.date : today);
-  for (const l of lines) { const a = await DB.one(ctx.db, 'SELECT status FROM fibu_accounts WHERE id = ?', l.account_id); need(a.status === 'offen', 409, 'Ein beteiligtes Konto ist geschlossen. Bitte zuerst wieder öffnen (Admin).'); }
+  for (const l of lines) { const a = await fibuAccount(ctx, l.account_id); need(a.status === 'offen', 409, 'Ein beteiligtes Konto ist geschlossen. Bitte zuerst wieder öffnen (Admin).'); }
   const sid = await fibuPost(ctx, { date, text: `Storno ${e.number}: ${reason}`, docId: e.doc_id, source: 'storno', sourceId: e.id, reverses: e.id, lines: lines.map((l) => ({ account: l.account_id, debit: l.credit, credit: l.debit })) });
   await DB.update(ctx.db, 'fibu_entries', id, { reversed_by: sid });
   await audit(ctx, 'buchung_storniert', 'buchung', e.number, { grund: reason });
@@ -196,6 +201,7 @@ async function fibuClosePeriod(ctx, period, { auto = false, silent = false } = {
   const docId = await fibuArchive(ctx, { kind: 'abschluss', title: label, date: report.to, amount: report.result, fileId, note: auto ? 'Automatisch erstellt' : `Erstellt von ${fibuWho(ctx)}` });
   const row = { period, kind: isYear ? 'jahr' : 'monat', status: 'abgeschlossen', report: JSON.stringify(report), file_id: fileId, doc_id: docId, closed_by: auto ? 'System (automatisch)' : fibuWho(ctx), closed_at: nowIso() };
   if (ex) await DB.update(ctx.db, 'fibu_periods', ex.id, row); else await DB.insert(ctx.db, 'fibu_periods', row);
+  ctx._fibuClosed = null;
   await audit(ctx, isYear ? 'jahresabschluss' : 'monatsabschluss', 'abschluss', period, { ergebnis: report.result, buchungen: report.entries });
   // Neue Nachricht an Geschäftsführung (und Admin)
   if (!silent) await notifyStaff(ctx, { perm: 'fibu_manage' }, { kind: 'buchhaltung', title: `${label} liegt vor`, body: `${report.result >= 0 ? 'Gewinn' : 'Verlust'} im Zeitraum: ${money(report.result)} · Erträge ${money(report.income)} · Aufwand ${money(report.expense)}${report.ytdResult != null ? ` · seit Jahresbeginn ${money(report.ytdResult)}` : ''}. Der Bericht liegt als PDF im Belegarchiv.`, link: '#/fibu/abschluesse' });
@@ -206,6 +212,7 @@ async function fibuReopenPeriod(ctx, period) {
   need(ex, 404, 'Dieser Zeitraum ist nicht abgeschlossen.');
   if (period.length === 7) need(!(await fibuClosed(ctx, period.slice(0, 4))), 409, 'Das Jahr ist abgeschlossen. Bitte zuerst den Jahresabschluss wieder öffnen.');
   await DB.update(ctx.db, 'fibu_periods', ex.id, { status: 'wieder_geoeffnet', reopened_by: fibuWho(ctx), reopened_at: nowIso() });
+  ctx._fibuClosed = null;
   await audit(ctx, 'abschluss_wieder_geoeffnet', 'abschluss', period, null);
   return { ok: true };
 }
@@ -313,6 +320,7 @@ async function fibuEnsureAccount(ctx, number, name) {
   number = String(number).trim(); need(/^\d{3,8}$/.test(number), 400, `Ungültige Kontonummer „${number}“.`);
   const ex = await DB.one(ctx.db, 'SELECT * FROM fibu_accounts WHERE number = ?', number);
   if (ex) return ex;
+  fibuAccReset(ctx);
   const id = await DB.insert(ctx.db, 'fibu_accounts', { number, name: str(name, 120) || `Konto ${number}`, type: fibuGuessType(number), status: 'offen', note: 'Beim Import angelegt', created_by: fibuWho(ctx), created_at: nowIso() });
   return DB.one(ctx.db, 'SELECT * FROM fibu_accounts WHERE id = ?', id);
 }

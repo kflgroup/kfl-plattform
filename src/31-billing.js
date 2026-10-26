@@ -48,11 +48,12 @@ async function createInvoice(ctx, { org = null, recipient = null, lines, kind = 
   const pdf = renderInvoicePdf(s, inv);
   const fileId = await putFile(ctx, { name: `${number}.pdf`, mime: 'application/pdf', bytes: pdf, ownerType: 'invoice', ownerId: id });
   await DB.update(ctx.db, 'invoices', id, { file_id: fileId });
-  for (const l of norm) if (l.billing_item_id) await DB.update(ctx.db, 'billing_items', l.billing_item_id, { status: 'abgerechnet', invoice_id: id, updated_at: t });
+  const itemIds = norm.map((l) => l.billing_item_id).filter(Boolean);
+  if (itemIds.length) await DB.run(ctx.db, `UPDATE billing_items SET status = 'abgerechnet', invoice_id = ?, updated_at = ? WHERE id IN (${inList(itemIds)})`, id, t, ...itemIds);
   for (const rid of uniq(norm.map((l) => l.request_id).filter(Boolean))) { await DB.update(ctx.db, 'requests', rid, { billed: 1 }); await reqEvent(ctx, rid, 'in_rechnung_gestellt', number); }
   await audit(ctx, 'rechnung_erstellt', 'rechnung', number, { brutto: gross, empfaenger: rc.name, art: kind });
   await fibuBookInvoice(ctx, id); // Forderung an Erlöse + Umsatzsteuer, Beleg ins Archiv
-  if (send) await sendInvoiceMail(ctx, id, sendTo);
+  if (send) await sendInvoiceMail(ctx, id, sendTo, { pdf });
   return id;
 }
 // Zieladresse für Rechnungs-E-Mails: aktuelle Rechnungs-E-Mail des Partners, sonst die Adresse auf der Rechnung
@@ -61,19 +62,19 @@ async function invoiceMailTo(ctx, inv) {
   const cand = [org && org.billing_email, jparse(inv.recipient, {}).email, org && org.email].find((e) => emailOk(e));
   return cand || null;
 }
-async function sendInvoiceMail(ctx, id, sendTo) {
+async function sendInvoiceMail(ctx, id, sendTo, { pdf: freshPdf = null } = {}) {
   const s = await settingsOf(ctx);
   const inv = await DB.one(ctx.db, 'SELECT * FROM invoices WHERE id = ?', id);
   const rc = jparse(inv.recipient, {});
   const to = sendTo || (await invoiceMailTo(ctx, inv));
   if (!emailOk(to)) { await DB.update(ctx.db, 'invoices', id, { mail_status: 'keine_adresse', mail_error: 'Keine Rechnungs-E-Mail hinterlegt', updated_at: nowIso() }); return { ok: false, status: 'keine_adresse', error: 'Keine Rechnungs-E-Mail hinterlegt' }; }
   // Noch nie versendete Rechnung: PDF im aktuellen Briefbogen neu erzeugen (Inhalt unverändert)
-  if (!inv.sent_at) {
+  if (!inv.sent_at && !freshPdf) {
     const pdf = renderInvoicePdf(s, inv);
     const fileId = await putFile(ctx, { name: `${inv.number}.pdf`, mime: 'application/pdf', bytes: pdf, ownerType: 'invoice', ownerId: id });
     await DB.update(ctx.db, 'invoices', id, { file_id: fileId }); inv.file_id = fileId;
   }
-  const f = await getFile(ctx, inv.file_id);
+  const f = freshPdf ? { bytes: freshPdf } : await getFile(ctx, inv.file_id);
   const isStorno = inv.kind === 'storno';
   const r = await sendMail(ctx, { category: 'invoice', to, toName: rc.name, subject: `${isStorno ? 'Stornorechnung' : 'Rechnung'} ${inv.number} der ${s.company_name}`, title: `${isStorno ? 'Stornorechnung' : 'Ihre Rechnung'} ${inv.number}`,
     body: `<p>Sehr geehrte Damen und Herren,</p><p>anbei erhalten Sie ${isStorno ? 'die Stornorechnung' : 'unsere Rechnung'} <strong>${esc(inv.number)}</strong> vom ${esc(fmtDateDE(inv.issue_date))} über <strong>${esc(money(inv.gross))}</strong>${isStorno ? '' : `, zahlbar bis ${esc(fmtDateDE(inv.due_date))}`}.</p>${mailTable(jparse(inv.lines, []).map((l) => [l.description, money(l.total)]))}<p>Mit freundlichen Grüßen<br>${esc(s.company_name)} – Buchhaltung</p>`,

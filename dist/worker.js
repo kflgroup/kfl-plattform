@@ -2208,11 +2208,12 @@ async function createInvoice(ctx, { org = null, recipient = null, lines, kind = 
   const pdf = renderInvoicePdf(s, inv);
   const fileId = await putFile(ctx, { name: `${number}.pdf`, mime: 'application/pdf', bytes: pdf, ownerType: 'invoice', ownerId: id });
   await DB.update(ctx.db, 'invoices', id, { file_id: fileId });
-  for (const l of norm) if (l.billing_item_id) await DB.update(ctx.db, 'billing_items', l.billing_item_id, { status: 'abgerechnet', invoice_id: id, updated_at: t });
+  const itemIds = norm.map((l) => l.billing_item_id).filter(Boolean);
+  if (itemIds.length) await DB.run(ctx.db, `UPDATE billing_items SET status = 'abgerechnet', invoice_id = ?, updated_at = ? WHERE id IN (${inList(itemIds)})`, id, t, ...itemIds);
   for (const rid of uniq(norm.map((l) => l.request_id).filter(Boolean))) { await DB.update(ctx.db, 'requests', rid, { billed: 1 }); await reqEvent(ctx, rid, 'in_rechnung_gestellt', number); }
   await audit(ctx, 'rechnung_erstellt', 'rechnung', number, { brutto: gross, empfaenger: rc.name, art: kind });
   await fibuBookInvoice(ctx, id); // Forderung an Erl\u00f6se + Umsatzsteuer, Beleg ins Archiv
-  if (send) await sendInvoiceMail(ctx, id, sendTo);
+  if (send) await sendInvoiceMail(ctx, id, sendTo, { pdf });
   return id;
 }
 // Zieladresse f\u00fcr Rechnungs-E-Mails: aktuelle Rechnungs-E-Mail des Partners, sonst die Adresse auf der Rechnung
@@ -2221,19 +2222,19 @@ async function invoiceMailTo(ctx, inv) {
   const cand = [org && org.billing_email, jparse(inv.recipient, {}).email, org && org.email].find((e) => emailOk(e));
   return cand || null;
 }
-async function sendInvoiceMail(ctx, id, sendTo) {
+async function sendInvoiceMail(ctx, id, sendTo, { pdf: freshPdf = null } = {}) {
   const s = await settingsOf(ctx);
   const inv = await DB.one(ctx.db, 'SELECT * FROM invoices WHERE id = ?', id);
   const rc = jparse(inv.recipient, {});
   const to = sendTo || (await invoiceMailTo(ctx, inv));
   if (!emailOk(to)) { await DB.update(ctx.db, 'invoices', id, { mail_status: 'keine_adresse', mail_error: 'Keine Rechnungs-E-Mail hinterlegt', updated_at: nowIso() }); return { ok: false, status: 'keine_adresse', error: 'Keine Rechnungs-E-Mail hinterlegt' }; }
   // Noch nie versendete Rechnung: PDF im aktuellen Briefbogen neu erzeugen (Inhalt unver\u00e4ndert)
-  if (!inv.sent_at) {
+  if (!inv.sent_at && !freshPdf) {
     const pdf = renderInvoicePdf(s, inv);
     const fileId = await putFile(ctx, { name: `${inv.number}.pdf`, mime: 'application/pdf', bytes: pdf, ownerType: 'invoice', ownerId: id });
     await DB.update(ctx.db, 'invoices', id, { file_id: fileId }); inv.file_id = fileId;
   }
-  const f = await getFile(ctx, inv.file_id);
+  const f = freshPdf ? { bytes: freshPdf } : await getFile(ctx, inv.file_id);
   const isStorno = inv.kind === 'storno';
   const r = await sendMail(ctx, { category: 'invoice', to, toName: rc.name, subject: `${isStorno ? 'Stornorechnung' : 'Rechnung'} ${inv.number} der ${s.company_name}`, title: `${isStorno ? 'Stornorechnung' : 'Ihre Rechnung'} ${inv.number}`,
     body: `<p>Sehr geehrte Damen und Herren,</p><p>anbei erhalten Sie ${isStorno ? 'die Stornorechnung' : 'unsere Rechnung'} <strong>${esc(inv.number)}</strong> vom ${esc(fmtDateDE(inv.issue_date))} \u00fcber <strong>${esc(money(inv.gross))}</strong>${isStorno ? '' : `, zahlbar bis ${esc(fmtDateDE(inv.due_date))}`}.</p>${mailTable(jparse(inv.lines, []).map((l) => [l.description, money(l.total)]))}<p>Mit freundlichen Gr\u00fc\u00dfen<br>${esc(s.company_name)} \u2013 Buchhaltung</p>`,
@@ -2800,17 +2801,21 @@ function periodOf(q) {
   return { from, to, days, range: [iso(from), iso(to, true)], prev: [iso(prevFrom), iso(prevTo, true)], ly: [iso(lyFrom), iso(lyTo, true)], prevFrom, prevTo, lyFrom, lyTo };
 }
 async function kpis(ctx, [a, b]) {
-  const db = ctx.db;
-  const req = await DB.one(db, `SELECT COUNT(*) AS total, SUM(type='deal') AS deal, SUM(type='sell') AS sell, SUM(status IN ('kontaktdaten_versendet','angebot_akzeptiert')) AS won, SUM(status='kein_angebot') AS no_offer, SUM(status='spam') AS spam FROM requests WHERE created_at >= ? AND created_at < ? AND (deleted = 0 OR status = 'spam')`, a, b);
-  const off = await DB.one(db, "SELECT COUNT(*) AS n, SUM(status='angenommen') AS accepted, SUM(status IN ('nicht_ausgewaehlt','abgelehnt_kunde')) AS rejected FROM offers WHERE created_at >= ? AND created_at < ?", a, b);
-  const inv = await DB.one(db, "SELECT COALESCE(SUM(net),0) AS net, COALESCE(SUM(gross),0) AS gross, COUNT(*) AS n FROM invoices WHERE status != 'storniert' AND kind != 'storno' AND issue_date >= ? AND issue_date <= ?", a.slice(0, 10), isoOf(msOf(b) - 1).slice(0, 10));
-  const paid = await DB.val(db, 'SELECT COALESCE(SUM(amount),0) FROM payments WHERE date >= ? AND date <= ?', a.slice(0, 10), isoOf(msOf(b) - 1).slice(0, 10));
-  const fees = await DB.val(db, 'SELECT COALESCE(SUM(fee),0) FROM dunnings WHERE created_at >= ? AND created_at < ?', a, b);
-  const dunn = await DB.val(db, 'SELECT COUNT(*) FROM dunnings WHERE created_at >= ? AND created_at < ?', a, b);
-  const exp = await DB.one(db, "SELECT COALESCE(SUM(net),0) AS net, COALESCE(SUM(gross),0) AS gross FROM purchase_invoices WHERE date >= ? AND date <= ?", a.slice(0, 10), isoOf(msOf(b) - 1).slice(0, 10));
-  const kulanz = await DB.val(db, "SELECT COALESCE(-SUM(net),0) FROM invoices WHERE kind = 'storno' AND issue_date >= ? AND issue_date <= ?", a.slice(0, 10), isoOf(msOf(b) - 1).slice(0, 10));
-  const newOrgs = await DB.val(db, 'SELECT COUNT(*) FROM orgs WHERE created_at >= ? AND created_at < ? AND deleted = 0', a, b);
-  const tickets = await DB.val(db, 'SELECT COUNT(*) FROM tickets WHERE created_at >= ? AND created_at < ?', a, b);
+  const db = ctx.db, da = a.slice(0, 10), db2 = isoOf(msOf(b) - 1).slice(0, 10);
+  // eine Sammelabfrage (z\u00e4hlt bei Cloudflare als eine Abfrage)
+  const qs = [
+    [`SELECT COUNT(*) AS total, SUM(type='deal') AS deal, SUM(type='sell') AS sell, SUM(status IN ('kontaktdaten_versendet','angebot_akzeptiert')) AS won, SUM(status='kein_angebot') AS no_offer, SUM(status='spam') AS spam FROM requests WHERE created_at >= ? AND created_at < ? AND (deleted = 0 OR status = 'spam')`, a, b],
+    ["SELECT COUNT(*) AS n, SUM(status='angenommen') AS accepted, SUM(status IN ('nicht_ausgewaehlt','abgelehnt_kunde')) AS rejected FROM offers WHERE created_at >= ? AND created_at < ?", a, b],
+    ["SELECT COALESCE(SUM(net),0) AS net, COALESCE(SUM(gross),0) AS gross, COUNT(*) AS n FROM invoices WHERE status != 'storniert' AND kind != 'storno' AND issue_date >= ? AND issue_date <= ?", da, db2],
+    ['SELECT COALESCE(SUM(amount),0) AS v FROM payments WHERE date >= ? AND date <= ?', da, db2],
+    ['SELECT COALESCE(SUM(fee),0) AS v, COUNT(*) AS n FROM dunnings WHERE created_at >= ? AND created_at < ?', a, b],
+    ["SELECT COALESCE(SUM(net),0) AS net, COALESCE(SUM(gross),0) AS gross FROM purchase_invoices WHERE date >= ? AND date <= ?", da, db2],
+    ["SELECT COALESCE(-SUM(net),0) AS v FROM invoices WHERE kind = 'storno' AND issue_date >= ? AND issue_date <= ?", da, db2],
+    ['SELECT COUNT(*) AS v FROM orgs WHERE created_at >= ? AND created_at < ? AND deleted = 0', a, b],
+    ['SELECT COUNT(*) AS v FROM tickets WHERE created_at >= ? AND created_at < ?', a, b]];
+  const res = await db.batch(qs.map(([sql, ...args]) => db.prepare(sql).bind(...args)));
+  const row = (i) => ((res[i] && res[i].results) || [])[0] || {};
+  const req = row(0), off = row(1), inv = row(2), paid = row(3).v || 0, fees = row(4).v || 0, dunn = row(4).n || 0, exp = row(5), kulanz = row(6).v || 0, newOrgs = row(7).v || 0, tickets = row(8).v || 0;
   return { requests: req.total || 0, deal: req.deal || 0, sell: req.sell || 0, won: req.won || 0, no_offer: req.no_offer || 0, spam: req.spam || 0,
     offers: off.n || 0, offers_accepted: off.accepted || 0, offers_rejected: off.rejected || 0, conversion: req.total ? round2((req.won || 0) / req.total * 100) : 0,
     revenue_net: round2(inv.net), revenue_gross: round2(inv.gross), invoices: inv.n || 0, payments: round2(paid), dunning_fees: round2(fees), dunnings: dunn,
@@ -2921,30 +2926,35 @@ async function fibuNextNo(ctx, key, prefix, date) {
   const year = String(date || berlinDate(nowMs())).slice(0, 4);
   for (let guard = 0; guard < 50; guard++) {
     const k = `_fibu_no_${key}_${year}`;
-    const n = toInt(jparse(await rawSetting(ctx.db, k), 1), 1);
-    await setRawSetting(ctx.db, k, JSON.stringify(n + 1));
+    // Z\u00e4hler in einer Abfrage erh\u00f6hen und lesen
+    const r = await ctx.db.prepare("INSERT INTO settings (key, value, updated_at, updated_by) VALUES (?, '2', ?, 'system') ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT), updated_at = excluded.updated_at RETURNING value").bind(k, nowIso()).first();
+    const n = toInt(r && r.value, 2) - 1;
     const number = `${prefix}-${year}-${String(n).padStart(5, '0')}`;
     const table = key === 'beleg' ? 'fibu_docs' : 'fibu_entries';
     if (!(await DB.one(ctx.db, `SELECT id FROM ${table} WHERE number = ?`, number))) return number;
   }
   throw new HttpError(500, 'Nummer konnte nicht vergeben werden.');
 }
+// Kontenrahmen je Aufruf einmal laden (spart Abfragen); nach \u00c4nderungen an Konten zur\u00fccksetzen
+async function fibuAccs(ctx) { if (!ctx._fibuAccs) ctx._fibuAccs = await DB.all(ctx.db, 'SELECT * FROM fibu_accounts'); return ctx._fibuAccs; }
+const fibuAccReset = (ctx) => { ctx._fibuAccs = null; };
 async function fibuAccountBySys(ctx, sys) {
-  const a = await DB.one(ctx.db, 'SELECT * FROM fibu_accounts WHERE sys = ?', sys);
+  const a = (await fibuAccs(ctx)).find((x) => x.sys === sys);
   need(a, 500, `Systemkonto \u201e${sys}\u201c fehlt im Kontenrahmen.`);
   return a;
 }
 // Konto \u00fcber Datensatz, interne ID (Zahl) oder Systemrolle/Kontonummer (Text)
 async function fibuAccount(ctx, ref) {
   if (ref && typeof ref === 'object') return ref;
-  const a = typeof ref === 'number' ? await DB.one(ctx.db, 'SELECT * FROM fibu_accounts WHERE id = ?', ref) : await DB.one(ctx.db, 'SELECT * FROM fibu_accounts WHERE sys = ? OR number = ?', String(ref), String(ref));
+  const list = await fibuAccs(ctx);
+  const a = typeof ref === 'number' ? list.find((x) => x.id === ref) : (list.find((x) => x.sys === String(ref)) || list.find((x) => x.number === String(ref)));
   need(a, 400, `Konto ${ref} nicht gefunden.`);
   return a;
 }
 // Periode gesperrt? (Monat abgeschlossen oder ganzes Jahr abgeschlossen)
 async function fibuClosed(ctx, period) {
-  const r = await DB.one(ctx.db, "SELECT id FROM fibu_periods WHERE status = 'abgeschlossen' AND (period = ? OR period = ?)", period, period.slice(0, 4));
-  return !!r;
+  if (!ctx._fibuClosed) ctx._fibuClosed = new Set((await DB.all(ctx.db, "SELECT period FROM fibu_periods WHERE status = 'abgeschlossen'")).map((r) => r.period));
+  return ctx._fibuClosed.has(period) || ctx._fibuClosed.has(period.slice(0, 4));
 }
 // Automatische Buchungen in gesperrte Perioden landen am ersten Tag der n\u00e4chsten offenen Periode
 async function fibuOpenDate(ctx, date) {
@@ -2975,7 +2985,7 @@ async function fibuPost(ctx, { date, text, lines, docId = null, source = 'manuel
   need(Math.abs(sd - sc) < 0.005 && sd > 0, 400, `Soll (${money(sd)}) und Haben (${money(sc)}) m\u00fcssen gleich sein.`);
   const number = await fibuNextNo(ctx, 'buchung', 'BU', date);
   const id = await DB.insert(ctx.db, 'fibu_entries', { number, date, period: fibuPeriod(date), text, doc_id: docId, source, source_id: sourceId == null ? null : String(sourceId), reverses, created_by: fibuWho(ctx), created_at: nowIso() });
-  for (const r of rows) await DB.insert(ctx.db, 'fibu_lines', { entry_id: id, ...r });
+  await ctx.db.batch(rows.map((r) => ctx.db.prepare('INSERT INTO fibu_lines (entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)').bind(id, r.account_id, r.debit, r.credit)));
   return id;
 }
 // Einfache Buchung \u201eSoll an Haben\u201c mit optionaler Umsatzsteuer-Aufteilung (Betrag = brutto)
@@ -3004,7 +3014,7 @@ async function fibuReverse(ctx, id, reason) {
   const lines = await DB.all(ctx.db, 'SELECT * FROM fibu_lines WHERE entry_id = ?', id);
   const today = berlinDate(nowMs());
   const date = (await fibuClosed(ctx, e.period)) ? today : (e.date > today ? e.date : today);
-  for (const l of lines) { const a = await DB.one(ctx.db, 'SELECT status FROM fibu_accounts WHERE id = ?', l.account_id); need(a.status === 'offen', 409, 'Ein beteiligtes Konto ist geschlossen. Bitte zuerst wieder \u00f6ffnen (Admin).'); }
+  for (const l of lines) { const a = await fibuAccount(ctx, l.account_id); need(a.status === 'offen', 409, 'Ein beteiligtes Konto ist geschlossen. Bitte zuerst wieder \u00f6ffnen (Admin).'); }
   const sid = await fibuPost(ctx, { date, text: `Storno ${e.number}: ${reason}`, docId: e.doc_id, source: 'storno', sourceId: e.id, reverses: e.id, lines: lines.map((l) => ({ account: l.account_id, debit: l.credit, credit: l.debit })) });
   await DB.update(ctx.db, 'fibu_entries', id, { reversed_by: sid });
   await audit(ctx, 'buchung_storniert', 'buchung', e.number, { grund: reason });
@@ -3097,6 +3107,7 @@ async function fibuClosePeriod(ctx, period, { auto = false, silent = false } = {
   const docId = await fibuArchive(ctx, { kind: 'abschluss', title: label, date: report.to, amount: report.result, fileId, note: auto ? 'Automatisch erstellt' : `Erstellt von ${fibuWho(ctx)}` });
   const row = { period, kind: isYear ? 'jahr' : 'monat', status: 'abgeschlossen', report: JSON.stringify(report), file_id: fileId, doc_id: docId, closed_by: auto ? 'System (automatisch)' : fibuWho(ctx), closed_at: nowIso() };
   if (ex) await DB.update(ctx.db, 'fibu_periods', ex.id, row); else await DB.insert(ctx.db, 'fibu_periods', row);
+  ctx._fibuClosed = null;
   await audit(ctx, isYear ? 'jahresabschluss' : 'monatsabschluss', 'abschluss', period, { ergebnis: report.result, buchungen: report.entries });
   // Neue Nachricht an Gesch\u00e4ftsf\u00fchrung (und Admin)
   if (!silent) await notifyStaff(ctx, { perm: 'fibu_manage' }, { kind: 'buchhaltung', title: `${label} liegt vor`, body: `${report.result >= 0 ? 'Gewinn' : 'Verlust'} im Zeitraum: ${money(report.result)} \u00b7 Ertr\u00e4ge ${money(report.income)} \u00b7 Aufwand ${money(report.expense)}${report.ytdResult != null ? ` \u00b7 seit Jahresbeginn ${money(report.ytdResult)}` : ''}. Der Bericht liegt als PDF im Belegarchiv.`, link: '#/fibu/abschluesse' });
@@ -3107,6 +3118,7 @@ async function fibuReopenPeriod(ctx, period) {
   need(ex, 404, 'Dieser Zeitraum ist nicht abgeschlossen.');
   if (period.length === 7) need(!(await fibuClosed(ctx, period.slice(0, 4))), 409, 'Das Jahr ist abgeschlossen. Bitte zuerst den Jahresabschluss wieder \u00f6ffnen.');
   await DB.update(ctx.db, 'fibu_periods', ex.id, { status: 'wieder_geoeffnet', reopened_by: fibuWho(ctx), reopened_at: nowIso() });
+  ctx._fibuClosed = null;
   await audit(ctx, 'abschluss_wieder_geoeffnet', 'abschluss', period, null);
   return { ok: true };
 }
@@ -3214,6 +3226,7 @@ async function fibuEnsureAccount(ctx, number, name) {
   number = String(number).trim(); need(/^\d{3,8}$/.test(number), 400, `Ung\u00fcltige Kontonummer \u201e${number}\u201c.`);
   const ex = await DB.one(ctx.db, 'SELECT * FROM fibu_accounts WHERE number = ?', number);
   if (ex) return ex;
+  fibuAccReset(ctx);
   const id = await DB.insert(ctx.db, 'fibu_accounts', { number, name: str(name, 120) || `Konto ${number}`, type: fibuGuessType(number), status: 'offen', note: 'Beim Import angelegt', created_by: fibuWho(ctx), created_at: nowIso() });
   return DB.one(ctx.db, 'SELECT * FROM fibu_accounts WHERE id = ?', id);
 }
@@ -4967,7 +4980,7 @@ async function handleFibu(ctx, u, path, method, body, q) {
       if (body.name !== undefined) { upd.name = str(body.name, 120); need(upd.name, 400, 'Bitte eine Bezeichnung angeben.'); }
       if (body.note !== undefined) upd.note = str(body.note, 500) || null;
       if (body.type !== undefined) { need(FIBU_TYPES[body.type], 400, 'Ung\u00fcltige Kontoart.'); need(!(await DB.val(db, 'SELECT COUNT(*) FROM fibu_lines WHERE account_id = ?', a.id)), 409, 'Die Kontoart kann nach der ersten Buchung nicht mehr ge\u00e4ndert werden.'); upd.type = body.type; }
-      await DB.update(db, 'fibu_accounts', a.id, upd); await audit(ctx, 'konto_geaendert', 'konto', a.number, upd); return out({ ok: true });
+      await DB.update(db, 'fibu_accounts', a.id, upd); fibuAccReset(ctx); await audit(ctx, 'konto_geaendert', 'konto', a.number, upd); return out({ ok: true });
     }
     if (m[2] === 'close' && method === 'POST') {
       manage();

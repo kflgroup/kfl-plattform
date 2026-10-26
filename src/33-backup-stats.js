@@ -119,17 +119,21 @@ function periodOf(q) {
   return { from, to, days, range: [iso(from), iso(to, true)], prev: [iso(prevFrom), iso(prevTo, true)], ly: [iso(lyFrom), iso(lyTo, true)], prevFrom, prevTo, lyFrom, lyTo };
 }
 async function kpis(ctx, [a, b]) {
-  const db = ctx.db;
-  const req = await DB.one(db, `SELECT COUNT(*) AS total, SUM(type='deal') AS deal, SUM(type='sell') AS sell, SUM(status IN ('kontaktdaten_versendet','angebot_akzeptiert')) AS won, SUM(status='kein_angebot') AS no_offer, SUM(status='spam') AS spam FROM requests WHERE created_at >= ? AND created_at < ? AND (deleted = 0 OR status = 'spam')`, a, b);
-  const off = await DB.one(db, "SELECT COUNT(*) AS n, SUM(status='angenommen') AS accepted, SUM(status IN ('nicht_ausgewaehlt','abgelehnt_kunde')) AS rejected FROM offers WHERE created_at >= ? AND created_at < ?", a, b);
-  const inv = await DB.one(db, "SELECT COALESCE(SUM(net),0) AS net, COALESCE(SUM(gross),0) AS gross, COUNT(*) AS n FROM invoices WHERE status != 'storniert' AND kind != 'storno' AND issue_date >= ? AND issue_date <= ?", a.slice(0, 10), isoOf(msOf(b) - 1).slice(0, 10));
-  const paid = await DB.val(db, 'SELECT COALESCE(SUM(amount),0) FROM payments WHERE date >= ? AND date <= ?', a.slice(0, 10), isoOf(msOf(b) - 1).slice(0, 10));
-  const fees = await DB.val(db, 'SELECT COALESCE(SUM(fee),0) FROM dunnings WHERE created_at >= ? AND created_at < ?', a, b);
-  const dunn = await DB.val(db, 'SELECT COUNT(*) FROM dunnings WHERE created_at >= ? AND created_at < ?', a, b);
-  const exp = await DB.one(db, "SELECT COALESCE(SUM(net),0) AS net, COALESCE(SUM(gross),0) AS gross FROM purchase_invoices WHERE date >= ? AND date <= ?", a.slice(0, 10), isoOf(msOf(b) - 1).slice(0, 10));
-  const kulanz = await DB.val(db, "SELECT COALESCE(-SUM(net),0) FROM invoices WHERE kind = 'storno' AND issue_date >= ? AND issue_date <= ?", a.slice(0, 10), isoOf(msOf(b) - 1).slice(0, 10));
-  const newOrgs = await DB.val(db, 'SELECT COUNT(*) FROM orgs WHERE created_at >= ? AND created_at < ? AND deleted = 0', a, b);
-  const tickets = await DB.val(db, 'SELECT COUNT(*) FROM tickets WHERE created_at >= ? AND created_at < ?', a, b);
+  const db = ctx.db, da = a.slice(0, 10), db2 = isoOf(msOf(b) - 1).slice(0, 10);
+  // eine Sammelabfrage (zählt bei Cloudflare als eine Abfrage)
+  const qs = [
+    [`SELECT COUNT(*) AS total, SUM(type='deal') AS deal, SUM(type='sell') AS sell, SUM(status IN ('kontaktdaten_versendet','angebot_akzeptiert')) AS won, SUM(status='kein_angebot') AS no_offer, SUM(status='spam') AS spam FROM requests WHERE created_at >= ? AND created_at < ? AND (deleted = 0 OR status = 'spam')`, a, b],
+    ["SELECT COUNT(*) AS n, SUM(status='angenommen') AS accepted, SUM(status IN ('nicht_ausgewaehlt','abgelehnt_kunde')) AS rejected FROM offers WHERE created_at >= ? AND created_at < ?", a, b],
+    ["SELECT COALESCE(SUM(net),0) AS net, COALESCE(SUM(gross),0) AS gross, COUNT(*) AS n FROM invoices WHERE status != 'storniert' AND kind != 'storno' AND issue_date >= ? AND issue_date <= ?", da, db2],
+    ['SELECT COALESCE(SUM(amount),0) AS v FROM payments WHERE date >= ? AND date <= ?', da, db2],
+    ['SELECT COALESCE(SUM(fee),0) AS v, COUNT(*) AS n FROM dunnings WHERE created_at >= ? AND created_at < ?', a, b],
+    ["SELECT COALESCE(SUM(net),0) AS net, COALESCE(SUM(gross),0) AS gross FROM purchase_invoices WHERE date >= ? AND date <= ?", da, db2],
+    ["SELECT COALESCE(-SUM(net),0) AS v FROM invoices WHERE kind = 'storno' AND issue_date >= ? AND issue_date <= ?", da, db2],
+    ['SELECT COUNT(*) AS v FROM orgs WHERE created_at >= ? AND created_at < ? AND deleted = 0', a, b],
+    ['SELECT COUNT(*) AS v FROM tickets WHERE created_at >= ? AND created_at < ?', a, b]];
+  const res = await db.batch(qs.map(([sql, ...args]) => db.prepare(sql).bind(...args)));
+  const row = (i) => ((res[i] && res[i].results) || [])[0] || {};
+  const req = row(0), off = row(1), inv = row(2), paid = row(3).v || 0, fees = row(4).v || 0, dunn = row(4).n || 0, exp = row(5), kulanz = row(6).v || 0, newOrgs = row(7).v || 0, tickets = row(8).v || 0;
   return { requests: req.total || 0, deal: req.deal || 0, sell: req.sell || 0, won: req.won || 0, no_offer: req.no_offer || 0, spam: req.spam || 0,
     offers: off.n || 0, offers_accepted: off.accepted || 0, offers_rejected: off.rejected || 0, conversion: req.total ? round2((req.won || 0) / req.total * 100) : 0,
     revenue_net: round2(inv.net), revenue_gross: round2(inv.gross), invoices: inv.n || 0, payments: round2(paid), dunning_fees: round2(fees), dunnings: dunn,

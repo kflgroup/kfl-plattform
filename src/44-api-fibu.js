@@ -65,7 +65,7 @@ async function handleFibu(ctx, u, path, method, body, q) {
       if (body.name !== undefined) { upd.name = str(body.name, 120); need(upd.name, 400, 'Bitte eine Bezeichnung angeben.'); }
       if (body.note !== undefined) upd.note = str(body.note, 500) || null;
       if (body.type !== undefined) { need(FIBU_TYPES[body.type], 400, 'Ungültige Kontoart.'); need(!(await DB.val(db, 'SELECT COUNT(*) FROM fibu_lines WHERE account_id = ?', a.id)), 409, 'Die Kontoart kann nach der ersten Buchung nicht mehr geändert werden.'); upd.type = body.type; }
-      await DB.update(db, 'fibu_accounts', a.id, upd); await audit(ctx, 'konto_geaendert', 'konto', a.number, upd); return out({ ok: true });
+      await DB.update(db, 'fibu_accounts', a.id, upd); fibuAccReset(ctx); await audit(ctx, 'konto_geaendert', 'konto', a.number, upd); return out({ ok: true });
     }
     if (m[2] === 'close' && method === 'POST') {
       manage();
