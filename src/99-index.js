@@ -16,10 +16,24 @@ function pageResponse(html) {
     'X-Frame-Options': 'DENY', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()', ...SEC_HEADERS } });
 }
 
-async function jobDue(db, key, period) {
-  const row = await DB.one(db, 'SELECT last_run FROM jobs WHERE key = ?', key);
-  return !row || row.last_run !== period;
+// Fällig? Ein Job, der „läuft“ und seit über 20 Minuten nicht fertig wurde, wurde vom System abgebrochen
+// (Zeit- oder Abfragelimit) → für diesen Zeitraum als abgebrochen markieren, damit andere Jobs nicht blockiert werden.
+const JOB_RUNNING = 'läuft seit ';
+async function jobDue(db, key, period, ctx = null) {
+  const row = await DB.one(db, 'SELECT last_run, last_result FROM jobs WHERE key = ?', key);
+  if (row && row.last_run === period) return false;
+  const lr = row ? jparse(row.last_result, '') : '';
+  if (typeof lr === 'string' && lr.startsWith(JOB_RUNNING) && nowMs() - msOf(lr.slice(JOB_RUNNING.length)) > 20 * 60e3) {
+    await jobDone(db, key, period, 'Fehler: abgebrochen (Zeit- oder Abfragelimit von Cloudflare)');
+    if (ctx) await notifyStaff(ctx, { perm: 'settings_all' }, { kind: 'fehler', title: `Automatischer Job „${key}“ abgebrochen`, body: 'Der Job wurde vom System abgebrochen (vermutlich Zeit- oder Abfragelimit des Cloudflare-Tarifs). Er läuft am nächsten Termin erneut.', link: '#/verwaltung' }).catch(() => null);
+    return false;
+  }
+  if (row && typeof lr === 'string' && lr.startsWith(JOB_RUNNING)) return false; // läuft gerade (anderer Durchlauf)
+  await DB.run(db, 'INSERT INTO jobs (key, last_run, last_result) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET last_result = excluded.last_result', key, row ? row.last_run : null, JSON.stringify(JOB_RUNNING + nowIso()));
+  return true;
 }
+// Teilweise erledigt (Rest folgt im nächsten Durchlauf): Laufmarke entfernen, Zeitraum bleibt fällig
+async function jobPause(db, key, result) { await DB.run(db, 'UPDATE jobs SET last_result = ? WHERE key = ?', JSON.stringify(result ?? null).slice(0, 2000), key); }
 async function jobDone(db, key, period, result) { await DB.run(db, 'INSERT OR REPLACE INTO jobs (key, last_run, last_result) VALUES (?, ?, ?)', key, period, JSON.stringify(result ?? null).slice(0, 2000)); }
 
 async function runJobs(ctx, { force } = {}) {
@@ -34,28 +48,28 @@ async function runJobs(ctx, { force } = {}) {
   // Höchstens ein großer Tagesjob je Durchlauf (alle 5 Minuten) – jeder Aufruf hat bei Cloudflare ein eigenes Abfragebudget
   let heavy = false; const slot = () => force || !heavy;
   // Backup täglich ab 0:01 (Berliner Zeit)
-  if (force === 'backup' || (slot() && hm >= (s.backup_hour * 60 + s.backup_minute) && await jobDue(ctx.db, 'backup', day))) {
+  if (force === 'backup' || (slot() && hm >= (s.backup_hour * 60 + s.backup_minute) && await jobDue(ctx.db, 'backup', day, ctx))) {
     await safe('backup', () => createBackup(ctx, { kind: force === 'backup' ? 'manuell' : 'auto' }));
     await safe('aufbewahrung', () => retentionJobs(ctx));
     if (/^Fehler/.test(String(res.backup || ''))) await notifyStaff(ctx, { perm: 'backup_view' }, { kind: 'fehler', title: 'Tagesbackup fehlgeschlagen', body: String(res.backup).slice(0, 300), link: '#/backup' }).catch(() => null);
     await jobDone(ctx.db, 'backup', day, res.backup); heavy = true;
   }
   // Automatische Mahnungen täglich ab 8:00
-  if (force === 'mahnung' || (slot() && hm >= 8 * 60 && await jobDue(ctx.db, 'mahnung', day))) { await safe('mahnung', () => runDunningJobs(ctx)); await jobDone(ctx.db, 'mahnung', day, res.mahnung); heavy = true; }
+  if (force === 'mahnung' || (slot() && hm >= 8 * 60 && await jobDue(ctx.db, 'mahnung', day, ctx))) { await safe('mahnung', () => runDunningJobs(ctx)); await jobDone(ctx.db, 'mahnung', day, res.mahnung); heavy = true; }
   // Tagesabschluss zur eingestellten Uhrzeit
   const [ch, cm] = String(s.day_close_time || '18:00').split(':').map((x) => toInt(x, 0));
-  if (force === 'tagesabschluss' || (slot() && hm >= ch * 60 + cm && await jobDue(ctx.db, 'tagesabschluss', day))) { await safe('tagesabschluss', () => runDayClose(ctx)); await jobDone(ctx.db, 'tagesabschluss', day, res.tagesabschluss); heavy = true; }
+  if (force === 'tagesabschluss' || (slot() && hm >= ch * 60 + cm && await jobDue(ctx.db, 'tagesabschluss', day, ctx))) { await safe('tagesabschluss', () => runDayClose(ctx)); await jobDone(ctx.db, 'tagesabschluss', day, res.tagesabschluss); heavy = true; }
   // Finanzbuchhaltung: Monatsabschluss am 1. (ab 1:00 Uhr) für den Vormonat, Jahresabschluss am 1. Januar
-  if (force === 'fibu' || (slot() && hm >= 60 && await jobDue(ctx.db, 'fibu', day))) { await safe('fibu', () => runFibuJobs(ctx, { force: force === 'fibu' })); const f = res.fibu; if (f && typeof f === 'object') res.fibu = f.result; if (!(f && f.pending)) await jobDone(ctx.db, 'fibu', day, res.fibu); heavy = true; }
+  if (force === 'fibu' || (slot() && hm >= 60 && await jobDue(ctx.db, 'fibu', day, ctx))) { await safe('fibu', () => runFibuJobs(ctx, { force: force === 'fibu' })); const f = res.fibu; if (f && typeof f === 'object') res.fibu = f.result; if (!(f && f.pending)) await jobDone(ctx.db, 'fibu', day, res.fibu); else await jobPause(ctx.db, 'fibu', 'teilweise: ' + res.fibu); heavy = true; }
   // Sammelrechnungen am letzten Tag des Monats
   const month = day.slice(0, 7);
   const isLast = p.d === lastDayOfMonth(p.y, p.m);
   // je Durchlauf ein Partner; nicht fertig gewordene Läufe werden am 1. des Folgemonats bis 12 Uhr für den Vormonat fortgesetzt
   const target = isLast && p.h >= toInt(s.monthly_run_hour, 23) ? month : (p.d === 1 && p.h < 12 ? prevPeriod(month) : null);
-  if (force === 'monat' || (slot() && target && await jobDue(ctx.db, 'monatsrechnung', target))) {
+  if (force === 'monat' || (slot() && target && await jobDue(ctx.db, 'monatsrechnung', target, ctx))) {
     const tm = target || month; let pending = false, count = 0;
     await safe('monatsrechnung', async () => { const r = await runMonthlyInvoices(ctx, { month: tm, max: force === 'monat' ? 50 : 1 }); pending = r.pending; count = r.count; return count; });
-    if (!pending) await jobDone(ctx.db, 'monatsrechnung', tm, count);
+    if (!pending) await jobDone(ctx.db, 'monatsrechnung', tm, count); else await jobPause(ctx.db, 'monatsrechnung', `teilweise: ${count}`);
   }
   return res;
 }
@@ -146,6 +160,7 @@ export default {
     await migrate(env.DB);
     const c = await makeCtx(null, env, null);
     c.actor = { type: 'system', id: null, name: 'System' };
+    await setRawSetting(env.DB, '_cron_tick', nowIso()).catch(() => null);
     await autoImport(c);
     ctx.waitUntil(runJobs(c));
   }
