@@ -154,7 +154,7 @@ async function admSettings(P, tab) {
   const groups = SET_GROUPS.map(([title, , labels]) => [title, Object.entries(labels).filter(([k]) => keys.includes(k))]).filter(([, l]) => l.length);
   P.show(html`${admHead(tab)}${d.env ? html`<section class="panel mt"><div class="panel-head"><h2>E-Mail-Versand</h2>${d.env.mail ? badge(d.env.mail === 'smtp' ? `aktiv über Postfach ${d.env.smtpUser}` : 'aktiv über Brevo', 'ok') : badge('nicht eingerichtet', 'err')}</div>
       <div class="panel-body stack">${d.env.mail ? html`<p class="small muted">Einladungen, Rechnungen, Anfragen und Support-Mails werden mit den Absendern unten versendet. Jede E-Mail steht zusätzlich im Postausgang.</p>`
-        : html`<div class="err-box">${icon('alert')}<span>Es ist noch kein E-Mail-Versand verbunden. Hinterlege in Cloudflare beim Worker die Secrets <b>SMTP_USER</b> (z. B. noreplay@kfl-group.com) und <b>SMTP_PASS</b> (Passwort dieses IONOS-Postfachs). Bis dahin zeigt das Dashboard Einladungslinks zum Kopieren an.</span></div>`}
+        : mailSetupHelp(d.env.smtpCheck || {})}
         <form class="inline-form" data-submit="mailTest">${field('Test-E-Mail senden an', inp('to', S.user.email, { type: 'email', req: true }))}${field('Absender', sel('category', Object.entries(S.config.mailCategories).filter(([k]) => k !== 'internal').map(([k, v]) => [k, v.label]), 'system'))}<button class="btn btn-dark" type="submit">${icon('send')}Test senden</button></form></div></section>
     <section class="panel mt"><div class="panel-head"><h2>Verbindungen</h2></div><div class="panel-body row">${[['r2', 'Dateispeicher (R2)'], ['shopify', 'Shopify-Statistik'], ['oldDb', 'Alte Datenbank (Import)']].map(([k, l]) => badge(`${l}: ${d.env[k] ? 'verbunden' : 'nicht eingerichtet'}`, d.env[k] ? 'ok' : 'muted'))}</div></section>` : ''}
     <form class="stack mt" data-submit="settingsSave">${groups.map(([title, list]) => html`<section class="panel"><div class="panel-head"><h2>${title}</h2><button class="btn btn-sm btn-dark" type="submit">Speichern</button></div><div class="panel-body grid-2">${list.map(([k, l]) => input(k, l))}</div></section>`)}</form>
@@ -179,6 +179,14 @@ async function admLinks(P, tab) {
 }
 SUBMIT.linkSend = async (d, f) => { const r = await POST('/links/send', d); f.reset(); toast(r.mail === 'gesendet' ? 'Link versendet.' : 'Im Postausgang gespeichert (E-Mail-Dienst fehlt).'); };
 
+// Prüfliste: was dem Worker für den E-Mail-Versand fehlt (nur Namen, keine Werte)
+function mailSetupHelp(c) {
+  const row = (ok, name, hint) => html`<li class="row">${badge(ok ? 'gefunden' : 'fehlt', ok ? 'ok' : 'err')}<code>${name}</code><span class="small muted">${hint}</span></li>`;
+  return html`<div class="err-box">${icon('alert')}<span><b>Der Worker findet keinen Postfach-Zugang.</b> Ohne diese zwei Secrets kann das System keine E-Mails versenden (Rechnungen, Einladungen, Benachrichtigungen).</span></div>
+    <ul class="stack-s checklist">${row(c.user, 'SMTP_USER', 'Wert: noreplay@kfl-group.com')}${row(c.pass, 'SMTP_PASS', 'Wert: Passwort des IONOS-Postfachs noreplay@kfl-group.com')}</ul>
+    ${c.similar && c.similar.length ? html`<div class="note-box">${icon('alert')}<span>Gefunden, aber falsch benannt: <b>${c.similar.join(', ')}</b>. Die Namen müssen exakt <code>SMTP_USER</code> und <code>SMTP_PASS</code> lauten (Großbuchstaben, Unterstrich, keine Leerzeichen).</span></div>` : ''}
+    <div class="info-box">${icon('key')}<span><b>So richtest du es ein:</b> Cloudflare → Workers &amp; Pages → <b>tiny-lab-d971kfl-forms</b> → <b>Einstellungen</b> → <b>Variablen und Secrets</b> (nicht unter „Build“) → <b>Hinzufügen</b> → Typ <b>Secret</b> → Name und Wert eintragen → <b>Bereitstellen</b>. Danach diese Seite neu laden: Beide Einträge stehen dann auf „gefunden“. Server: ${c.host}, Port ${c.port} (STARTTLS).</span></div>`;
+}
 async function admOutbox(P, tab) {
   const d = await GET('/outbox'); if (!P.alive()) return;
   const ST = { gesendet: 'ok', fehler: 'err', nicht_konfiguriert: 'warn' };

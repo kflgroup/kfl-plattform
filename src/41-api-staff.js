@@ -688,7 +688,7 @@ async function handleStaffApi(ctx, url) {
     need(can(u, 'settings_all') || can(u, 'acc_settings') || can(u, 'acc_manage'), 403, 'Dafür fehlt dir die Berechtigung.');
     const s = await settingsOf(ctx);
     const keys = can(u, 'settings_all') ? Object.keys(DEFAULT_SETTINGS) : can(u, 'acc_settings') ? GF_SETTINGS : ACC_SETTINGS;
-    return out({ ok: true, settings: Object.fromEntries(keys.map((k) => [k, s[k]])), editable: keys, env: can(u, 'settings_all') ? { mail: mailProvider(env), smtpUser: env.SMTP_USER || null, brevo: !!env.BREVO_API_KEY, r2: !!env.FILES, shopify: !!env.SHOPIFY_ADMIN_TOKEN, cfapi: !!env.CF_API_TOKEN, oldDb: !!env.OLD_DB } : undefined });
+    return out({ ok: true, settings: Object.fromEntries(keys.map((k) => [k, s[k]])), editable: keys, env: can(u, 'settings_all') ? { mail: mailProvider(env), smtpUser: env.SMTP_USER || null, smtpCheck: { user: !!env.SMTP_USER, pass: !!env.SMTP_PASS, host: env.SMTP_HOST || 'smtp.ionos.de', port: env.SMTP_PORT || '587', similar: Object.keys(env).filter((k) => /smtp|e-?mail|ionos|norepl/i.test(k) && !['SMTP_USER', 'SMTP_PASS', 'SMTP_HOST', 'SMTP_PORT'].includes(k) && !/^SMTP_PASS_[A-Z0-9_]+$/.test(k)) }, brevo: !!env.BREVO_API_KEY, r2: !!env.FILES, shopify: !!env.SHOPIFY_ADMIN_TOKEN, cfapi: !!env.CF_API_TOKEN, oldDb: !!env.OLD_DB } : undefined });
   }
   if (path === '/settings' && method === 'PATCH') {
     need(can(u, 'settings_all') || can(u, 'acc_settings') || can(u, 'acc_manage'), 403, 'Dafür fehlt dir die Berechtigung.');
