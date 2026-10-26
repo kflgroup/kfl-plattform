@@ -7,7 +7,9 @@
    gesendet und die gewünschte Adresse als Antwortadresse (Reply-To) gesetzt.
    ============================================================ */
 
-const smtpConfigured = (env) => !!(env.SMTP_USER && env.SMTP_PASS);
+const SMTP_DEFAULT_USER = 'noreplay@kfl-group.com';
+const smtpUser = (env) => env.SMTP_USER || SMTP_DEFAULT_USER;
+const smtpConfigured = (env) => !!env.SMTP_PASS;
 const mailProvider = (env) => (smtpConfigured(env) ? 'smtp' : env.BREVO_API_KEY ? 'brevo' : null);
 
 const utf8b64 = (s) => { const bytes = new TextEncoder().encode(String(s)); let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(bin); };
@@ -75,7 +77,7 @@ async function smtpSession(env, user, pass, fn) {
   } finally { try { socket.close(); } catch (e) { /* bereits zu */ } }
 }
 async function smtpSendMail(env, mail) {
-  const main = String(env.SMTP_USER).toLowerCase(), want = String(mail.from).toLowerCase();
+  const main = String(smtpUser(env)).toLowerCase(), want = String(mail.from).toLowerCase();
   const local = want.split('@')[0].replace(/[^a-z0-9]/gi, '_').toUpperCase();
   const own = want !== main && env['SMTP_PASS_' + local] ? { user: want, pass: env['SMTP_PASS_' + local] } : null;
   const domain = (want.split('@')[1] || 'kfl-group.com');

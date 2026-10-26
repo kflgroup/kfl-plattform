@@ -916,7 +916,9 @@ async function notifyPartner(ctx, { orgId, userIds, roles }, msg) {
    gesendet und die gew\u00fcnschte Adresse als Antwortadresse (Reply-To) gesetzt.
    ============================================================ */
 
-const smtpConfigured = (env) => !!(env.SMTP_USER && env.SMTP_PASS);
+const SMTP_DEFAULT_USER = 'noreplay@kfl-group.com';
+const smtpUser = (env) => env.SMTP_USER || SMTP_DEFAULT_USER;
+const smtpConfigured = (env) => !!env.SMTP_PASS;
 const mailProvider = (env) => (smtpConfigured(env) ? 'smtp' : env.BREVO_API_KEY ? 'brevo' : null);
 
 const utf8b64 = (s) => { const bytes = new TextEncoder().encode(String(s)); let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(bin); };
@@ -984,7 +986,7 @@ async function smtpSession(env, user, pass, fn) {
   } finally { try { socket.close(); } catch (e) { /* bereits zu */ } }
 }
 async function smtpSendMail(env, mail) {
-  const main = String(env.SMTP_USER).toLowerCase(), want = String(mail.from).toLowerCase();
+  const main = String(smtpUser(env)).toLowerCase(), want = String(mail.from).toLowerCase();
   const local = want.split('@')[0].replace(/[^a-z0-9]/gi, '_').toUpperCase();
   const own = want !== main && env['SMTP_PASS_' + local] ? { user: want, pass: env['SMTP_PASS_' + local] } : null;
   const domain = (want.split('@')[1] || 'kfl-group.com');
@@ -3620,7 +3622,7 @@ async function handleStaffApi(ctx, url) {
     need(can(u, 'settings_all') || can(u, 'acc_settings') || can(u, 'acc_manage'), 403, 'Daf\u00fcr fehlt dir die Berechtigung.');
     const s = await settingsOf(ctx);
     const keys = can(u, 'settings_all') ? Object.keys(DEFAULT_SETTINGS) : can(u, 'acc_settings') ? GF_SETTINGS : ACC_SETTINGS;
-    return out({ ok: true, settings: Object.fromEntries(keys.map((k) => [k, s[k]])), editable: keys, env: can(u, 'settings_all') ? { mail: mailProvider(env), smtpUser: env.SMTP_USER || null, smtpCheck: { user: !!env.SMTP_USER, pass: !!env.SMTP_PASS, host: env.SMTP_HOST || 'smtp.ionos.de', port: env.SMTP_PORT || '587', similar: Object.keys(env).filter((k) => /smtp|e-?mail|ionos|norepl/i.test(k) && !['SMTP_USER', 'SMTP_PASS', 'SMTP_HOST', 'SMTP_PORT'].includes(k) && !/^SMTP_PASS_[A-Z0-9_]+$/.test(k)) }, brevo: !!env.BREVO_API_KEY, r2: !!env.FILES, shopify: !!env.SHOPIFY_ADMIN_TOKEN, cfapi: !!env.CF_API_TOKEN, oldDb: !!env.OLD_DB } : undefined });
+    return out({ ok: true, settings: Object.fromEntries(keys.map((k) => [k, s[k]])), editable: keys, env: can(u, 'settings_all') ? { mail: mailProvider(env), smtpUser: env.SMTP_PASS ? smtpUser(env) : null, smtpCheck: { user: true, pass: !!env.SMTP_PASS, host: env.SMTP_HOST || 'smtp.ionos.de', port: env.SMTP_PORT || '587', similar: Object.keys(env).filter((k) => /smtp|e-?mail|ionos|norepl/i.test(k) && !['SMTP_USER', 'SMTP_PASS', 'SMTP_HOST', 'SMTP_PORT'].includes(k) && !/^SMTP_PASS_[A-Z0-9_]+$/.test(k)) }, brevo: !!env.BREVO_API_KEY, r2: !!env.FILES, shopify: !!env.SHOPIFY_ADMIN_TOKEN, cfapi: !!env.CF_API_TOKEN, oldDb: !!env.OLD_DB } : undefined });
   }
   if (path === '/settings' && method === 'PATCH') {
     need(can(u, 'settings_all') || can(u, 'acc_settings') || can(u, 'acc_manage'), 403, 'Daf\u00fcr fehlt dir die Berechtigung.');
@@ -3667,7 +3669,7 @@ async function handleStaffApi(ctx, url) {
     const cat = MAIL_CATEGORIES[body.category] ? body.category : 'system';
     const s = await settingsOf(ctx);
     const r = await sendMail(ctx, { category: cat, to, subject: 'Test-E-Mail aus dem KFL Dashboard', title: 'Der E-Mail-Versand funktioniert',
-      body: `<p>Hallo ${esc(u.name)},</p><p>diese Test-E-Mail wurde \u00fcber ${mailProvider(env) === 'smtp' ? 'das Postfach ' + esc(env.SMTP_USER) : mailProvider(env) === 'brevo' ? 'Brevo' : 'keinen Dienst'} mit dem Absender <strong>${esc(s[MAIL_CATEGORIES[cat].setting] || s.mail_from_system)}</strong> versendet.</p>` });
+      body: `<p>Hallo ${esc(u.name)},</p><p>diese Test-E-Mail wurde \u00fcber ${mailProvider(env) === 'smtp' ? 'das Postfach ' + esc(smtpUser(env)) : mailProvider(env) === 'brevo' ? 'Brevo' : 'keinen Dienst'} mit dem Absender <strong>${esc(s[MAIL_CATEGORIES[cat].setting] || s.mail_from_system)}</strong> versendet.</p>` });
     await audit(ctx, 'test_mail', 'einstellungen', null, { an: to, status: r.status });
     return out({ ok: true, status: r.status, error: r.error || null, provider: mailProvider(env) });
   }

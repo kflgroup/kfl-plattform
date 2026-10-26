@@ -40,11 +40,15 @@ database_id = "9e8a17c8-ad37-49ad-b57e-fc698724ca51"
 PUBLIC_ORIGIN = ""
 # Name des Workers für die Sicherung des Systemcodes im Backup
 CF_SCRIPT_NAME = "tiny-lab-d971kfl-forms"
+# Postfach für den E-Mail-Versand (IONOS). Das Passwort steht NUR als Secret SMTP_PASS im Dashboard.
+SMTP_USER = "noreplay@kfl-group.com"
 
 # Secrets (NICHT hier eintragen, sondern im Dashboard unter Einstellungen → Variablen und Secrets):
 # FORM_SECRET        gleicher Schlüssel wie im Shopify-Snippet kfl-config (signiert Formulare und „Meine Anfragen“)
 # APP_SECRET         zufälliger Schlüssel (mind. 32 Zeichen) für Server-Verschlüsselung und signierte Links
 # SETUP_TOKEN        Einmal-Schlüssel für die Ersteinrichtung des ersten Admin-Kontos
-# BREVO_API_KEY      E-Mail-Versand (Brevo)
+# SMTP_PASS          Passwort des IONOS-Postfachs noreplay@kfl-group.com (E-Mail-Versand)
+# SMTP_PASS_VERMITTLUNG, SMTP_PASS_SUPPORT  optional: eigene Postfächer als Absender
+# BREVO_API_KEY      optional: E-Mail-Versand über Brevo
 # SHOPIFY_ADMIN_TOKEN, SHOPIFY_SHOP   optional: Webshop-Statistik
 # CF_API_TOKEN, CF_ACCOUNT_ID         optional: Systemcode im täglichen Backup
