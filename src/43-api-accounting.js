@@ -11,14 +11,14 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     const today = berlinDate(nowMs());
     const open = await DB.one(db, "SELECT COUNT(*) AS n, COALESCE(SUM(gross + fees - paid),0) AS sum FROM invoices WHERE status IN ('offen','teilbezahlt') AND kind != 'storno'");
     const overdue = await DB.one(db, "SELECT COUNT(*) AS n, COALESCE(SUM(gross + fees - paid),0) AS sum FROM invoices WHERE status IN ('offen','teilbezahlt') AND kind != 'storno' AND due_date < ?", today);
-    const cases = await DB.one(db, "SELECT SUM(status = 'offen') AS open, SUM(status = 'gesammelt') AS collected, COALESCE(SUM(CASE WHEN status = 'gesammelt' THEN amount_net END),0) AS collected_sum FROM billing_items");
+    const cases = await DB.one(db, "SELECT SUM(status = 'offen') AS open, SUM(status = 'gesammelt') AS collected, SUM(status = 'storniert') AS cancelled, COALESCE(SUM(CASE WHEN status = 'gesammelt' THEN amount_net END),0) AS collected_sum FROM billing_items");
     const pi = await DB.one(db, "SELECT SUM(status = 'offen') AS open, SUM(status = 'zur_zahlung') AS queued, SUM(status IN ('in_zahlungsliste')) AS listed, COALESCE(SUM(CASE WHEN status IN ('offen','zur_zahlung','in_zahlungsliste','freigegeben') THEN gross END),0) AS due FROM purchase_invoices");
     const pm = berlinParts(nowMs());
     const mFrom = `${pm.y}-${String(pm.m).padStart(2, '0')}-01`;
     const month = await DB.one(db, "SELECT COALESCE(SUM(net),0) AS net, COUNT(*) AS n FROM invoices WHERE status != 'storniert' AND kind != 'storno' AND issue_date >= ?", mFrom);
     const paidMonth = await DB.val(db, 'SELECT COALESCE(SUM(amount),0) FROM payments WHERE date >= ?', mFrom);
     const payruns = await DB.val(db, "SELECT COUNT(*) FROM payruns WHERE status = 'offen'");
-    return out({ ok: true, open: { n: open.n, sum: round2(open.sum) }, overdue: { n: overdue.n, sum: round2(overdue.sum) }, cases: { open: cases.open || 0, collected: cases.collected || 0, collected_sum: round2(cases.collected_sum) },
+    return out({ ok: true, open: { n: open.n, sum: round2(open.sum) }, overdue: { n: overdue.n, sum: round2(overdue.sum) }, cases: { open: cases.open || 0, collected: cases.collected || 0, cancelled: cases.cancelled || 0, collected_sum: round2(cases.collected_sum) },
       purchase: { open: pi.open || 0, queued: pi.queued || 0, listed: pi.listed || 0, due: round2(pi.due) }, month: { net: round2(month.net), n: month.n, paid: round2(paidMonth) }, payruns });
   }
 
@@ -36,8 +36,14 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     const org = await DB.one(db, 'SELECT * FROM orgs WHERE id = ?', it.org_id);
     const offer = it.assignment_id ? await DB.one(db, 'SELECT o.*, pu.name AS user_name FROM offers o LEFT JOIN partner_users pu ON pu.id = o.user_id WHERE o.assignment_id = ?', it.assignment_id) : null;
     const d = req ? jparse(req.data, {}) : {};
-    return out({ ok: true, item: it, request: req ? { number: toNumber(req.id), type: req.type, vehicle: req.vehicle, summary: req.summary, created_at: req.created_at, status: req.status, fields: Object.fromEntries(Object.entries(d).filter(([k]) => !/^_/.test(k))) } : null,
+    const invoiceNumber = it.invoice_id ? await DB.val(db, 'SELECT number FROM invoices WHERE id = ?', it.invoice_id) : null;
+    return out({ ok: true, item: { ...it, number: it.request_id ? toNumber(it.request_id) : null }, invoiceNumber, request: req ? { number: toNumber(req.id), type: req.type, vehicle: req.vehicle, summary: req.summary, created_at: req.created_at, status: req.status, fields: Object.fromEntries(Object.entries(d).filter(([k]) => !/^_/.test(k))) } : null,
       customer: req ? customerContact(req) : null, org: { ...orgRecipient(org), id: org.id, name: org.name, billing_mode: org.billing_mode, payment_terms_days: org.payment_terms_days, dunning_fee: org.dunning_fee }, offer: offer ? { ...offer, data: jparse(offer.data, {}) } : null });
+  }
+  if ((m = path.match(/^\/items\/(\d+)\/(cancel|reopen)$/)) && method === 'POST') {
+    requirePerm(u, 'acc_cancel');
+    if (m[2] === 'cancel') return out({ ok: true, ...(await cancelBillingItem(ctx, +m[1], body.reason)) });
+    return out({ ok: true, ...(await reopenBillingItem(ctx, +m[1])) });
   }
   if ((m = path.match(/^\/items\/(\d+)\/(bill|note|amount)$/)) && method === 'POST') {
     manage();
@@ -82,7 +88,7 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     if (sub.startsWith('dunning-pdf/') && method === 'GET') { const d = await DB.one(db, 'SELECT * FROM dunnings WHERE id = ? AND invoice_id = ?', +sub.split('/')[1], inv.id); need(d, 404, 'Nicht gefunden.'); return fileResponse(await getFile(ctx, d.file_id), q.download === '1'); }
     if (sub === 'payment' && method === 'POST') { manage(); return out({ ok: true, ...(await addPayment(ctx, inv.id, body)) }); }
     if (sub === 'dunning' && method === 'POST') { manage(); return out({ ok: true, ...(await sendDunning(ctx, inv.id)) }); }
-    if (sub === 'cancel' && method === 'POST') { manage(); return out({ ok: true, id: await cancelInvoice(ctx, inv.id, str(body.reason, 300)) }); }
+    if (sub === 'cancel' && method === 'POST') { requirePerm(u, 'acc_cancel'); return out({ ok: true, id: await cancelInvoice(ctx, inv.id, str(body.reason, 300)) }); }
     if (sub === 'resend' && method === 'POST') { manage(); const r = await sendInvoiceMail(ctx, inv.id, emailOk(body.email) ? body.email : null); await audit(ctx, 'rechnung_erneut_gesendet', 'rechnung', inv.number, { an: body.email || null }); return out({ ok: true, mail: r && r.status }); }
   }
   if (path === '/monthly-run' && method === 'POST') { manage(); const n = await runMonthlyInvoices(ctx, { force: true }); await audit(ctx, 'sammelrechnungen_manuell', 'buchhaltung', null, { anzahl: n }); return out({ ok: true, count: n }); }

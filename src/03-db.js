@@ -142,11 +142,15 @@ const EXTRA_COLUMNS = {
   notes: { visibility: "TEXT NOT NULL DEFAULT 'intern'", org_id: 'INTEGER', author_type: "TEXT NOT NULL DEFAULT 'staff'" },
   users: { extra_perms: "TEXT NOT NULL DEFAULT '[]'", revoked_perms: "TEXT NOT NULL DEFAULT '[]'", department: 'TEXT', phone: 'TEXT',
     must_change_pw: "INTEGER NOT NULL DEFAULT 0", created_by: 'INTEGER', prev_login: 'TEXT' },
-  sessions: { area_until: 'TEXT' }
+  sessions: { area_until: 'TEXT' },
+  billing_items: { cancel_reason: 'TEXT', cancelled_at: 'TEXT', cancelled_by: 'TEXT', prev_status: 'TEXT' }
 };
 
 const OLD_STATUS_MAP = { neu: 'eingang', in_bearbeitung: 'in_bearbeitung', angebot_gesendet: 'angebot_beim_kunden', abgeschlossen: 'kontaktdaten_versendet', abgelehnt: 'angebot_abgelehnt' };
 const OLD_ROLE_MAP = { admin: 'admin', bearbeiter: 'teamleitung', team_angebote: 'vertrieb', team_ankauf: 'vertrieb' };
+
+// Rechte, die nach dem Start hinzukamen: welche festen Rollen sie automatisch bekommen
+const NEW_ROLE_PERMS = { acc_cancel: ['gf', 'buchhaltung'] };
 
 let migrated = false;
 async function migrate(db) {
@@ -160,6 +164,17 @@ async function migrate(db) {
   // Rollen (feste Rollen, Rechte durch Admin anpassbar)
   for (const [key, r] of Object.entries(STAFF_ROLES)) {
     await db.prepare('INSERT OR IGNORE INTO roles (key, name, perms, builtin) VALUES (?, ?, ?, 1)').bind(key, r.label, JSON.stringify(ROLE_PERMS[key])).run();
+  }
+  // Neue Rechte einmalig den vorgesehenen festen Rollen ergänzen (vom Admin später änderbar)
+  for (const [perm, roles] of Object.entries(NEW_ROLE_PERMS)) {
+    const flag = '_perm_' + perm;
+    if (await db.prepare('SELECT value FROM settings WHERE key = ?').bind(flag).first()) continue;
+    for (const key of roles) {
+      const row = await db.prepare('SELECT perms FROM roles WHERE key = ?').bind(key).first();
+      if (!row) continue;
+      const perms = jparse(row.perms, []); if (!perms.includes(perm)) { perms.push(perm); await db.prepare('UPDATE roles SET perms = ? WHERE key = ?').bind(JSON.stringify(perms), key).run(); }
+    }
+    await db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES (?, '1', ?, 'system')").bind(flag, nowIso()).run();
   }
   // Admin hat immer alle Rechte (auch neu hinzugekommene)
   await db.prepare("UPDATE roles SET perms = ?, name = 'Admin', builtin = 1 WHERE key = 'admin'").bind(JSON.stringify(PERM_KEYS)).run();

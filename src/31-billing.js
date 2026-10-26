@@ -96,6 +96,47 @@ async function runMonthlyInvoices(ctx, { force = false } = {}) {
   }
   return n;
 }
+// Abrechnungsfall stornieren. Ist der Fall schon abgerechnet, wird die Rechnung storniert (Stornorechnung)
+// und weitere Fälle derselben Rechnung werden sofort mit einer korrigierten Rechnung neu abgerechnet.
+async function cancelBillingItem(ctx, itemId, reason) {
+  const it = await DB.one(ctx.db, 'SELECT * FROM billing_items WHERE id = ?', itemId);
+  need(it, 404, 'Fall nicht gefunden.');
+  need(it.status !== 'storniert', 409, 'Dieser Fall ist bereits storniert.');
+  reason = str(reason, 300); need(reason.length >= 3, 400, 'Bitte gib einen Grund für das Storno an.');
+  const who = ctx._staff ? ctx._staff.name : 'System';
+  const res = { stornoInvoiceId: null, stornoNumber: null, newInvoiceId: null, newNumber: null, rebilled: 0 };
+  if (it.status === 'abgerechnet' && it.invoice_id) {
+    const inv = await DB.one(ctx.db, 'SELECT * FROM invoices WHERE id = ?', it.invoice_id);
+    need(inv && inv.status !== 'storniert', 409, 'Die zugehörige Rechnung ist bereits storniert.');
+    need(!inv.paid, 409, `Für die Rechnung ${inv.number} sind bereits Zahlungen erfasst. Bitte zuerst die Zahlung klären (z. B. Rückzahlung oder Verrechnung), dann stornieren.`);
+    const others = await DB.all(ctx.db, 'SELECT * FROM billing_items WHERE invoice_id = ? AND id != ? ORDER BY id', inv.id, it.id);
+    res.stornoInvoiceId = await cancelInvoice(ctx, inv.id, `Storno Abrechnungsfall${it.request_id ? ' zu Anfrage #' + toNumber(it.request_id) : ''}: ${reason}`);
+    res.stornoNumber = await DB.val(ctx.db, 'SELECT number FROM invoices WHERE id = ?', res.stornoInvoiceId);
+    if (others.length) {
+      const org = await DB.one(ctx.db, 'SELECT * FROM orgs WHERE id = ?', inv.org_id);
+      res.newInvoiceId = await createInvoice(ctx, { org, recipient: jparse(inv.recipient, {}), kind: inv.kind, serviceFrom: inv.service_from, serviceTo: inv.service_to,
+        intro: `Korrigierte Rechnung zur stornierten Rechnung ${inv.number}. Wir berechnen Ihnen die folgenden Vermittlungen:`, note: 'Ersetzt ' + inv.number,
+        lines: others.map((o) => ({ description: o.description, qty: 1, unit: o.amount_net, billing_item_id: o.id, request_id: o.request_id })) });
+      res.newNumber = await DB.val(ctx.db, 'SELECT number FROM invoices WHERE id = ?', res.newInvoiceId);
+      res.rebilled = others.length;
+    }
+  }
+  const t = nowIso();
+  await DB.update(ctx.db, 'billing_items', it.id, { status: 'storniert', prev_status: it.status, invoice_id: null, cancel_reason: reason, cancelled_at: t, cancelled_by: who, updated_at: t });
+  if (it.request_id) await reqEvent(ctx, it.request_id, 'abrechnung_storniert', `${reason}${res.stornoNumber ? ' (Stornorechnung ' + res.stornoNumber + ')' : ''}`);
+  await audit(ctx, 'fall_storniert', 'abrechnung', it.id, { grund: reason, anfrage: it.request_id ? toNumber(it.request_id) : null, netto: it.amount_net, stornorechnung: res.stornoNumber, neue_rechnung: res.newNumber });
+  return res;
+}
+// Storno eines Falls aufheben: Fall wird wieder abrechenbar (offen bzw. Sammelablage)
+async function reopenBillingItem(ctx, itemId) {
+  const it = await DB.one(ctx.db, 'SELECT * FROM billing_items WHERE id = ?', itemId);
+  need(it && it.status === 'storniert', 409, 'Nur stornierte Fälle können wieder geöffnet werden.');
+  const status = it.prev_status === 'gesammelt' ? 'gesammelt' : 'offen';
+  await DB.update(ctx.db, 'billing_items', it.id, { status, prev_status: null, cancel_reason: null, cancelled_at: null, cancelled_by: null, updated_at: nowIso() });
+  if (it.request_id) await reqEvent(ctx, it.request_id, 'abrechnung_reaktiviert', '');
+  await audit(ctx, 'fall_storno_aufgehoben', 'abrechnung', it.id, { status, frueherer_grund: it.cancel_reason });
+  return { status };
+}
 async function cancelInvoice(ctx, id, reason) {
   const inv = await DB.one(ctx.db, 'SELECT * FROM invoices WHERE id = ?', id);
   need(inv && inv.status !== 'storniert' && inv.kind !== 'storno', 409, 'Diese Rechnung kann nicht storniert werden.');

@@ -31,6 +31,7 @@ const PERMISSIONS = [
   // Buchhaltung
   { key: 'acc_view',          group: 'Buchhaltung', label: 'Buchhaltung sehen' },
   { key: 'acc_manage',        group: 'Buchhaltung', label: 'Rechnungen, Mahnungen, Zahlungen, Lieferanten verwalten' },
+  { key: 'acc_cancel',        group: 'Buchhaltung', label: 'Abrechnungsfälle und Rechnungen stornieren' },
   { key: 'acc_settings',      group: 'Buchhaltung', label: 'Zahlungsziel, Mahngebühren, Zahlungsbedingungen festlegen' },
   { key: 'acc_release',       group: 'Buchhaltung', label: 'Zahlungsliste freigeben (Bank-Export)' },
   // Geschäftspartner
@@ -69,7 +70,7 @@ const PERM_KEYS = PERMISSIONS.map((p) => p.key);
 const ROLE_PERMS = (() => {
   const vertrieb = ['req_view', 'req_edit', 'req_contact', 'req_message', 'req_spam_report', 'support_view', 'support_manage', 'partner_view'];
   const teamleitung = [...vertrieb, 'req_partner', 'req_assign', 'req_spam_confirm', 'req_status_force', 'team_stats', 'users_view', 'users_create_vt'];
-  const buchhaltung = ['acc_view', 'acc_manage', 'partner_view'];
+  const buchhaltung = ['acc_view', 'acc_manage', 'acc_cancel', 'partner_view'];
   const gf = [...new Set([...teamleitung, ...buchhaltung, 'acc_settings', 'acc_release', 'partner_manage', 'partner_terms', 'partner_stats',
     'stats_view', 'stats_shop', 'support_changes', 'links_view', 'users_create', 'news_publish', 'news_partner'])];
   return { admin: PERM_KEYS.slice(), gf, teamleitung, vertrieb, buchhaltung };

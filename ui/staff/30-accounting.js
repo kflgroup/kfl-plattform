@@ -1,6 +1,6 @@
 /* ===== Buchhaltung ===== */
 const INV_STATUS = { entwurf: ['Entwurf', 'neutral'], offen: ['Offen', 'info'], teilbezahlt: ['Teilbezahlt', 'warn'], bezahlt: ['Bezahlt', 'ok'], storniert: ['Storniert', 'muted'] };
-const ITEM_STATUS = { offen: ['Offen', 'accent'], gesammelt: ['In der Sammelablage', 'info'], abgerechnet: ['Abgerechnet', 'ok'] };
+const ITEM_STATUS = { offen: ['Offen', 'accent'], gesammelt: ['In der Sammelablage', 'info'], abgerechnet: ['Abgerechnet', 'ok'], storniert: ['Storniert', 'muted'] };
 const PI_STATUS = { offen: ['Offen', 'info'], zur_zahlung: ['Zur Zahlung vorgemerkt', 'accent'], in_zahlungsliste: ['In Zahlungsliste', 'warn'], freigegeben: ['Freigegeben', 'ok-light'], bezahlt: ['Bezahlt', 'ok'] };
 const PR_STATUS = { offen: ['Wartet auf Freigabe', 'accent'], freigegeben: ['Freigegeben', 'ok-light'], ausgefuehrt: ['Ausgeführt', 'ok'] };
 const st = (map, k) => badge(...(map[k] || [k, 'neutral']));
@@ -41,14 +41,14 @@ ACT.invSort = (b) => { const q = hashQuery(); setHashQuery({ ...q, sort: b.datas
 async function accItems(P, tab) {
   const q = hashQuery(); const status = q.status || 'offen';
   const d = await GET('/acc/items', { status }); if (!P.alive()) return;
-  P.show(html`${accHead(tab)}<section class="panel mt"><div class="toolbar">${Object.entries({ offen: 'Offen', gesammelt: 'Sammelablage', abgerechnet: 'Abgerechnet', alle: 'Alle' }).map(([k, l]) => html`<a class="btn btn-sm ${status === k ? 'btn-dark' : 'btn-ghost'}" href="#/buchhaltung/faelle?status=${k}">${l}</a>`)}
+  P.show(html`${accHead(tab)}<section class="panel mt"><div class="toolbar">${Object.entries({ offen: 'Offen', gesammelt: 'Sammelablage', abgerechnet: 'Abgerechnet', storniert: 'Storniert', alle: 'Alle' }).map(([k, l]) => html`<a class="btn btn-sm ${status === k ? 'btn-dark' : 'btn-ghost'}" href="#/buchhaltung/faelle?status=${k}">${l}</a>`)}
       <span class="spacer"></span><span class="small muted">Gewonnene Anfragen, deren Kontaktdaten an den Partner gingen. Monatszahler werden gesammelt und am Monatsende abgerechnet.</span></div>
     ${d.items.length ? html`<div class="table-wrap"><table class="table"><thead><tr><th>Anfrage</th><th>Kunde</th><th>Geschäftspartner</th><th>Abrechnung</th><th class="r">Netto</th><th>Status</th><th></th></tr></thead><tbody>
       ${d.items.map((i) => html`<tr><td class="nowrap">${i.number ? html`<a class="link strong" href="#/anfragen/${i.number}">#${i.number}</a>` : '–'}<span class="cell-sub">${i.vehicle || i.description}</span><span class="cell-sub">gewonnen ${fDate(i.created_at)}</span></td>
         <td>${i.customer_name || '–'}<span class="cell-sub">${i.customer_email || ''}</span><span class="cell-sub">${i.customer_phone || ''}</span></td>
         <td>${i.org_name}<span class="cell-sub">${i.billing_email || 'keine Rechnungs-E-Mail'}</span></td><td>${i.billing_mode === 'monatlich' ? 'Monatlich' : 'Je Fall'}</td>
-        <td class="r num">${fEur(i.amount_net)}</td><td>${st(ITEM_STATUS, i.status)}${i.invoice_number ? html`<span class="cell-sub">${i.invoice_number}</span>` : ''}${i.note ? html`<span class="cell-sub">Notiz: ${i.note}</span>` : ''}</td>
-        <td class="r nowrap"><button class="btn btn-sm btn-ghost" data-act="itemOpen" data-id="${i.id}">Ansehen</button>${can('acc_manage') && i.status === 'offen' ? html` <button class="btn btn-sm btn-primary" data-act="itemBill" data-id="${i.id}" data-mode="${i.billing_mode}">${icon('send')}Rechnung versenden</button>` : ''}</td></tr>`)}</tbody></table></div>`
+        <td class="r num">${fEur(i.amount_net)}</td><td>${st(ITEM_STATUS, i.status)}${i.invoice_number ? html`<span class="cell-sub">${i.invoice_number}</span>` : ''}${i.note ? html`<span class="cell-sub">Notiz: ${i.note}</span>` : ''}${i.status === 'storniert' ? html`<span class="cell-sub">Grund: ${i.cancel_reason || '–'}</span><span class="cell-sub">${i.cancelled_by || ''} · ${fDT(i.cancelled_at)}</span>` : ''}</td>
+        <td class="r nowrap"><button class="btn btn-sm btn-ghost" data-act="itemOpen" data-id="${i.id}">Ansehen</button>${can('acc_manage') && i.status === 'offen' ? html` <button class="btn btn-sm btn-primary" data-act="itemBill" data-id="${i.id}" data-mode="${i.billing_mode}">${icon('send')}Rechnung versenden</button>` : ''}${itemCancelBtn(i, i.invoice_number)}</td></tr>`)}</tbody></table></div>`
       : html`<div class="panel-body">${empty(status === 'offen' ? 'Keine offenen Abrechnungsfälle' : 'Keine Fälle', 'Sobald ein Kunde „Interessiert mich“ klickt, erscheint der Fall hier.')}</div>`}</section>`);
 }
 ACT.itemOpen = async (b) => {
@@ -62,7 +62,31 @@ ACT.itemOpen = async (b) => {
     <hr class="sep"><form class="stack" data-submit="itemSave"><input type="hidden" name="id" value="${it.id}">
       <div class="grid-2">${field('Betrag netto', inp('amount', it.amount_net, { attrs: mng && ['offen', 'gesammelt'].includes(it.status) ? '' : 'disabled' }))}${field('Leistungstext', inp('description', it.description, { attrs: mng && ['offen', 'gesammelt'].includes(it.status) ? '' : 'disabled' }))}</div>
       ${field('Notiz', area('note', it.note, { rows: 2, ...(mng ? {} : {}) }))}
-      ${mng ? html`<div class="row"><button class="btn btn-dark" type="submit">Speichern</button>${it.status === 'offen' ? html`<button class="btn btn-primary" type="button" data-act="itemBill" data-id="${it.id}" data-mode="${d.org.billing_mode}">${icon('send')}Rechnung versenden</button>` : ''}</div>` : ''}</form>` });
+      ${it.status === 'storniert' ? html`<div class="note-box">${icon('x')}<span><b>Storniert</b> am ${fDT(it.cancelled_at)} von ${it.cancelled_by || '–'}. Grund: ${it.cancel_reason || '–'}</span></div>` : ''}
+      ${mng || can('acc_cancel') ? html`<div class="row">${mng ? html`<button class="btn btn-dark" type="submit">Speichern</button>` : ''}${mng && it.status === 'offen' ? html`<button class="btn btn-primary" type="button" data-act="itemBill" data-id="${it.id}" data-mode="${d.org.billing_mode}">${icon('send')}Rechnung versenden</button>` : ''}<span class="spacer"></span>${itemCancelBtn(it, d.invoiceNumber)}</div>` : ''}</form>` });
+};
+// Stornieren nur mit Recht „acc_cancel“ (Admin, Geschäftsführung, Buchhaltung)
+function itemCancelBtn(i, invNo) {
+  if (!can('acc_cancel')) return '';
+  if (i.status === 'storniert') return html` <button class="btn btn-sm" type="button" data-act="itemReopen" data-id="${i.id}">${icon('refresh')}Storno aufheben</button>`;
+  return html` <button class="btn btn-sm btn-ghost" type="button" data-act="itemCancel" data-id="${i.id}" data-status="${i.status}" data-inv="${invNo || ''}" data-no="${i.number || i.request_number || ''}">${icon('x')}Stornieren</button>`;
+}
+ACT.itemCancel = async (b) => {
+  const billed = b.dataset.status === 'abgerechnet', inv = b.dataset.inv, no = b.dataset.no;
+  const text = billed
+    ? `Der Fall ist bereits abgerechnet. Die Rechnung ${inv} wird storniert: Es entsteht eine Stornorechnung, die automatisch an den Geschäftspartner geht. Stehen weitere Fälle auf dieser Rechnung, werden sie sofort mit einer korrigierten Rechnung neu abgerechnet. Bereits bezahlte Rechnungen können nicht storniert werden.`
+    : 'Der Fall wird nicht abgerechnet und verschwindet aus den offenen Fällen' + (b.dataset.status === 'gesammelt' ? ' und aus der Sammelablage' : '') + '. Das Storno kann später wieder aufgehoben werden.';
+  const d = await ask({ title: `Abrechnungsfall${no ? ' zu Anfrage #' + no : ''} stornieren?`, text, ok: billed ? 'Rechnung und Fall stornieren' : 'Fall stornieren', danger: true,
+    fields: html`${field('Grund *', inp('reason', '', { req: true, ph: 'z. B. Kunde hat nicht gekauft, Kulanz, doppelt erfasst', attrs: 'minlength="3" maxlength="300"' }), 'Wird im Protokoll und beim Fall gespeichert.')}` });
+  if (!d) return;
+  const r = await POST(`/acc/items/${b.dataset.id}/cancel`, { reason: d.reason });
+  closeModal();
+  toast(r.stornoNumber ? `Storniert. Stornorechnung ${r.stornoNumber} erstellt${r.newNumber ? `, ${plural(r.rebilled, 'weiterer Fall', 'weitere Fälle')} neu abgerechnet (${r.newNumber})` : ''}.` : 'Fall storniert.');
+  reload();
+};
+ACT.itemReopen = async (b) => {
+  if (!(await confirmBox('Storno aufheben?', 'Der Fall wird wieder abrechenbar und erscheint unter „Offen“ (bzw. in der Sammelablage). Eine bereits erstellte Stornorechnung bleibt bestehen.', 'Storno aufheben'))) return;
+  const r = await POST(`/acc/items/${b.dataset.id}/reopen`); closeModal(); toast(r.status === 'gesammelt' ? 'Fall liegt wieder in der Sammelablage.' : 'Fall ist wieder offen.'); reload();
 };
 SUBMIT.itemSave = async (d) => { await POST(`/acc/items/${d.id}/note`, { text: d.note }); if (d.amount !== undefined) await POST(`/acc/items/${d.id}/amount`, { amount: d.amount, description: d.description }); closeModal(); toast('Gespeichert.'); reload(); };
 ACT.itemBill = async (b) => {
@@ -103,7 +127,7 @@ ACT.openInvoice = async (b) => {
         ${mng && live ? html`<form class="inline-form mt" data-submit="payAdd"><input type="hidden" name="id" value="${i.id}">${field('Betrag', inp('amount', i.open.toFixed(2).replace('.', ','), { req: true }))}${field('Datum', inp('date', todayISO(), { type: 'date' }))}${field('Art', sel('method', ['Überweisung', 'Lastschrift', 'Bar', 'Verrechnung', 'Kulanz'], 'Überweisung'))}<button class="btn btn-ok" type="submit">Zahlung buchen</button></form>` : ''}</div>
       <div><h3>Mahnwesen</h3>${d.dunnings.length ? html`<ul class="timeline mt">${d.dunnings.map((m) => html`<li><div><div class="tl-meta">${fDT(m.created_at)}${m.author ? ' · ' + m.author : ' · automatisch'}</div>${S.config.dunningLevels[m.level] || 'Stufe ' + m.level}${m.fee ? ` · Gebühr ${fEur(m.fee)}` : ''} · fällig ${fDate(m.due_date)} ${m.file_id ? html`<a class="link small" target="_blank" rel="noopener" href="${fileUrl(`/acc/invoices/${i.id}/dunning-pdf/${m.id}`)}">PDF</a>` : ''}</div></li>`)}</ul>` : html`<p class="muted small mt">Noch nicht angemahnt.</p>`}
         ${mng && live && nextLevel <= 4 ? html`<button class="btn btn-sm mt" data-act="dunning" data-id="${i.id}" data-level="${nextLevel}">${icon('bell')}${nextLevel === 1 ? 'Zahlungserinnerung senden' : S.config.dunningLevels[nextLevel] + ' senden'}</button>` : ''}</div></div>`,
-    foot: mng ? html`${i.kind !== 'storno' && i.status !== 'storniert' ? html`<button class="btn btn-ghost" data-act="invCancel" data-id="${i.id}">Stornieren</button>` : ''}<span class="spacer"></span><button class="btn" data-act="invResend" data-id="${i.id}">${icon('mail')}Erneut senden</button><button class="btn btn-dark" data-close>Schließen</button>` : html`<button class="btn btn-dark" data-close>Schließen</button>` });
+    foot: mng || can('acc_cancel') ? html`${can('acc_cancel') && i.kind !== 'storno' && i.status !== 'storniert' ? html`<button class="btn btn-ghost" data-act="invCancel" data-id="${i.id}">Stornieren</button>` : ''}<span class="spacer"></span>${mng ? html`<button class="btn" data-act="invResend" data-id="${i.id}">${icon('mail')}Erneut senden</button>` : ''}<button class="btn btn-dark" data-close>Schließen</button>` : html`<button class="btn btn-dark" data-close>Schließen</button>` });
 };
 SUBMIT.payAdd = async (d) => { const r = await POST(`/acc/invoices/${d.id}/payment`, d); closeModal(); toast(r.status === 'bezahlt' ? 'Zahlung gebucht – Rechnung ist bezahlt.' : 'Teilzahlung gebucht.'); reload(); };
 ACT.dunning = async (b) => {

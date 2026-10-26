@@ -71,6 +71,9 @@ if (!process.env.EMPTY) {
   const sup = await c.post('/api/acc/suppliers', { name: 'Werbeagentur Nord', iban: 'DE89 3704 0044 0532 0130 00', email: 'buchhaltung@werbeagentur-nord.de', city: 'Hamburg', zip: '20095' }, { who: 'bh' });
   await c.post('/api/acc/purchase', { supplier_id: sup.id, number: 'WA-2026-77', date: '2026-10-20', net: '1000', due_date: '2026-11-03', category: 'Marketing' }, { who: 'bh' });
   await c.post('/api/acc/invoices', { org_id: org.B, lines: [{ description: 'Einrichtung Partnerkonto', qty: 1, unit: 99 }], send: true }, { who: 'bh' });
+  // Abrechnungsfälle (Beispiel) für Buchhaltung und Storno
+  const bi = (o, rid, d, a) => env.DB._sq.prepare("INSERT INTO billing_items (org_id, request_id, description, amount_net, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'offen', datetime('now'), datetime('now'))").run(o, rid, d, a);
+  bi(org.B, 4, 'Vermittlung Anfrage #1004 – BMW X1 (PLZ 28195)', 49); bi(org.A, 5, 'Vermittlung Anfrage #1005 – Audi Q5 (PLZ 49074)', 49);
   console.log('Beispieldaten angelegt:', nums.join(', '));
 }
 
