@@ -279,6 +279,7 @@ async function handlePartnerApi(ctx, url) {
     const res = { profile: { name: p.name, email: p.email, phone: p.phone, role: p.role }, org: { name: org.name, street: org.street, zip: org.zip, city: org.city, phone: org.phone, email: org.email, website: org.website, brands: jparse(org.brands, []) } };
     if (p.role === 'gf') {
       Object.assign(res.org, { opening: jparse(org.opening, DEFAULT_OPENING), billing_email: org.billing_email, billing_name: org.billing_name, billing_street: org.billing_street, billing_zip: org.billing_zip, billing_city: org.billing_city, vat_id: org.vat_id, billing_mode: org.billing_mode });
+      res.terms = await termsFor(ctx, org);
       res.users = await DB.all(db, 'SELECT id, name, email, role, active, last_login FROM partner_users WHERE org_id = ? AND active = 1 ORDER BY role, name', p.orgId);
       res.pending = await DB.all(db, "SELECT id, subject, created_at, status FROM tickets WHERE org_id = ? AND kind = 'aenderung' AND status != 'erledigt' ORDER BY id DESC", p.orgId);
       res.invoices = await DB.all(db, "SELECT id, number, issue_date, due_date, gross, paid, fees, status, dunning_level FROM invoices WHERE org_id = ? AND kind != 'storno' ORDER BY id DESC LIMIT 50", p.orgId);

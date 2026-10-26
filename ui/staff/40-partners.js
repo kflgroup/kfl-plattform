@@ -33,8 +33,20 @@ function orgPayload(d) {
   const o = { name: d.name, kind: d.kind, street: d.street, zip: d.zip, city: d.city, phone: d.phone, email: d.email, website: d.website,
     billing_name: d.billing_name, billing_street: d.billing_street, billing_zip: d.billing_zip, billing_city: d.billing_city, billing_email: d.billing_email, vat_id: d.vat_id, tax_no: d.tax_no,
     brands, accepts: d.accepts || [], max_radius_km: d.max_radius_km, opening, contacts, active: d.active };
-  if (can('partner_terms')) Object.assign(o, { billing_mode: d.billing_mode, payment_terms_days: d.payment_terms_days, dunning_fee: d.dunning_fee, lead_price: d.lead_price });
+  if (can('partner_terms') && d.billing_mode !== undefined) Object.assign(o, { billing_mode: d.billing_mode, lead_price: d.lead_price, ...Object.fromEntries(ORG_TERM_KEYS.filter((k) => d[k] !== undefined).map((k) => [k, d[k]])) });
   return o;
+}
+/* Zahlungsziel und Mahnwesen je Geschäftspartner (Startwert = Standard aus den Einstellungen) */
+const ORG_TERM_KEYS = ['payment_terms_days', 'reminder_due_days', 'dunning_fee_1', 'dunning_due_days', 'dunning_fee_2', 'dunning_due_days_2'];
+const feeTxt = (v) => (v === null || v === undefined || v === '' ? '' : (+v).toFixed(2).replace('.', ','));
+function termsFields(o, terms) {
+  const dis = terms ? '' : 'disabled', days = (k, l, h) => field(l, inp(k, o[k] ?? '', { type: 'number', ph: 'Standard', attrs: `min="0" max="365" inputmode="numeric" ${dis}` }), h);
+  const fee = (k, l, h) => field(l, inp(k, feeTxt(o[k]), { ph: 'Standard', attrs: `inputmode="decimal" ${dis}` }), h);
+  const t = (k) => o[k] ?? '–', f = (k) => (o[k] != null ? feeTxt(o[k]) + ' €' : '–');
+  return html`${days('payment_terms_days', 'Zahlungsziel (Tage)', 'ab Rechnungsdatum')}${days('reminder_due_days', 'Frist Zahlungserinnerung (Tage)', 'Erinnerung ist kostenlos')}
+    ${fee('dunning_fee_1', 'Mahngebühr 1. Mahnung (Stufe 1, €)')}${days('dunning_due_days', 'Frist 1. Mahnung (Tage)')}
+    ${fee('dunning_fee_2', 'Mahngebühr 2. Mahnung (Stufe 2, €)')}${days('dunning_due_days_2', 'Frist 2. Mahnung (Tage)', 'letzte Mahnung')}
+    <p class="small muted span-2">Ablauf: Rechnung → nach ${t('payment_terms_days')} Tagen fällig → kostenlose Zahlungserinnerung (Frist ${t('reminder_due_days')} Tage) → 1. Mahnung + ${f('dunning_fee_1')} (Frist ${t('dunning_due_days')} Tage) → 2. Mahnung + ${f('dunning_fee_2')} (Frist ${t('dunning_due_days_2')} Tage) → Inkasso / gerichtliches Mahnverfahren.</p>`;
 }
 ACT.orgNew = async () => {
   modal({ title: 'Geschäftspartner anlegen', wide: true, body: html`<form class="stack" data-submit="orgCreate" id="orgNewForm">
@@ -59,7 +71,7 @@ SUBMIT.orgCreate = async (d) => {
     if (d.u_invite) {
       const inv = await POST(`/orgs/${r.id}/users/${pu.id}/invite`);
       if (inv.mail === 'gesendet') toast(`Partner angelegt – Einladung an ${d.u_email} versendet.`);
-      else { toast('Partner und Konto angelegt, die E-Mail konnte aber nicht versendet werden. Link bitte kopieren.', 'err'); showLink('Einladungslink', inv.link); }
+      else { toast('Partner und Konto angelegt, die Einladung ging aber nicht per E-Mail raus.', 'err'); showLink('Einladung nicht versendet', inv.link, mailWhy(inv)); }
     } else toast('Partner und Konto angelegt. Die Einladung kannst du beim Konto senden.');
   } else toast('Partner angelegt. Lege jetzt die Konten an und verschicke die Einladungen.');
   location.hash = '#/partner/' + r.id;
@@ -90,8 +102,8 @@ async function pagePartner(id) {
         ${field('USt-IdNr.', inp('vat_id', o.vat_id, { attrs: dis }))}${field('Steuernummer', inp('tax_no', o.tax_no, { attrs: dis }))}</div></section>
       <section class="panel"><div class="panel-head"><h2>Konditionen</h2>${terms ? '' : html`<span class="small muted">${icon('lock')} nur Geschäftsführung und Admin</span>`}</div><div class="panel-body grid-2">
         ${field('Abrechnung', sel('billing_mode', [['einzel', 'Jeder Fall einzeln'], ['monatlich', 'Monatliche Sammelrechnung']], o.billing_mode, { attrs: terms ? '' : 'disabled' }))}
-        ${field('Zahlungsziel in Tagen', inp('payment_terms_days', o.payment_terms_days ?? '', { type: 'number', ph: 'Standard', attrs: terms ? 'min="0"' : 'disabled' }))}
-        ${field('Mahngebühr', inp('dunning_fee', o.dunning_fee ?? '', { ph: 'Standard', attrs: terms ? '' : 'disabled' }))}${field('Preis je Vermittlung (netto)', inp('lead_price', o.lead_price ?? '', { ph: 'Standard laut Einstellungen', attrs: terms ? '' : 'disabled' }))}</div></section>
+        ${field('Preis je Vermittlung (netto)', inp('lead_price', o.lead_price ?? '', { ph: 'Standard laut Einstellungen', attrs: terms ? '' : 'disabled' }))}
+        ${termsFields(o, terms)}</div></section>
       <section class="panel"><div class="panel-head"><h2>Anfragen</h2></div><div class="panel-body stack">
         <div class="checks">${chk('accepts[]', o.accepts.includes('deal'), 'Traumwagen-DEAL', 'deal')}${chk('accepts[]', o.accepts.includes('sell'), 'Fahrzeugankauf', 'sell')}</div>
         ${field('Maximaler Umkreis (km)', inp('max_radius_km', o.max_radius_km ?? '', { type: 'number', ph: 'ohne Begrenzung', attrs: dis }), 'Der Kunde wählt seinen Umkreis selbst; hier kann der Partner zusätzlich begrenzt werden.')}
@@ -146,8 +158,10 @@ ACT.puNew = async () => {
   if (inv.mail !== 'gesendet') showLink('Einladungslink', inv.link);
   reload();
 };
-function showLink(title, link) { modal({ title, body: html`<p class="small muted">Diesen Link persönlich weitergeben. Er ist 7 Tage gültig.</p><div class="row mt"><input value="${link}" readonly aria-label="Link"><button class="btn" data-act="copy" data-text="${link}">Kopieren</button></div>` }); }
-ACT.puInvite = async (b) => { const u = ORG.users.find((x) => x.id === +b.dataset.id); const r = await POST(`/orgs/${oid()}/users/${b.dataset.id}/invite`); toast(r.mail === 'gesendet' ? `Einladung an ${u ? u.email : 'den Partner'} versendet.` : 'E-Mail nicht versendet – Link bitte kopieren.', r.mail === 'gesendet' ? 'ok' : 'err'); if (r.mail !== 'gesendet') showLink('Einladungslink', r.link); };
+// Grund, warum eine Einladung nicht per E-Mail rausging
+const mailWhy = (r) => (r && r.mail === 'nicht_konfiguriert') || !S.mailReady ? 'Der E-Mail-Versand ist noch nicht eingerichtet: Im Worker fehlt der Postfach-Zugang (Secrets SMTP_USER und SMTP_PASS für noreplay@kfl-group.com).' : r && r.mail === 'fehler' ? 'Der Mailserver hat den Versand abgelehnt – Details unter Verwaltung → Postausgang.' : 'Die E-Mail konnte nicht versendet werden.';
+function showLink(title, link, why) { modal({ title, body: html`${why ? html`<div class="err-box">${icon('alert')}<span>${why}${can('settings_all') ? html` <a class="link" href="#/verwaltung/einstellungen" data-close>Zur Einrichtung</a>` : ''}</span></div>` : ''}<p class="small muted mt">Bis dahin kannst du den Link persönlich weitergeben. Er ist 7 Tage gültig. Nach der Einrichtung einfach erneut „Einladung senden“ klicken.</p><div class="row mt"><input value="${link}" readonly aria-label="Link"><button class="btn" data-act="copy" data-text="${link}">Kopieren</button></div>` }); }
+ACT.puInvite = async (b) => { const u = ORG.users.find((x) => x.id === +b.dataset.id); const r = await POST(`/orgs/${oid()}/users/${b.dataset.id}/invite`); if (r.mail === 'gesendet') return toast(`Einladung an ${u ? u.email : 'den Partner'} versendet.`); toast('Einladung erstellt, aber nicht per E-Mail versendet.', 'err'); showLink('Einladung nicht versendet', r.link, mailWhy(r)); };
 ACT.puReset = async (b) => {
   const u = ORG.users.find((x) => x.id === +b.dataset.id);
   const d = await ask({ title: `Passwort von ${u.name} zurücksetzen`, ok: 'Senden', fields: html`<div class="stack-s">

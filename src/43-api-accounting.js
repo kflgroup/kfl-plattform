@@ -43,7 +43,7 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     const d = req ? jparse(req.data, {}) : {};
     const invRow = it.invoice_id ? await DB.one(db, 'SELECT number, paid, (SELECT COUNT(*) FROM billing_items x WHERE x.invoice_id = invoices.id) AS cases FROM invoices WHERE id = ?', it.invoice_id) : null;
     return out({ ok: true, item: { ...it, number: it.request_id ? toNumber(it.request_id) : null }, invoiceNumber: invRow ? invRow.number : null, invoicePaid: invRow ? invRow.paid : 0, invoiceCases: invRow ? invRow.cases : 0, request: req ? { number: toNumber(req.id), type: req.type, vehicle: req.vehicle, summary: req.summary, created_at: req.created_at, status: req.status, fields: Object.fromEntries(Object.entries(d).filter(([k]) => !/^_/.test(k))) } : null,
-      customer: req ? customerContact(req) : null, org: { ...orgRecipient(org), id: org.id, name: org.name, billing_mode: org.billing_mode, payment_terms_days: org.payment_terms_days, dunning_fee: org.dunning_fee }, offer: offer ? { ...offer, data: jparse(offer.data, {}) } : null });
+      customer: req ? customerContact(req) : null, org: { ...orgRecipient(org), id: org.id, name: org.name, billing_mode: org.billing_mode, payment_terms_days: org.payment_terms_days, dunning_fee_1: org.dunning_fee_1, dunning_fee_2: org.dunning_fee_2 }, offer: offer ? { ...offer, data: jparse(offer.data, {}) } : null });
   }
   if ((m = path.match(/^\/items\/(\d+)\/(cancel|reopen)$/)) && method === 'POST') {
     requirePerm(u, 'acc_cancel');
@@ -158,6 +158,6 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     if (m[2] === 'release' && method === 'POST') { requirePerm(u, 'acc_release'); await releasePayrun(ctx, pr.id, body.exec_date); return out({ ok: true }); }
     if (m[2] === 'paid' && method === 'POST') { manage(); need(pr.status === 'freigegeben', 409, 'Bitte zuerst freigeben.'); for (const i of jparse(pr.items, [])) await DB.update(db, 'purchase_invoices', i.id, { status: 'bezahlt', paid_at: nowIso() }); await DB.update(db, 'payruns', pr.id, { status: 'ausgefuehrt' }); await audit(ctx, 'zahlungsliste_ausgefuehrt', 'zahlungsliste', pr.id, null); return out({ ok: true }); }
   }
-  if (path === '/orgs' && method === 'GET') return out({ ok: true, orgs: await DB.all(db, 'SELECT id, name, billing_mode, billing_email, payment_terms_days, dunning_fee, lead_price FROM orgs WHERE deleted = 0 ORDER BY name') });
+  if (path === '/orgs' && method === 'GET') return out({ ok: true, orgs: await DB.all(db, 'SELECT id, name, billing_mode, billing_email, payment_terms_days, reminder_due_days, dunning_fee_1, dunning_fee_2, dunning_due_days, dunning_due_days_2, lead_price FROM orgs WHERE deleted = 0 ORDER BY name') });
   return fail(404, 'Nicht gefunden.');
 }

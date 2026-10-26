@@ -144,7 +144,9 @@ const INVOICE_STATUSES = [
   { key: 'entwurf', label: 'Entwurf' }, { key: 'offen', label: 'Offen' }, { key: 'teilbezahlt', label: 'Teilbezahlt' },
   { key: 'bezahlt', label: 'Bezahlt' }, { key: 'storniert', label: 'Storniert' }
 ];
-const DUNNING_LEVELS = { 1: 'Zahlungserinnerung', 2: '1. Mahnung', 3: '2. Mahnung', 4: 'Letzte Mahnung' };
+// Mahnwesen: kostenlose Zahlungserinnerung, dann 1. Mahnung (Stufe 1) und 2. Mahnung (Stufe 2, letzte Mahnung)
+const DUNNING_LEVELS = { 1: 'Zahlungserinnerung', 2: '1. Mahnung', 3: '2. Mahnung' };
+const DUNNING_MAX = 3;
 
 /* ---------- Mail-Absender je Kategorie ---------- */
 const MAIL_CATEGORIES = {
@@ -202,12 +204,15 @@ const DEFAULT_SETTINGS = {
   vat_enabled: true,
   payment_terms_days: 14,
   dunning_auto: false,
-  dunning_days_1: 3,
-  dunning_days_2: 10,
-  dunning_days_3: 10,
-  dunning_days_4: 10,
-  dunning_fee: 5,
-  dunning_due_days: 7,
+  // Versand der nächsten Stufe: Tage nach Ablauf der vorherigen Frist (Zahlungsziel bzw. Frist im letzten Schreiben)
+  dunning_days_1: 1,
+  dunning_days_2: 1,
+  dunning_days_3: 1,
+  reminder_due_days: 5,      // neue Frist in der kostenlosen Zahlungserinnerung
+  dunning_fee_1: 4.9,        // Mahngebühr 1. Mahnung (Stufe 1)
+  dunning_fee_2: 79.8,       // Mahngebühr 2. Mahnung (Stufe 2)
+  dunning_due_days: 10,      // Frist in der 1. Mahnung
+  dunning_due_days_2: 7,     // Frist in der 2. (letzten) Mahnung
   invoice_prefix: 'RE',
   invoice_next: 1,
   invoice_intro: 'Wir berechnen Ihnen für die erfolgreiche Vermittlung folgende Leistungen:',
@@ -240,10 +245,13 @@ const DEFAULT_SETTINGS = {
 };
 
 // Einstellungen, die die Geschäftsführung ändern darf (sonst nur Admin)
-const GF_SETTINGS = ['payment_terms_days', 'dunning_fee', 'dunning_auto', 'dunning_days_1', 'dunning_days_2', 'dunning_days_3', 'dunning_days_4',
+const GF_SETTINGS = ['payment_terms_days', 'reminder_due_days', 'dunning_fee_1', 'dunning_fee_2', 'dunning_due_days', 'dunning_due_days_2', 'dunning_auto', 'dunning_days_1', 'dunning_days_2', 'dunning_days_3',
   'lead_price_deal', 'lead_price_sell', 'vat_rate', 'vat_enabled', 'invoice_intro', 'invoice_footer'];
 // Buchhaltung darf die Mahngebühr einstellen (laut Vorgabe „Manuell in den Einstellungen bei der Buchhaltung“)
-const ACC_SETTINGS = ['dunning_fee'];
+const ACC_SETTINGS = ['dunning_fee_1', 'dunning_fee_2'];
+
+// Konditionen, die bei jedem Geschäftspartner einzeln hinterlegt werden (Startwert = Einstellung)
+const ORG_TERMS = { payment_terms_days: 'payment_terms_days', reminder_due_days: 'reminder_due_days', dunning_fee_1: 'dunning_fee_1', dunning_fee_2: 'dunning_fee_2', dunning_due_days: 'dunning_due_days', dunning_due_days_2: 'dunning_due_days_2' };
 
 const WEEKDAYS = ['mo', 'di', 'mi', 'do', 'fr', 'sa', 'so'];
 const WEEKDAY_LABELS = { mo: 'Montag', di: 'Dienstag', mi: 'Mittwoch', do: 'Donnerstag', fr: 'Freitag', sa: 'Samstag', so: 'Sonntag' };

@@ -412,7 +412,8 @@ async function handleStaffApi(ctx, url) {
       const o = await orgFromBody(ctx, u, body, org);
       await DB.update(db, 'orgs', oid, { ...o, updated_at: nowIso() });
       if (o.billing_mode && o.billing_mode !== org.billing_mode) await DB.insert(db, 'org_notes', { org_id: oid, user_id: u.id, text: `Abrechnungsart geändert: ${org.billing_mode} → ${o.billing_mode} am ${fmtDE(nowMs())} durch ${u.name}`, created_at: nowIso() });
-      for (const k of ['payment_terms_days', 'dunning_fee', 'lead_price']) if (o[k] !== undefined && o[k] !== org[k]) await DB.insert(db, 'org_notes', { org_id: oid, user_id: u.id, text: `${k === 'payment_terms_days' ? 'Zahlungsziel' : k === 'dunning_fee' ? 'Mahngebühr' : 'Lead-Preis'} geändert: ${org[k] ?? 'Standard'} → ${o[k] ?? 'Standard'} (${u.name})`, created_at: nowIso() });
+      const TL = { payment_terms_days: 'Zahlungsziel (Tage)', reminder_due_days: 'Frist Zahlungserinnerung (Tage)', dunning_fee_1: 'Mahngebühr 1. Mahnung', dunning_fee_2: 'Mahngebühr 2. Mahnung', dunning_due_days: 'Frist 1. Mahnung (Tage)', dunning_due_days_2: 'Frist 2. Mahnung (Tage)', lead_price: 'Lead-Preis' };
+      for (const k of Object.keys(TL)) if (o[k] !== undefined && o[k] !== org[k]) await DB.insert(db, 'org_notes', { org_id: oid, user_id: u.id, text: `${TL[k]} geändert: ${org[k] ?? 'Standard'} → ${o[k] ?? 'Standard'} (${u.name})`, created_at: nowIso() });
       await audit(ctx, 'partner_geaendert', 'partner', oid, Object.keys(o));
       return out({ ok: true });
     }
@@ -780,17 +781,25 @@ async function orgFromBody(ctx, u, b, existing) {
   if (b.opening !== undefined) { const op = {}; for (const d of WEEKDAYS) { const v = b.opening[d]; op[d] = v && v[0] && v[1] ? [str(v[0], 5), str(v[1], 5)] : null; } set('opening', JSON.stringify(op)); }
   if (b.contacts !== undefined) set('contacts', JSON.stringify((b.contacts || []).slice(0, 20).map((c) => ({ role: str(c.role, 60), name: str(c.name, 80), email: str(c.email, 200), phone: str(c.phone, 40) }))));
   if (b.active !== undefined) set('active', b.active ? 1 : 0);
-  const terms = ['billing_mode', 'payment_terms_days', 'dunning_fee', 'lead_price'].filter((k) => b[k] !== undefined && (!existing || String(b[k] ?? '') !== String(existing[k] ?? '')));
+  const terms = ['billing_mode', 'lead_price', ...Object.keys(ORG_TERMS)].filter((k) => b[k] !== undefined && (!existing || String(b[k] ?? '') !== String(existing[k] ?? '')));
   if (terms.length) {
     need(can(u, 'partner_terms'), 403, 'Konditionen (Abrechnungsart, Zahlungsziel, Gebühren) dürfen nur Geschäftsführung und Admin ändern.');
     if (b.billing_mode !== undefined) set('billing_mode', b.billing_mode === 'monatlich' ? 'monatlich' : 'einzel');
-    if (b.payment_terms_days !== undefined) set('payment_terms_days', b.payment_terms_days === '' || b.payment_terms_days === null ? null : toInt(b.payment_terms_days, null));
-    if (b.dunning_fee !== undefined) set('dunning_fee', b.dunning_fee === '' || b.dunning_fee === null ? null : toNum(b.dunning_fee));
+    // Zahlungsziel, Fristen (Tage) und Mahngebühren (€) – leer = Standard aus den Einstellungen
+    for (const k of Object.keys(ORG_TERMS)) if (b[k] !== undefined) {
+      const isFee = /fee/.test(k), v = b[k] === '' || b[k] === null ? null : isFee ? toNum(b[k]) : toInt(b[k], null);
+      need(v === null || (v >= 0 && (isFee ? v <= 10000 : v <= 365)), 400, isFee ? 'Bitte eine gültige Mahngebühr angeben.' : 'Bitte eine gültige Anzahl Tage (0–365) angeben.');
+      set(k, v === null ? null : isFee ? round2(v) : v);
+    }
     if (b.lead_price !== undefined) set('lead_price', b.lead_price === '' || b.lead_price === null ? null : toNum(b.lead_price));
   }
   // Geokoordinaten der Anschrift
   const zip = o.zip !== undefined ? o.zip : existing && existing.zip;
   if (zip && (!existing || o.zip !== undefined)) { const g = await geocodePlz(ctx, zip); if (g) { o.lat = g.lat; o.lon = g.lon; } }
-  if (!existing) { if (!o.opening) o.opening = JSON.stringify(DEFAULT_OPENING); if (!o.brands) o.brands = '[]'; }
+  if (!existing) {
+    if (!o.opening) o.opening = JSON.stringify(DEFAULT_OPENING); if (!o.brands) o.brands = '[]';
+    // Neue Geschäftspartner bekommen die Standard-Konditionen fest hinterlegt (danach je Partner änderbar)
+    const st = await settingsOf(ctx); for (const [col, key] of Object.entries(ORG_TERMS)) if (o[col] === undefined || o[col] === null) o[col] = st[key];
+  }
   return o;
 }

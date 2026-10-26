@@ -144,6 +144,7 @@ const EXTRA_COLUMNS = {
     must_change_pw: "INTEGER NOT NULL DEFAULT 0", created_by: 'INTEGER', prev_login: 'TEXT' },
   sessions: { area_until: 'TEXT' },
   mail_outbox: { server_reply: 'TEXT' },
+  orgs: { reminder_due_days: 'INTEGER', dunning_fee_1: 'REAL', dunning_fee_2: 'REAL', dunning_due_days: 'INTEGER', dunning_due_days_2: 'INTEGER' },
   invoices: { mail_status: 'TEXT', mail_error: 'TEXT', intro: 'TEXT' },
   billing_items: { cancel_reason: 'TEXT', cancelled_at: 'TEXT', cancelled_by: 'TEXT', prev_status: 'TEXT' }
 };
@@ -184,6 +185,12 @@ async function migrate(db) {
       WHERE sent_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM mail_outbox m WHERE m.category = 'invoice' AND m.status = 'gesendet' AND instr(m.subject, invoices.number) > 0)`).run();
     await db.prepare("UPDATE invoices SET mail_status = 'gesendet' WHERE sent_at IS NOT NULL AND mail_status IS NULL").run();
     await db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES ('_fix_invoice_sent', '1', ?, 'system')").bind(nowIso()).run();
+  }
+  // Einmalig: Standard-Konditionen (Zahlungsziel, Mahnfristen, Mahngebühren) bei allen Geschäftspartnern hinterlegen
+  if (!(await db.prepare("SELECT value FROM settings WHERE key = '_org_terms_v2'").first())) {
+    const val = async (k) => { const r = await db.prepare('SELECT value FROM settings WHERE key = ?').bind(k).first(); const v = r ? jparse(r.value, null) : null; return v === null || v === '' ? DEFAULT_SETTINGS[k] : v; };
+    for (const [col, key] of Object.entries(ORG_TERMS)) await db.prepare(`UPDATE orgs SET ${col} = ? WHERE ${col} IS NULL`).bind(await val(key)).run();
+    await db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES ('_org_terms_v2', '1', ?, 'system')").bind(nowIso()).run();
   }
   // Admin hat immer alle Rechte (auch neu hinzugekommene)
   await db.prepare("UPDATE roles SET perms = ?, name = 'Admin', builtin = 1 WHERE key = 'admin'").bind(JSON.stringify(PERM_KEYS)).run();

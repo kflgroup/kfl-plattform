@@ -20,9 +20,11 @@ async function nextInvoiceNumber(ctx) {
   }
   throw new HttpError(500, 'Rechnungsnummer konnte nicht vergeben werden.');
 }
+// Konditionen eines Geschäftspartners (individueller Wert, sonst Einstellung)
 async function termsFor(ctx, org) {
   const s = await settingsOf(ctx);
-  return { days: org && org.payment_terms_days != null ? org.payment_terms_days : s.payment_terms_days, fee: org && org.dunning_fee != null ? org.dunning_fee : s.dunning_fee };
+  const g = (k) => (org && org[k] != null && org[k] !== '' ? +org[k] : +s[k]);
+  return { days: g('payment_terms_days'), reminderDays: g('reminder_due_days'), fee1: g('dunning_fee_1'), fee2: g('dunning_fee_2'), dueDays1: g('dunning_due_days'), dueDays2: g('dunning_due_days_2') };
 }
 
 async function createInvoice(ctx, { org = null, recipient = null, lines, kind = 'einzel', serviceFrom, serviceTo, intro, note, send = true, sendTo }) {
@@ -178,12 +180,13 @@ async function sendDunning(ctx, id, { auto = false } = {}) {
   const s = await settingsOf(ctx);
   const inv = await DB.one(ctx.db, 'SELECT * FROM invoices WHERE id = ?', id);
   need(inv && ['offen', 'teilbezahlt'].includes(inv.status) && inv.kind !== 'storno', 409, 'Für diese Rechnung ist keine Mahnung möglich.');
-  const level = Math.min(4, (inv.dunning_level || 0) + 1);
-  need(inv.dunning_level < 4, 409, 'Die letzte Mahnstufe ist bereits erreicht.');
+  need((inv.dunning_level || 0) < DUNNING_MAX, 409, 'Die letzte Mahnstufe (2. Mahnung) ist bereits erreicht. Weiter geht es mit Inkasso bzw. gerichtlichem Mahnverfahren.');
+  const level = (inv.dunning_level || 0) + 1;
   const org = inv.org_id ? await DB.one(ctx.db, 'SELECT * FROM orgs WHERE id = ?', inv.org_id) : null;
   const terms = await termsFor(ctx, org);
-  const fee = level >= 2 ? round2(terms.fee) : 0;
-  const due = addDaysDate(berlinDate(nowMs()), toInt(s.dunning_due_days, 7) || 7);
+  // Stufe 1: kostenlose Zahlungserinnerung (Frist 5 Tage) · Stufe 2: 1. Mahnung · Stufe 3: 2. (letzte) Mahnung
+  const fee = level === 2 ? round2(terms.fee1) : level === 3 ? round2(terms.fee2) : 0;
+  const due = addDaysDate(berlinDate(nowMs()), Math.max(1, level === 1 ? terms.reminderDays : level === 2 ? terms.dueDays1 : terms.dueDays2) || 7);
   const fees = round2(inv.fees + fee), open = round2(inv.gross + fees - inv.paid);
   const pdf = renderDunningPdf(s, { ...inv, fees: inv.fees }, level, fee, due, open);
   const fileId = await putFile(ctx, { name: `${inv.number}-${DUNNING_LEVELS[level].replace(/\W+/g, '-')}.pdf`, mime: 'application/pdf', bytes: pdf, ownerType: 'dunning', ownerId: id });
@@ -191,7 +194,7 @@ async function sendDunning(ctx, id, { auto = false } = {}) {
   const t = nowIso();
   await DB.insert(ctx.db, 'dunnings', { invoice_id: id, level, fee, due_date: due, file_id: fileId, sent_at: t, sent_to: rc.email || null, created_by: ctx._staff ? ctx._staff.id : null, created_at: t });
   await DB.update(ctx.db, 'invoices', id, { dunning_level: level, last_dunning_at: t, fees, updated_at: t });
-  if (emailOk(rc.email)) await sendMail(ctx, { category: 'invoice', to: rc.email, toName: rc.name, subject: `${DUNNING_LEVELS[level]} zur Rechnung ${inv.number}`, title: `${DUNNING_LEVELS[level]} zur Rechnung ${inv.number}`,
+  if (emailOk(rc.email)) await sendMail(ctx, { category: 'invoice', to: rc.email, toName: rc.name, replyTo: { email: s.company_email, name: `${s.company_name} Buchhaltung` }, subject: `${DUNNING_LEVELS[level]} zur Rechnung ${inv.number}`, title: `${DUNNING_LEVELS[level]} zur Rechnung ${inv.number}`,
     body: `<p>Sehr geehrte Damen und Herren,</p><p>${level === 1 ? 'zu unserer Rechnung' : 'trotz unserer Erinnerung ist die Rechnung'} <strong>${esc(inv.number)}</strong> vom ${esc(fmtDateDE(inv.issue_date))} ${level === 1 ? 'konnten wir noch keinen vollständigen Zahlungseingang feststellen' : 'weiterhin offen'}. Bitte überweisen Sie den offenen Betrag von <strong>${esc(money(open))}</strong>${fee ? ` (inkl. Mahngebühr ${esc(money(fee))})` : ''} bis zum <strong>${esc(fmtDateDE(due))}</strong>.</p><p>Sollten Sie bereits gezahlt haben, betrachten Sie dieses Schreiben bitte als gegenstandslos.</p><p>Mit freundlichen Grüßen<br>${esc(s.company_name)} – Buchhaltung</p>`,
     attachments: [{ name: `${inv.number}-${DUNNING_LEVELS[level]}.pdf`, base64: b64(pdf) }] });
   if (org) await notifyPartner(ctx, { orgId: org.id, roles: ['gf'] }, { kind: 'buchhaltung', title: `${DUNNING_LEVELS[level]}: Rechnung ${inv.number}`, body: `Offener Betrag ${money(open)}, bitte bis ${fmtDateDE(due)} begleichen.`, link: '#/einstellungen/rechnungen' });
@@ -202,9 +205,10 @@ async function runDunningJobs(ctx) {
   const s = await settingsOf(ctx);
   if (!s.dunning_auto) return 0;
   const today = berlinDate(nowMs()); let n = 0;
-  for (const inv of await DB.all(ctx.db, "SELECT * FROM invoices WHERE status IN ('offen','teilbezahlt') AND kind != 'storno' AND due_date < ? AND dunning_level < 4", today)) {
-    const days = toInt(s['dunning_days_' + (inv.dunning_level + 1)], 10);
-    const ref = inv.dunning_level ? berlinDate(msOf(inv.last_dunning_at)) : inv.due_date;
+  for (const inv of await DB.all(ctx.db, "SELECT * FROM invoices WHERE status IN ('offen','teilbezahlt') AND kind != 'storno' AND due_date < ? AND dunning_level < ?", today, DUNNING_MAX)) {
+    const days = toInt(s['dunning_days_' + (inv.dunning_level + 1)], 1);
+    // nächste Stufe erst, wenn die Frist des letzten Schreibens (bzw. das Zahlungsziel) abgelaufen ist
+    const ref = inv.dunning_level ? ((await DB.val(ctx.db, 'SELECT due_date FROM dunnings WHERE invoice_id = ? ORDER BY level DESC LIMIT 1', inv.id)) || berlinDate(msOf(inv.last_dunning_at))) : inv.due_date;
     if (addDaysDate(ref, days) <= today) { try { await sendDunning(ctx, inv.id, { auto: true }); n++; } catch (e) { console.log('Mahnung', e.message); } }
   }
   return n;

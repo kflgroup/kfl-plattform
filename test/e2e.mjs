@@ -181,9 +181,9 @@ check(/Rechnung RE-2026-00001/.test(txt) && /Anfrage #1001/.test(txt) && /58,31 
 check(q1('SELECT billed FROM requests WHERE id = 1').billed === 1, 'Anfrage als „in Rechnung gestellt“ markiert');
 r = await c.post(`/api/acc/invoices/${inv.id}/dunning`, {}, { who: 'bh' }); check(r.ok && r.level === 1 && r.fee === 0, 'Zahlungserinnerung (ohne Gebühr)');
 r = await c.get('/papi/news', { who: 'a_gf' }); check(r.notifications.some((n) => /Zahlungserinnerung/.test(n.title)), 'Erinnerung erscheint in den News des Partners');
-r = await c.post(`/api/acc/invoices/${inv.id}/dunning`, {}, { who: 'bh' }); check(r.ok && r.level === 2 && r.fee === 5, '1. Mahnung mit 5 € Gebühr');
+r = await c.post(`/api/acc/invoices/${inv.id}/dunning`, {}, { who: 'bh' }); check(r.ok && r.level === 2 && r.fee === 4.9, '1. Mahnung mit 4,90 € Gebühr');
 r = await c.post(`/api/acc/invoices/${inv.id}/payment`, { amount: '30' }, { who: 'bh' }); check(r.status === 'teilbezahlt', 'Teilzahlung erfasst');
-r = await c.post(`/api/acc/invoices/${inv.id}/payment`, { amount: '33,31' }, { who: 'bh' }); check(r.status === 'bezahlt', 'Rest inkl. Mahngebühr → bezahlt', r);
+r = await c.post(`/api/acc/invoices/${inv.id}/payment`, { amount: '33,21' }, { who: 'bh' }); check(r.status === 'bezahlt', 'Rest inkl. Mahngebühr → bezahlt', r);
 r = await c.get('/api/acc/invoices?q=RE-2026', { who: 'bh' }); check(r.invoices.length === 1, 'Rechnungssuche nach Nummer');
 
 console.log('9) Bearbeitungssperre 4 h und Fristablauf');
