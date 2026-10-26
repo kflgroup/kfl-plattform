@@ -738,7 +738,7 @@ async function handleStaffApi(ctx, url) {
     await audit(ctx, 'test_mail', 'einstellungen', null, { an: to, status: r.status });
     return out({ ok: true, status: r.status, error: r.error || null, provider: mailProvider(env) });
   }
-  if (path === '/outbox' && method === 'GET') { requirePerm(u, 'settings_all'); return out({ ok: true, mails: await DB.all(db, 'SELECT id, category, sender, recipient, subject, status, error, created_at FROM mail_outbox ORDER BY id DESC LIMIT 200') }); }
+  if (path === '/outbox' && method === 'GET') { requirePerm(u, 'settings_all'); return out({ ok: true, mails: await DB.all(db, 'SELECT id, category, sender, recipient, subject, status, error, server_reply, created_at FROM mail_outbox ORDER BY id DESC LIMIT 200') }); }
   if ((m = path.match(/^\/outbox\/(\d+)$/)) && method === 'GET') { requirePerm(u, 'settings_all'); const mm = await DB.one(db, 'SELECT * FROM mail_outbox WHERE id = ?', +m[1]); need(mm, 404, 'Nicht gefunden.'); return new Response(mm.html, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'none'; img-src data:; style-src 'unsafe-inline'", ...SEC_HEADERS } }); }
   if (path === '/geo/import' && method === 'POST') {
     requirePerm(u, 'settings_all');

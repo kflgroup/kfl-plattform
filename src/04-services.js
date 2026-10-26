@@ -60,11 +60,11 @@ async function sendMail(ctx, { category = 'system', to, toName, subject, title, 
   const content = html || mailWrap(s, title || subject, body || '');
   const recipient = Array.isArray(to) ? to.join(', ') : to;
   if (!recipient || !emailOk(String(recipient).split(',')[0].trim())) return { ok: false, error: 'Keine gültige Empfängeradresse' };
-  let status = 'nicht_konfiguriert', error = null;
+  let status = 'nicht_konfiguriert', error = null, reply = null;
   const list = (Array.isArray(to) ? to : String(to).split(',')).map((x) => String(x).trim()).filter(Boolean);
   if (smtpConfigured(ctx.env)) {
     try {
-      await smtpSendMail(ctx.env, { from, fromName: s.mail_sender_name, to: list, toName, subject, html: content, replyTo, attachments: (attachments || []).map((a) => ({ name: a.name, base64: a.base64, type: a.type })) });
+      reply = await smtpSendMail(ctx.env, { from, fromName: s.mail_sender_name, to: list, toName, subject, html: content, replyTo, attachments: (attachments || []).map((a) => ({ name: a.name, base64: a.base64, type: a.type })) });
       status = 'gesendet';
     } catch (e) { status = 'fehler'; error = String(e.message || e).slice(0, 500); }
   } else if (ctx.env.BREVO_API_KEY) {
@@ -77,7 +77,8 @@ async function sendMail(ctx, { category = 'system', to, toName, subject, title, 
       if (!res.ok) { status = 'fehler'; error = 'Brevo ' + res.status + ': ' + (await res.text()).slice(0, 300); } else status = 'gesendet';
     } catch (e) { status = 'fehler'; error = e.message; }
   }
-  await DB.insert(ctx.db, 'mail_outbox', { category, sender: from, recipient, subject, html: content.slice(0, 60000), status, error, created_at: nowIso() });
+  // Antwort des Mailservers (z. B. „250 … queued as …“) als Zustellnachweis speichern
+  await DB.insert(ctx.db, 'mail_outbox', { category, sender: from, recipient, subject, html: content.slice(0, 60000), status, error, server_reply: reply ? String(reply).slice(0, 300) : null, created_at: nowIso() });
   if (status === 'fehler') console.log('Mail-Fehler', error);
   return { ok: status === 'gesendet', status, error };
 }
