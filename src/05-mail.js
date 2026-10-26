@@ -10,6 +10,21 @@
 const SMTP_DEFAULT_USER = 'noreplay@kfl-group.com';
 const smtpUser = (env) => env.SMTP_USER || SMTP_DEFAULT_USER;
 const smtpConfigured = (env) => !!env.SMTP_PASS;
+// Postfach-Zugang: im Dashboard hinterlegt (verschlüsselt in der Datenbank) oder als Cloudflare-Secret
+async function mailEnv(ctx) {
+  if (ctx._mailEnv) return ctx._mailEnv;
+  let env = ctx.env;
+  try {
+    const sealed = await rawSetting(ctx.db, '_smtp_cred');
+    if (sealed) { const c = jparse(await openSecret(ctx.env, sealed), null); if (c && c.user && c.pass) env = { ...ctx.env, SMTP_USER: c.user, SMTP_PASS: c.pass, _smtpSource: 'dashboard' }; }
+  } catch (e) { /* ohne gespeicherten Zugang */ }
+  if (env === ctx.env && ctx.env.SMTP_PASS) env = { ...ctx.env, _smtpSource: 'cloudflare' };
+  ctx._mailEnv = env; return env;
+}
+// Zugangsdaten bei IONOS prüfen (Anmeldung ohne Versand)
+async function smtpVerify(env, user, pass) {
+  return Promise.race([smtpSession(env, user, pass, async () => true), new Promise((_, rej) => setTimeout(() => rej(new Error('Zeitüberschreitung bei der Verbindung zum Mailserver')), 20000))]);
+}
 const mailProvider = (env) => (smtpConfigured(env) ? 'smtp' : env.BREVO_API_KEY ? 'brevo' : null);
 
 const utf8b64 = (s) => { const bytes = new TextEncoder().encode(String(s)); let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(bin); };

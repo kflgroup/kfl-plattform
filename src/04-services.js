@@ -62,9 +62,10 @@ async function sendMail(ctx, { category = 'system', to, toName, subject, title, 
   if (!recipient || !emailOk(String(recipient).split(',')[0].trim())) return { ok: false, error: 'Keine gültige Empfängeradresse' };
   let status = 'nicht_konfiguriert', error = null, reply = null;
   const list = (Array.isArray(to) ? to : String(to).split(',')).map((x) => String(x).trim()).filter(Boolean);
-  if (smtpConfigured(ctx.env)) {
+  const menv = await mailEnv(ctx);
+  if (smtpConfigured(menv)) {
     try {
-      reply = await smtpSendMail(ctx.env, { from, fromName: s.mail_sender_name, to: list, toName, subject, html: content, replyTo, attachments: (attachments || []).map((a) => ({ name: a.name, base64: a.base64, type: a.type })) });
+      reply = await smtpSendMail(menv, { from, fromName: s.mail_sender_name, to: list, toName, subject, html: content, replyTo, attachments: (attachments || []).map((a) => ({ name: a.name, base64: a.base64, type: a.type })) });
       status = 'gesendet';
     } catch (e) { status = 'fehler'; error = String(e.message || e).slice(0, 500); }
   } else if (ctx.env.BREVO_API_KEY) {

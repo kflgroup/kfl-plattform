@@ -38,7 +38,7 @@ async function handleStaffApi(ctx, url) {
   if (path === '/session' && method === 'GET') {
     const u = await currentStaff(ctx);
     const cnt = await DB.val(db, 'SELECT COUNT(*) FROM users');
-    return out({ ok: true, user: staffPublic(u), needsSetup: cnt === 0, setupConfigured: !!env.SETUP_TOKEN, mailReady: !!mailProvider(env), config: publicConfig() });
+    return out({ ok: true, user: staffPublic(u), needsSetup: cnt === 0, setupConfigured: !!env.SETUP_TOKEN, mailReady: !!mailProvider(await mailEnv(ctx)), config: publicConfig() });
   }
   if (path === '/setup' && method === 'POST') {
     need((await DB.val(db, 'SELECT COUNT(*) FROM users')) === 0, 403, 'Die Ersteinrichtung ist bereits abgeschlossen.');
@@ -688,7 +688,8 @@ async function handleStaffApi(ctx, url) {
     need(can(u, 'settings_all') || can(u, 'acc_settings') || can(u, 'acc_manage'), 403, 'Dafür fehlt dir die Berechtigung.');
     const s = await settingsOf(ctx);
     const keys = can(u, 'settings_all') ? Object.keys(DEFAULT_SETTINGS) : can(u, 'acc_settings') ? GF_SETTINGS : ACC_SETTINGS;
-    return out({ ok: true, settings: Object.fromEntries(keys.map((k) => [k, s[k]])), editable: keys, env: can(u, 'settings_all') ? { mail: mailProvider(env), smtpUser: env.SMTP_PASS ? smtpUser(env) : null, smtpCheck: { user: true, pass: !!env.SMTP_PASS, host: env.SMTP_HOST || 'smtp.ionos.de', port: env.SMTP_PORT || '587', similar: Object.keys(env).filter((k) => /smtp|e-?mail|ionos|norepl/i.test(k) && !['SMTP_USER', 'SMTP_PASS', 'SMTP_HOST', 'SMTP_PORT'].includes(k) && !/^SMTP_PASS_[A-Z0-9_]+$/.test(k)) }, brevo: !!env.BREVO_API_KEY, r2: !!env.FILES, shopify: !!env.SHOPIFY_ADMIN_TOKEN, cfapi: !!env.CF_API_TOKEN, oldDb: !!env.OLD_DB } : undefined });
+    const menv = await mailEnv(ctx);
+    return out({ ok: true, settings: Object.fromEntries(keys.map((k) => [k, s[k]])), editable: keys, env: can(u, 'settings_all') ? { mail: mailProvider(menv), smtpUser: menv.SMTP_PASS ? smtpUser(menv) : null, smtpSource: menv._smtpSource || null, smtpCheck: { user: true, pass: !!menv.SMTP_PASS, host: env.SMTP_HOST || 'smtp.ionos.de', port: env.SMTP_PORT || '587', similar: Object.keys(env).filter((k) => /smtp|e-?mail|ionos|norepl/i.test(k) && !['SMTP_USER', 'SMTP_PASS', 'SMTP_HOST', 'SMTP_PORT'].includes(k) && !/^SMTP_PASS_[A-Z0-9_]+$/.test(k)) }, brevo: !!env.BREVO_API_KEY, r2: !!env.FILES, shopify: !!env.SHOPIFY_ADMIN_TOKEN, cfapi: !!env.CF_API_TOKEN, oldDb: !!env.OLD_DB } : undefined });
   }
   if (path === '/settings' && method === 'PATCH') {
     need(can(u, 'settings_all') || can(u, 'acc_settings') || can(u, 'acc_manage'), 403, 'Dafür fehlt dir die Berechtigung.');
@@ -729,15 +730,34 @@ async function handleStaffApi(ctx, url) {
     await audit(ctx, 'link_versendet', 'link', which, { an: body.email });
     return out({ ok: true, mail: r.status });
   }
+  // Postfach-Zugang im Dashboard hinterlegen: wird bei IONOS geprüft und verschlüsselt gespeichert
+  if (path === '/mail/credentials' && method === 'POST') {
+    requirePerm(u, 'settings_all');
+    const user = str(body.user, 200).toLowerCase(), pass = String(body.pass || '');
+    need(emailOk(user), 400, 'Bitte die E-Mail-Adresse des Postfachs angeben.');
+    need(pass.length >= 1 && pass.length <= 200, 400, 'Bitte das Passwort des Postfachs angeben.');
+    try { await smtpVerify(env, user, pass); }
+    catch (e) { await audit(ctx, 'mailzugang_fehlgeschlagen', 'einstellungen', null, { postfach: user }); throw new HttpError(400, /AUTH|535|Authentication/i.test(e.message) ? 'IONOS hat die Anmeldung abgelehnt: E-Mail-Adresse oder Passwort des Postfachs stimmen nicht.' : 'Keine Verbindung zum Mailserver: ' + e.message); }
+    await setRawSetting(db, '_smtp_cred', await sealSecret(env, JSON.stringify({ user, pass })));
+    ctx._mailEnv = null;
+    await audit(ctx, 'mailzugang_gespeichert', 'einstellungen', null, { postfach: user });
+    return out({ ok: true, user });
+  }
+  if (path === '/mail/credentials' && method === 'DELETE') {
+    requirePerm(u, 'settings_all');
+    await DB.run(db, "DELETE FROM settings WHERE key = '_smtp_cred'"); ctx._mailEnv = null;
+    await audit(ctx, 'mailzugang_entfernt', 'einstellungen', null, null);
+    return out({ ok: true });
+  }
   if (path === '/mail/test' && method === 'POST') {
     requirePerm(u, 'settings_all');
     const to = str(body.to, 200) || u.email; need(emailOk(to), 400, 'Bitte eine gültige E-Mail-Adresse angeben.');
     const cat = MAIL_CATEGORIES[body.category] ? body.category : 'system';
     const s = await settingsOf(ctx);
     const r = await sendMail(ctx, { category: cat, to, subject: 'Test-E-Mail aus dem KFL Dashboard', title: 'Der E-Mail-Versand funktioniert',
-      body: `<p>Hallo ${esc(u.name)},</p><p>diese Test-E-Mail wurde über ${mailProvider(env) === 'smtp' ? 'das Postfach ' + esc(smtpUser(env)) : mailProvider(env) === 'brevo' ? 'Brevo' : 'keinen Dienst'} mit dem Absender <strong>${esc(s[MAIL_CATEGORIES[cat].setting] || s.mail_from_system)}</strong> versendet.</p>` });
+      body: `<p>Hallo ${esc(u.name)},</p><p>diese Test-E-Mail wurde über ${mailProvider(await mailEnv(ctx)) === 'smtp' ? 'das Postfach ' + esc(smtpUser(await mailEnv(ctx))) : mailProvider(await mailEnv(ctx)) === 'brevo' ? 'Brevo' : 'keinen Dienst'} mit dem Absender <strong>${esc(s[MAIL_CATEGORIES[cat].setting] || s.mail_from_system)}</strong> versendet.</p>` });
     await audit(ctx, 'test_mail', 'einstellungen', null, { an: to, status: r.status });
-    return out({ ok: true, status: r.status, error: r.error || null, provider: mailProvider(env) });
+    return out({ ok: true, status: r.status, error: r.error || null, provider: mailProvider(await mailEnv(ctx)) });
   }
   if (path === '/outbox' && method === 'GET') { requirePerm(u, 'settings_all'); return out({ ok: true, mails: await DB.all(db, 'SELECT id, category, sender, recipient, subject, status, error, server_reply, created_at FROM mail_outbox ORDER BY id DESC LIMIT 200') }); }
   if ((m = path.match(/^\/outbox\/(\d+)$/)) && method === 'GET') { requirePerm(u, 'settings_all'); const mm = await DB.one(db, 'SELECT * FROM mail_outbox WHERE id = ?', +m[1]); need(mm, 404, 'Nicht gefunden.'); return new Response(mm.html, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'none'; img-src data:; style-src 'unsafe-inline'", ...SEC_HEADERS } }); }
