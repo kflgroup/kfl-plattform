@@ -139,12 +139,19 @@ function asgHtml(a, offer) {
       ${a.status === 'in_bearbeitung' && can('req_partner') ? html`<button class="btn btn-sm" data-act="asgRelease" data-id="${a.id}">Für Organisation freigeben</button>` : ''}
       ${['gewonnen', 'nicht_erreicht', 'kontaktiert', 'verloren', 'gescheitert', 'vorgestellt'].includes(a.status) || offer ? html`<button class="btn btn-sm" data-act="asgStatus" data-id="${a.id}">Status setzen</button>` : ''}</div>` : ''}</div>`;
 }
+const SCORE_SHORT = { distance: 'Nähe', response: 'Antwortzeit', equipment: 'Ausstattung', price: 'Rate / Preis', model: 'Modell', term: 'Laufzeit', addons: 'Zusatzprodukte' };
+function scoreDetail(o) {
+  const sd = typeof o.score_detail === 'string' ? jparse0(o.score_detail) : o.score_detail; if (!sd || !sd.points) return '';
+  return html`<div class="score-detail" title="Punkte je Faktor (0–100) · Gewichtung in Klammern">${Object.entries(sd.points).map(([k, p]) => html`<div><span>${SCORE_SHORT[k] || k} <span class="muted">(${sd.weights[k]} %)</span></span><b>${p == null ? 'entfällt' : fNum(p, 0)}</b></div>`)}${sd.hours != null ? html`<div><span class="muted">Antwort nach</span><b>${fNum(sd.hours, 1)} Std.</b></div>` : ''}</div>`;
+}
+const jparse0 = (s) => { try { return JSON.parse(s); } catch (e) { return null; } };
 function offerHtml(o) {
   const d = o.data || {};
   return html`<article class="offer-card ${o.rank === 1 ? 'top' : ''}"><div class="row-between"><div><b>${o.org_name}</b> <span class="muted small">${o.user_name || ''} · ${fDT(o.created_at)}</span></div>
       <div class="row">${o.rank ? html`<span class="tag">Platz ${o.rank}</span>` : ''}${o.score != null ? html`<span class="tag">Score ${fNum(o.score, 1)}</span>` : ''}${offerStatus(o.status)}</div></div>
     <div class="row-between mt"><div class="offer-price num">${offerHeadline(d)}</div><span class="muted small">${OFFER_KIND[o.kind] || o.kind}</span></div>
     <div class="mt">${kv(offerRows(d))}</div>
+    ${scoreDetail(o)}
     <div class="row mt">${o.pdf_file_id ? html`<a class="btn btn-sm" target="_blank" rel="noopener" href="${fileUrl(`/requests/${REQ.request.number}/offers/${o.id}/file`, { which: 'pdf' })}">${icon('file')}Angebot (PDF)</a>` : ''}
       ${o.expose_file_id ? html`<a class="btn btn-sm" target="_blank" rel="noopener" href="${fileUrl(`/requests/${REQ.request.number}/offers/${o.id}/file`, { which: 'expose' })}">${icon('file')}Exposé</a>` : ''}
       ${o.public_file_id ? html`<a class="btn btn-sm" target="_blank" rel="noopener" href="${fileUrl(`/requests/${REQ.request.number}/offers/${o.id}/file`, { which: 'public' })}">${icon('eye')}Neutrale PDF</a>` : ''}

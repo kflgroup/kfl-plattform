@@ -148,6 +148,7 @@ const EXTRA_COLUMNS = {
     must_change_pw: "INTEGER NOT NULL DEFAULT 0", created_by: 'INTEGER', prev_login: 'TEXT' },
   sessions: { area_until: 'TEXT' },
   mail_outbox: { server_reply: 'TEXT' },
+  offers: { score_detail: 'TEXT' },
   orgs: { reminder_due_days: 'INTEGER', dunning_fee_1: 'REAL', dunning_fee_2: 'REAL', dunning_due_days: 'INTEGER', dunning_due_days_2: 'INTEGER' },
   invoices: { mail_status: 'TEXT', mail_error: 'TEXT', intro: 'TEXT' },
   billing_items: { cancel_reason: 'TEXT', cancelled_at: 'TEXT', cancelled_by: 'TEXT', prev_status: 'TEXT' }

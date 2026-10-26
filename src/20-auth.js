@@ -65,6 +65,14 @@ async function areaPasswordOk(ctx, password) {
   if (ctx.env.AREA_PASSWORD) return safeEqual(String(password || ''), String(ctx.env.AREA_PASSWORD));
   return verifyPassword(password, DEFAULT_AREA_HASH.hash, DEFAULT_AREA_HASH.salt);
 }
+// Freigabepasswort für die Angebotsauswahl (Startwert laut Vorgabe, nur als Hash hinterlegt)
+async function scoringPasswordOk(ctx, password) {
+  if (!password) return false;
+  const raw = await rawSetting(ctx.db, '_scoring_pw');
+  if (raw) { const o = jparse(raw, {}); return verifyPassword(password, o.hash, o.salt); }
+  if (ctx.env.SCORING_PASSWORD) return safeEqual(String(password), String(ctx.env.SCORING_PASSWORD));
+  return verifyPassword(password, DEFAULT_AREA_HASH.hash, DEFAULT_AREA_HASH.salt);
+}
 async function setAreaPassword(ctx, password) { const h = await hashPassword(password); await setRawSetting(ctx.db, '_area_pw', JSON.stringify(h)); }
 
 async function loginGeneric(ctx, table, sessTable, email, password) {

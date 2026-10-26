@@ -54,14 +54,14 @@ SUBMIT.auditFilter = (d) => setHashQuery(d, '#/protokoll');
 
 /* ---------- Verwaltung ---------- */
 const ADM_TABS = () => [canAny('users_view', 'users_create', 'users_create_vt', 'users_admin') && ['mitarbeiter', 'Mitarbeiter', '#/verwaltung'], canAny('users_view', 'users_admin', 'users_create') && ['rollen', 'Rollen & Rechte', '#/verwaltung/rollen'],
-  canAny('settings_all', 'acc_settings', 'acc_manage') && ['einstellungen', 'Einstellungen', '#/verwaltung/einstellungen'], ['links', 'Links', '#/verwaltung/links'], can('settings_all') && ['postausgang', 'Postausgang', '#/verwaltung/postausgang'], can('settings_all') && ['system', 'System', '#/verwaltung/system']];
+  canAny('settings_all', 'acc_settings', 'acc_manage') && ['einstellungen', 'Einstellungen', '#/verwaltung/einstellungen'], ['links', 'Links', '#/verwaltung/links'], S.user.role === 'admin' && ['auswahl', 'Angebotsauswahl', '#/verwaltung/auswahl'], can('settings_all') && ['postausgang', 'Postausgang', '#/verwaltung/postausgang'], can('settings_all') && ['system', 'System', '#/verwaltung/system']];
 const admHead = (tab) => html`${head('Verwaltung', 'Mitarbeiterkonten, Rollen, Einstellungen und Links.')}${tabsBar(ADM_TABS(), tab)}`;
 async function pageAdmin(tab) {
   const P = page('verwaltung');
   const tabs = ADM_TABS().filter(Boolean);
   if (!tab) tab = tabs[0][0];
   if (!tabs.some((t) => t[0] === tab)) return P.show(noAccess());
-  await ({ mitarbeiter: admUsers, rollen: admRoles, einstellungen: admSettings, links: admLinks, postausgang: admOutbox, system: admSystem }[tab])(P, tab);
+  await ({ mitarbeiter: admUsers, rollen: admRoles, einstellungen: admSettings, links: admLinks, postausgang: admOutbox, system: admSystem, auswahl: admScoring }[tab])(P, tab);
 }
 const creatableRoles = () => can('users_admin') ? Object.keys(S.config.roles) : can('users_create') ? ['teamleitung', 'vertrieb', 'buchhaltung'] : can('users_create_vt') ? ['vertrieb'] : [];
 async function admUsers(P, tab) {
@@ -196,6 +196,44 @@ function mailSetupHelp(c) {
     ${c.similar && c.similar.length ? html`<div class="note-box">${icon('alert')}<span>Gefunden, aber falsch benannt: <b>${c.similar.join(', ')}</b>. Die Namen müssen exakt <code>SMTP_USER</code> und <code>SMTP_PASS</code> lauten (Großbuchstaben, Unterstrich, keine Leerzeichen).</span></div>` : ''}
     <div class="info-box">${icon('key')}<span><b>So richtest du es ein:</b> Cloudflare → Workers &amp; Pages → <b>tiny-lab-d971kfl-forms</b> → <b>Einstellungen</b> → <b>Variablen und Secrets</b> (nicht unter „Build“) → <b>Hinzufügen</b> → Typ <b>Secret</b> → Name und Wert eintragen → <b>Bereitstellen</b>. Danach diese Seite neu laden: Beide Einträge stehen dann auf „gefunden“. Server: ${c.host}, Port ${c.port} (STARTTLS).</span></div>`;
 }
+/* ---------- Angebotsauswahl: Gewichtung der Faktoren (nur Admin, Freigabepasswort) ---------- */
+async function admScoring(P, tab) {
+  const d = await GET('/scoring'); if (!P.alive()) return;
+  const sum = Object.values(d.weights).reduce((a, b) => a + (+b || 0), 0);
+  P.show(html`${admHead(tab)}<div class="detail-grid mt"><form class="panel" data-submit="scoringSave" id="scoringForm" autocomplete="off">
+      <div class="panel-head"><h2>Nach welchen Faktoren werden Angebote ausgewählt?</h2><span class="sum-pill ${sum === 100 ? 'ok' : 'bad'}" id="scoreSum">Summe ${sum} %</span></div>
+      <div class="panel-body stack">
+        <p class="small muted">Jedes Angebot erhält je Faktor 0–100 Punkte. Die Gewichtung bestimmt, wie stark der Faktor zählt. Faktoren, die bei einer Anfrage nicht zutreffen (z. B. Laufzeit beim Kauf oder Zusatzprodukte, die der Kunde nicht wollte), werden automatisch herausgerechnet.</p>
+        ${d.factors.map((f, i) => html`<div class="score-row"><div class="score-l"><b><i class="dot sc-${i}"></i> ${f.label}</b><span class="small muted">${f.hint}</span></div>
+          <input type="range" min="0" max="100" step="1" value="${d.weights[f.key]}" data-score="${f.key}" aria-label="${f.label}">
+          <label class="score-v"><input type="number" min="0" max="100" step="1" name="w_${f.key}" value="${d.weights[f.key]}" data-score-num="${f.key}" inputmode="numeric" aria-label="${f.label} in Prozent"><span>%</span></label></div>`)}
+        <div class="score-bar" id="scoreBar">${d.factors.map((f, i) => html`<i class="sc-${i}" data-w="${d.weights[f.key]}" title="${f.label}: ${d.weights[f.key]} %"></i>`)}</div>
+        <div class="grid-2">${field('Anzahl Angebote, die der Kunde sieht', sel('presented_count', [['3', 'Die 3 besten Angebote'], ['2', 'Die 2 besten Angebote'], ['1', 'Nur das beste Angebot']], String(d.presented_count)), 'Sind weniger Angebote eingegangen, sieht der Kunde alle.')}
+          ${field('Freigabepasswort', inp('password', '', { type: 'password', req: true, attrs: 'autocomplete="off"' }), 'Zum Speichern erforderlich')}</div>
+        <div class="row"><button class="btn btn-primary" type="submit" id="scoreSave" ${sum === 100 ? '' : raw('disabled')}>${icon('check')}Gewichtung speichern</button><button class="btn btn-ghost" type="button" data-act="scoringEven">Gleichmäßig verteilen</button><span class="small muted" id="scoreHint">${sum === 100 ? '' : 'Die Faktoren müssen zusammen genau 100 % ergeben.'}</span></div></div></form>
+    <div class="stack"><section class="panel"><div class="panel-head"><h2>So funktioniert die Auswahl</h2></div><div class="panel-body stack-s small">
+      <p>1. Nach Ablauf der Angebotsfrist bewertet das System alle eingegangenen Angebote.</p><p>2. Die ${d.presented_count} besten Angebote werden dem Kunden unter „Meine Anfragen“ vorgestellt – sortiert nach Punkten, das beste zuerst.</p>
+      <p>3. Der Kunde wählt eines mit „Interessiert mich“; die anderen Partner werden informiert.</p>${d.review_before_present ? html`<p class="note-box">${icon('eye')}<span>Angebote werden vor dem Vorstellen intern geprüft (Einstellung „Angebote vor dem Vorstellen intern prüfen“).</span></p>` : ''}
+      <p class="muted">Die Punkte je Faktor siehst du bei jeder Anfrage am Angebot.</p></div></section>
+      <section class="panel"><div class="panel-head"><h2>Letzte Änderungen</h2></div><div class="panel-body">${d.history.length ? html`<ul class="timeline">${d.history.map((h) => html`<li><div><div class="tl-meta">${h.author || 'Admin'} · ${fDT(h.at)}</div><div class="small">${d.factors.map((f) => `${f.label.split(' ')[0]} ${h.detail['score_w_' + f.key]} %`).join(' · ')} · ${h.detail.presented_count} Angebot(e)</div></div></li>`)}</ul>` : html`<p class="small muted">Noch keine Änderungen – es gelten die Startwerte.</p>`}</div></section></div></div>`);
+}
+function scoringSync(key, val) {
+  const f = $('#scoringForm'); if (!f) return;
+  val = Math.max(0, Math.min(100, Math.round(+val || 0)));
+  const r = f.querySelector(`[data-score="${key}"]`), n = f.querySelector(`[data-score-num="${key}"]`);
+  if (r && +r.value !== val) r.value = val; if (n && +n.value !== val) n.value = val;
+  const vals = $$('[data-score-num]', f).map((x) => Math.max(0, Math.round(+x.value || 0))), sum = vals.reduce((a, b) => a + b, 0);
+  const pill = $('#scoreSum'); pill.textContent = `Summe ${sum} %`; pill.className = 'sum-pill ' + (sum === 100 ? 'ok' : 'bad');
+  $('#scoreSave').disabled = sum !== 100; $('#scoreHint').textContent = sum === 100 ? '' : sum > 100 ? `${sum - 100} % zu viel – bitte reduzieren.` : `Noch ${100 - sum} % verteilen.`;
+  $$('#scoreBar i').forEach((el, i) => { el.style.width = (sum ? (vals[i] / Math.max(100, sum)) * 100 : 0) + '%'; });
+}
+document.addEventListener('input', (e) => { const t = e.target; if (t.dataset && (t.dataset.score || t.dataset.scoreNum)) scoringSync(t.dataset.score || t.dataset.scoreNum, t.value); });
+ACT.scoringEven = () => { const keys = $$('[data-score-num]').map((x) => x.dataset.scoreNum); const base = Math.floor(100 / keys.length); keys.forEach((k, i) => scoringSync(k, base + (i < 100 - base * keys.length ? 1 : 0))); };
+SUBMIT.scoringSave = async (d, f) => {
+  const weights = {}; for (const k of Object.keys(d)) if (k.startsWith('w_')) weights[k.slice(2)] = +d[k];
+  await POST('/scoring', { weights, presented_count: +d.presented_count, password: d.password });
+  f.elements.password.value = ''; toast('Gewichtung gespeichert – gilt für alle neuen Auswertungen.'); reload();
+};
 async function admOutbox(P, tab) {
   const d = await GET('/outbox'); if (!P.alive()) return;
   const ST = { gesendet: 'ok', fehler: 'err', nicht_konfiguriert: 'warn' };

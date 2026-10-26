@@ -189,11 +189,19 @@ const DEFAULT_SETTINGS = {
   offer_window_hours: 24,
   lock_hours: 4,
   contact_window_hours: 24,
-  presented_count: 1,
+  presented_count: 3,
   show_partner_identity: false,
   radius_options: [25, 50, 100, 200, 0],
   radius_default: 50,
-  score_weight_price: 60,
+  score_weight_price: 60, // veraltet, ersetzt durch SCORE_FACTORS
+  // Gewichtung der Angebotsauswahl (Summe 100 %) – nur Admin mit Freigabepasswort
+  score_w_distance: 15,
+  score_w_response: 10,
+  score_w_equipment: 15,
+  score_w_price: 35,
+  score_w_model: 10,
+  score_w_term: 10,
+  score_w_addons: 5,
   review_before_present: false,
   feedback_delay_hours: 24,
   survey_delay_days: 3,
@@ -243,6 +251,18 @@ const DEFAULT_SETTINGS = {
   link_privacy: 'https://kfl-group.com/policies/privacy-policy',
   link_my_requests: 'https://kfl-group.com/pages/meine-anfragen'
 };
+
+// Faktoren der automatischen Angebotsauswahl
+const SCORE_FACTORS = [
+  { key: 'distance', label: 'Nähe des Geschäftspartners zum Kunden', hint: 'Je näher, desto besser (gemessen am gewählten Umkreis).' },
+  { key: 'response', label: 'Antwortzeit des Geschäftspartners', hint: 'Zeit von der Anfrage bis zum Angebot – je schneller, desto besser.' },
+  { key: 'equipment', label: 'Konfiguration / Ausstattung wie gewünscht', hint: 'Partner bestätigt: Ausstattung entspricht der Anfrage.' },
+  { key: 'price', label: 'Monatliche Rate bzw. Kaufpreis', hint: 'Günstigstes Angebot = 100 % (beim Ankauf: höchster Preis).' },
+  { key: 'model', label: 'Exaktes Modell wie angefragt', hint: '„Wie angefragt“ statt Alternative.' },
+  { key: 'term', label: 'Exakte Vertragslaufzeit', hint: 'Laufzeit entspricht dem Kundenwunsch (nur Leasing/Finanzierung).' },
+  { key: 'addons', label: 'Zusatzprodukte, wenn gewünscht', hint: 'Servicepaket und Versicherung, falls der Kunde sie angefragt hat.' }
+];
+const SCORING_KEYS = [...SCORE_FACTORS.map((f) => 'score_w_' + f.key), 'presented_count'];
 
 // Einstellungen, die die Geschäftsführung ändern darf (sonst nur Admin)
 const GF_SETTINGS = ['payment_terms_days', 'reminder_due_days', 'dunning_fee_1', 'dunning_fee_2', 'dunning_due_days', 'dunning_due_days_2', 'dunning_auto', 'dunning_days_1', 'dunning_days_2', 'dunning_days_3',

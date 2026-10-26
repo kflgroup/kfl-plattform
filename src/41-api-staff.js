@@ -699,13 +699,13 @@ async function handleStaffApi(ctx, url) {
   if (path === '/settings' && method === 'GET') {
     need(can(u, 'settings_all') || can(u, 'acc_settings') || can(u, 'acc_manage'), 403, 'Dafür fehlt dir die Berechtigung.');
     const s = await settingsOf(ctx);
-    const keys = can(u, 'settings_all') ? Object.keys(DEFAULT_SETTINGS) : can(u, 'acc_settings') ? GF_SETTINGS : ACC_SETTINGS;
+    const keys = (can(u, 'settings_all') ? Object.keys(DEFAULT_SETTINGS) : can(u, 'acc_settings') ? GF_SETTINGS : ACC_SETTINGS).filter((k) => !SCORING_KEYS.includes(k) && k !== 'score_weight_price');
     const menv = await mailEnv(ctx);
     return out({ ok: true, settings: Object.fromEntries(keys.map((k) => [k, s[k]])), editable: keys, env: can(u, 'settings_all') ? { mail: mailProvider(menv), smtpUser: menv.SMTP_PASS ? smtpUser(menv) : null, smtpSource: menv._smtpSource || null, smtpCheck: { user: true, pass: !!menv.SMTP_PASS, host: env.SMTP_HOST || 'smtp.ionos.de', port: env.SMTP_PORT || '587', similar: Object.keys(env).filter((k) => /smtp|e-?mail|ionos|norepl/i.test(k) && !['SMTP_USER', 'SMTP_PASS', 'SMTP_HOST', 'SMTP_PORT'].includes(k) && !/^SMTP_PASS_[A-Z0-9_]+$/.test(k)) }, brevo: !!env.BREVO_API_KEY, r2: !!env.FILES, shopify: !!env.SHOPIFY_ADMIN_TOKEN, cfapi: !!env.CF_API_TOKEN, oldDb: !!env.OLD_DB } : undefined });
   }
   if (path === '/settings' && method === 'PATCH') {
     need(can(u, 'settings_all') || can(u, 'acc_settings') || can(u, 'acc_manage'), 403, 'Dafür fehlt dir die Berechtigung.');
-    const keys = can(u, 'settings_all') ? Object.keys(DEFAULT_SETTINGS) : can(u, 'acc_settings') ? GF_SETTINGS : ACC_SETTINGS;
+    const keys = (can(u, 'settings_all') ? Object.keys(DEFAULT_SETTINGS) : can(u, 'acc_settings') ? GF_SETTINGS : ACC_SETTINGS).filter((k) => !SCORING_KEYS.includes(k) && k !== 'score_weight_price');
     const upd = {};
     for (const [k, v] of Object.entries(body || {})) {
       if (!keys.includes(k)) continue;
@@ -718,6 +718,29 @@ async function handleStaffApi(ctx, url) {
     }
     await saveSettings(ctx, upd);
     await audit(ctx, 'einstellungen_geaendert', 'einstellungen', null, upd);
+    return out({ ok: true });
+  }
+  /* ---------- Angebotsauswahl: Gewichtung der Faktoren (nur Admin, Freigabe mit Passwort) ---------- */
+  if (path === '/scoring' && method === 'GET') {
+    need(u.role === 'admin', 403, 'Die Angebotsauswahl kann nur der Admin einsehen und ändern.');
+    const s = await settingsOf(ctx);
+    return out({ ok: true, factors: SCORE_FACTORS, weights: scoreWeights(s), presented_count: toInt(s.presented_count, 3), review_before_present: !!s.review_before_present,
+      history: (await DB.all(db, "SELECT at, actor_name, detail FROM audit WHERE action = 'angebotsauswahl_geaendert' ORDER BY id DESC LIMIT 10")).map((h) => ({ at: h.at, author: h.actor_name, detail: jparse(h.detail, {}) })) });
+  }
+  if (path === '/scoring' && method === 'POST') {
+    need(u.role === 'admin', 403, 'Die Angebotsauswahl kann nur der Admin ändern.');
+    need(await scoringPasswordOk(ctx, body.password), 403, 'Das Freigabepasswort ist falsch. Die Einstellungen wurden nicht gespeichert.');
+    const upd = {}; let sum = 0;
+    for (const f of SCORE_FACTORS) {
+      const v = toInt(body.weights && body.weights[f.key], NaN);
+      need(Number.isInteger(v) && v >= 0 && v <= 100, 400, `Bitte für „${f.label}“ einen Wert zwischen 0 und 100 % angeben.`);
+      upd['score_w_' + f.key] = v; sum += v;
+    }
+    need(sum === 100, 400, `Die Faktoren müssen zusammen genau 100 % ergeben (aktuell ${sum} %).`);
+    const n = toInt(body.presented_count, 3); need(n >= 1 && n <= 3, 400, 'Es können 1 bis 3 Angebote vorgestellt werden.');
+    upd.presented_count = n;
+    await saveSettings(ctx, upd);
+    await audit(ctx, 'angebotsauswahl_geaendert', 'einstellungen', null, upd);
     return out({ ok: true });
   }
   if (path === '/settings/area-password' && method === 'POST') {

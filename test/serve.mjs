@@ -4,7 +4,7 @@ import { makeD1, makeR2, installFetch, sig, nowSec, client, GEO } from './harnes
 const worker = (await import('./wk.mjs')).default;
 installFetch();
 Object.assign(GEO, { '10115': [52.532, 13.3849, 'Berlin'], '20095': [53.5511, 9.9937, 'Hamburg'], '26121': [53.1435, 8.2146, 'Oldenburg'], '49661': [52.8467, 8.0436, 'Cloppenburg'], '48143': [51.9607, 7.6261, 'Münster'] });
-const env = { DB: makeD1(), FILES: makeR2(), FORM_SECRET: 'test-secret', SETUP_TOKEN: 'setup-123', BREVO_API_KEY: 'x', AREA_PASSWORD: 'Test-Bereich-2026' };
+const env = { DB: makeD1(), FILES: makeR2(), FORM_SECRET: 'test-secret', SETUP_TOKEN: 'setup-123', BREVO_API_KEY: 'x', AREA_PASSWORD: 'Test-Bereich-2026', SCORING_PASSWORD: 'Test-Auswahl-2026' };
 const c = client(worker, env);
 const tok = (l) => l.split('/').pop();
 const ok = (r, m) => { if (r.ok === false || (r.status && r.status >= 400)) { console.error('Seed-Fehler', m, r); } return r; };

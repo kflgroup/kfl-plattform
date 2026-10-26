@@ -265,6 +265,38 @@ async function partnerRating(ctx, orgId) {
   const r = await DB.one(ctx.db, 'SELECT AVG(rating) AS avg, COUNT(*) AS n FROM surveys WHERE org_id = ? AND rating IS NOT NULL', orgId);
   return r && r.n ? r.avg : null;
 }
+/* Bewertung nach 7 Faktoren (je 0–100 Punkte), gewichtet laut Einstellung (Summe 100 %).
+   Faktoren, die für eine Anfrage nicht zutreffen (z. B. Laufzeit beim Kauf), werden herausgerechnet. */
+const lastNum = (v) => { const m = String(v || '').replace(/\./g, '').match(/\d+/g); return m ? +m[m.length - 1] : null; };
+function scoreWeights(s) { const w = {}; for (const f of SCORE_FACTORS) w[f.key] = Math.max(0, toNum(s['score_w_' + f.key], 0) || 0); return w; }
+async function scoreOffers(ctx, req, offers, s) {
+  const sell = req.type === 'sell', f = jparse(req.data, {}), w = scoreWeights(s);
+  const vals = offers.map((o) => o.compare_value).filter((v) => v > 0);
+  const best = vals.length ? (sell ? Math.max(...vals) : Math.min(...vals)) : 0;
+  const maxKm = req.radius_km > 0 ? req.radius_km : 200;
+  const winH = Math.max(1, toNum(s.offer_window_hours, 24) || 24);
+  const wantTerm = lastNum(f.Laufzeit);
+  const wantService = !!f['Servicepaket Wartung & Inspektion'], wantKasko = !!f['Servicepaket Versicherung / Kasko'];
+  for (const o of offers) {
+    const d = jparse(o.data, {});
+    const a = await DB.one(ctx.db, 'SELECT created_at, taken_at FROM assignments WHERE id = ?', o.assignment_id);
+    const hours = a ? Math.max(0, (msOf(o.created_at) - msOf(a.created_at)) / 3600e3) : null;
+    const pts = {
+      distance: o.distance_km == null ? 50 : Math.max(0, 100 * (1 - o.distance_km / maxKm)),
+      response: hours == null ? 50 : Math.max(0, 100 * (1 - hours / winH)),
+      equipment: d.equipment_match === 'ja' ? 100 : d.equipment_match === 'nein' ? 0 : 50,
+      price: best && o.compare_value > 0 ? (sell ? o.compare_value / best : best / o.compare_value) * 100 : 0,
+      model: sell ? null : d.config === 'alternativ' ? 0 : 100,
+      term: wantTerm && d.term_months ? (+lastNum(d.term_months) === wantTerm ? 100 : Math.max(0, 100 - Math.abs(+lastNum(d.term_months) - wantTerm) * 5)) : null,
+      addons: wantService || wantKasko ? ((wantService ? (toNum(d.service_cost) > 0 ? 1 : 0) : 0) + (wantKasko ? (toNum(d.insurance_cost) > 0 ? 1 : 0) : 0)) / ((wantService ? 1 : 0) + (wantKasko ? 1 : 0)) * 100 : null
+    };
+    let sum = 0, wsum = 0; const detail = {};
+    for (const k of Object.keys(pts)) { if (pts[k] === null) { detail[k] = null; continue; } const p = Math.round(Math.min(100, pts[k]) * 10) / 10; detail[k] = p; sum += p * w[k]; wsum += w[k]; }
+    o.score = wsum ? Math.round((sum / wsum) * 10) / 10 : 0;
+    o.scoreDetail = { points: detail, weights: w, hours: hours == null ? null : Math.round(hours * 10) / 10 };
+  }
+  return offers;
+}
 async function evaluateRequest(ctx, rid) {
   const s = await settingsOf(ctx);
   const req = await DB.one(ctx.db, 'SELECT * FROM requests WHERE id = ?', rid);
@@ -276,28 +308,14 @@ async function evaluateRequest(ctx, rid) {
     await notifyStaff(ctx, { perm: 'req_edit' }, { kind: 'anfrage', title: `#${toNumber(rid)}: kein Angebot erhalten`, body: 'Bitte den Kunden persönlich kontaktieren oder weitere Partner zuordnen.', link: `#/anfragen/${toNumber(rid)}` });
     return;
   }
-  const sell = req.type === 'sell';
-  const vals = offers.map((o) => o.compare_value).filter((v) => v > 0);
-  const best = vals.length ? (sell ? Math.max(...vals) : Math.min(...vals)) : 0;
-  for (const o of offers) {
-    const d = jparse(o.data, {});
-    const priceScore = best && o.compare_value > 0 ? (sell ? o.compare_value / best : best / o.compare_value) * 100 : 0;
-    let q = 0;
-    if (d.equipment_match === 'ja') q += 40;
-    if (d.config === 'gleich' || sell) q += 20;
-    const rating = await partnerRating(ctx, o.org_id);
-    q += rating ? (rating / 5) * 20 : 12;
-    if (o.distance_km != null) q += Math.max(0, 20 - o.distance_km / 10); else q += 8;
-    if (d.accident_free === 'ja') q += 0;
-    const w = Math.min(100, Math.max(0, s.score_weight_price)) / 100;
-    o.score = Math.round((w * priceScore + (1 - w) * Math.min(100, q)) * 10) / 10;
-  }
+  await scoreOffers(ctx, req, offers, s);
   offers.sort((a, b) => b.score - a.score);
-  const n = Math.max(1, Math.min(3, toInt(s.presented_count, 1)));
+  // die besten (Standard: 3) Angebote werden dem Kunden vorgestellt – auch wenn mehr eingegangen sind
+  const n = Math.max(1, Math.min(3, toInt(s.presented_count, 3)));
   const review = !!s.review_before_present;
   for (const [i, o] of offers.entries()) {
     const chosen = i < n;
-    await DB.update(ctx.db, 'offers', o.id, { score: o.score, rank: i + 1, status: chosen ? (review ? 'ausgewaehlt' : 'vorgestellt') : 'nicht_ausgewaehlt', updated_at: t });
+    await DB.update(ctx.db, 'offers', o.id, { score: o.score, score_detail: JSON.stringify(o.scoreDetail || {}), rank: i + 1, status: chosen ? (review ? 'ausgewaehlt' : 'vorgestellt') : 'nicht_ausgewaehlt', updated_at: t });
     if (!chosen) await closeAssignmentNotChosen(ctx, o.assignment_id, 'Ein anderes Angebot hat beim Preis-Leistungs-Vergleich besser abgeschnitten.');
   }
   await DB.update(ctx.db, 'requests', rid, { evaluated_at: t, status: review ? 'angebot_in_bearbeitung' : 'angebot_beim_kunden', updated_at: t });
