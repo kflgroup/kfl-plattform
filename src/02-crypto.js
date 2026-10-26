@@ -40,18 +40,21 @@ function passwordProblem(pw) {
 }
 
 // AES-GCM mit Schlüssel aus Passwort (für Backups und geschützte Einstellungen)
-async function aesKeyFromPassword(password, saltU8) {
+// Cloudflare Workers erlauben höchstens 100.000 PBKDF2-Runden
+const AES_PBKDF2_ITERATIONS = 100000;
+async function aesKeyFromPassword(password, saltU8, iterations = AES_PBKDF2_ITERATIONS) {
   const base = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: saltU8, iterations: 150000 }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: saltU8, iterations }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
 }
 async function encryptBytes(password, bytes) {
   const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await aesKeyFromPassword(password, salt);
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, bytes));
-  return { salt: b64(salt), iv: b64(iv), data: b64(ct), alg: 'AES-256-GCM/PBKDF2-SHA256-150000' };
+  return { salt: b64(salt), iv: b64(iv), data: b64(ct), alg: 'AES-256-GCM/PBKDF2-SHA256-' + AES_PBKDF2_ITERATIONS };
 }
 async function decryptBytes(password, box) {
-  const key = await aesKeyFromPassword(password, unb64(box.salt));
+  const it = toInt(String(box.alg || '').split('-').pop(), AES_PBKDF2_ITERATIONS) || AES_PBKDF2_ITERATIONS;
+  const key = await aesKeyFromPassword(password, unb64(box.salt), it);
   return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(box.iv) }, key, unb64(box.data)));
 }
 // Geheimnisse in den Einstellungen mit dem Server-Schlüssel verschlüsseln

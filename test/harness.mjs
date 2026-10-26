@@ -2,6 +2,11 @@
 import { DatabaseSync } from 'node:sqlite';
 import { createHmac } from 'node:crypto';
 
+// Wie Cloudflare Workers: PBKDF2 mit mehr als 100.000 Runden wird abgelehnt
+for (const fn of ['deriveKey', 'deriveBits']) {
+  const orig = crypto.subtle[fn].bind(crypto.subtle);
+  crypto.subtle[fn] = (alg, ...rest) => { if (alg && alg.name === 'PBKDF2' && alg.iterations > 100000) return Promise.reject(new Error(`Pbkdf2 failed: iteration counts above 100000 are not supported (requested ${alg.iterations}).`)); return orig(alg, ...rest); };
+}
 export function makeD1() {
   const sq = new DatabaseSync(':memory:');
   // Zählt Abfragen wie Cloudflare D1 (db.batch = eine Abfrage), um das Limit je Aufruf zu prüfen

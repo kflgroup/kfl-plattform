@@ -37,6 +37,7 @@ async function runJobs(ctx, { force } = {}) {
   if (force === 'backup' || (slot() && hm >= (s.backup_hour * 60 + s.backup_minute) && await jobDue(ctx.db, 'backup', day))) {
     await safe('backup', () => createBackup(ctx, { kind: force === 'backup' ? 'manuell' : 'auto' }));
     await safe('aufbewahrung', () => retentionJobs(ctx));
+    if (/^Fehler/.test(String(res.backup || ''))) await notifyStaff(ctx, { perm: 'backup_view' }, { kind: 'fehler', title: 'Tagesbackup fehlgeschlagen', body: String(res.backup).slice(0, 300), link: '#/backup' }).catch(() => null);
     await jobDone(ctx.db, 'backup', day, res.backup); heavy = true;
   }
   // Automatische Mahnungen täglich ab 8:00
