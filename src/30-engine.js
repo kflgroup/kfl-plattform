@@ -46,6 +46,56 @@ async function createRequest(ctx, type, data, { customerAccount, source }) {
   return id;
 }
 
+/* ---------- Inzahlungnahme: eigene Ankauf-Anfrage aus dem Traumwagen-DEAL ---------- */
+const TRADE_PREFIX = 'Altwagen ';
+const TRADE_COPY = /^(Vorname|name|email|phone|Straße|PLZ|Ort|Kontaktweg|Umkreis|Kundennummer|Kundenkonto-ID|Eingang \(Server\)|Einwilligung Zeitpunkt|AGB akzeptiert|Datenschutz akzeptiert|Weitergabe an Partner und Kontaktaufnahme|_page|_src)$/;
+// Liefert die Formulardaten der Ankauf-Anfrage (oder null) und entfernt Altwagen-Angaben, wenn keine Inzahlungnahme gewünscht ist
+function tradeInSplit(data) {
+  const keys = Object.keys(data).filter((k) => k.startsWith(TRADE_PREFIX));
+  if (String(data.Inzahlungnahme || '') !== 'Ja') { for (const k of keys) delete data[k]; return null; }
+  const car = {};
+  for (const k of keys) { const v = String(data[k] ?? '').trim(); if (v) car[k.slice(TRADE_PREFIX.length)] = v; }
+  if (!car.Marke && !car['Marke (Freitext)']) return null;
+  const sell = { ...car }; // Fahrzeugangaben zuerst, danach Kontakt- und Einwilligungsdaten
+  for (const [k, v] of Object.entries(data)) if (TRADE_COPY.test(k)) sell[k] = v;
+  if (car.Anmerkungen) { sell.body = car.Anmerkungen; delete sell.Anmerkungen; }
+  sell.Formular = 'MEIN AUTO VERKAUFEN (Inzahlungnahme aus Traumwagen-DEAL)';
+  sell.Verkaufszeitpunkt = car.Verkaufszeitpunkt || 'Mit dem Kauf des neuen Fahrzeugs (Inzahlungnahme)';
+  sell.Halter = car.Halter || (/gewerb|selbst/i.test(data.Kundenart || '') ? 'Geschäftlich' : 'Privat');
+  sell._form = 'sell';
+  return sell;
+}
+// Partner übernimmt zusätzlich den Ankauf des Altwagens (Doppel-Geschäft): Zuordnung zur verknüpften Ankauf-Anfrage
+async function joinLinkedRequest(ctx, p, aid) {
+  const a = await DB.one(ctx.db, 'SELECT * FROM assignments WHERE id = ? AND org_id = ?', aid, p.orgId);
+  need(a && a.taken_by === p.id, 403, 'Bitte übernimm zuerst die Anfrage zum Traumwagen.');
+  const req = await DB.one(ctx.db, 'SELECT * FROM requests WHERE id = ?', a.request_id);
+  need(req && req.linked_request_id, 404, 'Zu dieser Anfrage gibt es keinen Ankauf.');
+  const sell = await DB.one(ctx.db, 'SELECT * FROM requests WHERE id = ?', req.linked_request_id);
+  need(sell && !sell.deleted, 404, 'Die Ankauf-Anfrage ist nicht mehr verfügbar.');
+  const ex = await DB.one(ctx.db, 'SELECT * FROM assignments WHERE request_id = ? AND org_id = ?', sell.id, p.orgId);
+  if (ex) {
+    if (ex.status === 'neu') await takeAssignment(ctx, p, ex.id).catch(() => null);
+    return { ok: true, id: ex.id, existing: true };
+  }
+  need(!['angebot_beim_kunden', 'angebot_akzeptiert', 'kontaktdaten_versendet', 'angebot_abgelehnt', 'kein_angebot'].includes(sell.status) && !sell.evaluated_at, 409, 'Für den Ankauf werden keine Angebote mehr angenommen.');
+  const org = await DB.one(ctx.db, 'SELECT * FROM orgs WHERE id = ?', p.orgId);
+  const r = await createAssignment(ctx, sell, org, { source: 'verknuepft', targetUserId: p.id, note: `Weitergeleitet aus Traumwagen-DEAL #${toNumber(req.id)} (Inzahlungnahme) – Angebot für Traumwagen und Ankauf möglich.` });
+  await takeAssignment(ctx, p, r.id).catch(() => null);
+  await reqEvent(ctx, sell.id, 'partner_verknuepft', `${org.name} übernimmt den Ankauf zusätzlich zur Traumwagen-Anfrage #${toNumber(req.id)}`);
+  await audit(ctx, 'ankauf_verknuepft', 'anfrage', toNumber(sell.id), { partner: org.name, deal: toNumber(req.id) });
+  return { ok: true, id: r.id, existing: false };
+}
+// Hinweis für den Partner zur verknüpften Anfrage
+async function linkedInfoFor(ctx, p, req) {
+  if (!req.linked_request_id) return null;
+  const other = await DB.one(ctx.db, 'SELECT id, type, status, deleted, brand, model, vehicle, evaluated_at FROM requests WHERE id = ?', req.linked_request_id);
+  if (!other || other.deleted) return null;
+  const own = await DB.one(ctx.db, 'SELECT id, status, taken_by FROM assignments WHERE request_id = ? AND org_id = ?', other.id, p.orgId);
+  const open = !other.evaluated_at && !['angebot_beim_kunden', 'angebot_akzeptiert', 'kontaktdaten_versendet', 'angebot_abgelehnt', 'kein_angebot'].includes(other.status);
+  return { number: toNumber(other.id), type: other.type, vehicle: other.vehicle, aid: own && (own.status === 'neu' || own.taken_by === p.id) ? own.id : null, mine: !!(own && own.taken_by === p.id), canJoin: req.type === 'deal' && open && (!own || own.status === 'neu') };
+}
+
 /* ---------- Automatische Verteilung an Geschäftspartner ---------- */
 async function matchingOrgs(ctx, req) {
   const orgs = await DB.all(ctx.db, "SELECT * FROM orgs WHERE active = 1 AND deleted = 0");
@@ -120,7 +170,8 @@ async function createAssignment(ctx, req, org, { source = 'auto', distance = nul
   return { id: aid, ...r };
 }
 function teaserLine(req, distance) {
-  return [req.type === 'sell' ? 'Ankauf' : (req.zustand || 'Fahrzeug'), req.brand && req.brand !== 'Noch offen' ? req.brand : null, req.plz ? `PLZ ${req.plz}` : null, distance != null ? `${String(distance).replace('.', ',')} km entfernt` : null].filter(Boolean).join(' · ');
+  return [req.type === 'sell' ? 'Ankauf' : (req.zustand || 'Fahrzeug'), req.brand && req.brand !== 'Noch offen' ? req.brand : null, req.plz ? `PLZ ${req.plz}` : null, distance != null ? `${String(distance).replace('.', ',')} km entfernt` : null,
+    req.type === 'deal' && req.linked_request_id ? 'mit Inzahlungnahme' : null].filter(Boolean).join(' · ');
 }
 async function mailAssignment(ctx, req, org, aid, { targetUserId, deadline, reminder = false, extra = '' } = {}) {
   const s = await settingsOf(ctx);
@@ -147,7 +198,7 @@ async function mailAssignment(ctx, req, org, aid, { targetUserId, deadline, remi
 function partnerRequestData(req, level) {
   const d = jparse(req.data, {});
   const base = { number: toNumber(req.id), type: req.type, typeLabel: REQUEST_TYPES[req.type] ? REQUEST_TYPES[req.type].label : req.type, zustand: req.zustand, plz: req.plz,
-    brand: req.brand === 'Noch offen' ? '' : req.brand, created_at: req.created_at };
+    brand: req.brand === 'Noch offen' ? '' : req.brand, created_at: req.created_at, tradeIn: req.type === 'deal' && !!req.linked_request_id, withPurchase: req.type === 'sell' && !!req.linked_request_id };
   if (level === 'teaser') return base;
   const fields = {};
   for (const [k, v] of Object.entries(d)) { if (HIDDEN_KEY.test(k) || PERSONAL_KEY.test(k) || String(v).trim() === '') continue; fields[k] = k === 'Bezahlart' ? (PAY_LABEL[v] || v) : v; }
@@ -534,7 +585,12 @@ async function decideSpam(ctx, rid, confirm, note) {
 
 /* ---------- Zeitgesteuerte Abläufe (Cron, alle 5 Minuten) ---------- */
 async function runRequestJobs(ctx) {
-  const t = nowIso(), res = { released: 0, expired: 0, evaluated: 0, followups: 0, surveys: 0 };
+  const t = nowIso(), res = { released: 0, expired: 0, evaluated: 0, followups: 0, surveys: 0, dispatched: 0 };
+  // 0) Vorgemerkte Verteilungen (z. B. Ankauf-Anfrage aus einer Inzahlungnahme) – höchstens 1 je Durchlauf
+  for (const r of await DB.all(ctx.db, 'SELECT id FROM requests WHERE dispatch_pending = 1 AND deleted = 0 ORDER BY id LIMIT 1')) {
+    await DB.update(ctx.db, 'requests', r.id, { dispatch_pending: 0 });
+    try { await dispatchRequest(ctx, r.id); res.dispatched++; } catch (e) { console.log('Verteilung', e.message); await DB.update(ctx.db, 'requests', r.id, { status: 'stoerung', status_note: 'Verteilung fehlgeschlagen: ' + e.message }); }
+  }
   // 1) Bearbeitungssperre (4 h) abgelaufen ohne Angebot → wieder für die Organisation frei
   for (const a of await DB.all(ctx.db, "SELECT id FROM assignments WHERE status = 'in_bearbeitung' AND lock_until IS NOT NULL AND lock_until < ?", t)) {
     if (await releaseAssignment(ctx, a.id, { byPartner: false })) res.released++;

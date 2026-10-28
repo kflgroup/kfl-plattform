@@ -255,7 +255,7 @@ async function handleStaffApi(ctx, url) {
       const tickets = await DB.all(db, 'SELECT id, subject, status, tag FROM tickets WHERE request_id = ?', rid);
       if (r.customer_note_unread && can(u, 'req_edit')) await DB.update(db, 'requests', rid, { customer_note_unread: 0 });
       return out({ ok: true, request: { ...(await staffRequestRow(ctx, r, u)), fields, contact: can(u, 'req_contact') ? customerContact(r) : null, radius_km: r.radius_km, lat: r.lat, lon: r.lon,
-        customer_account: r.customer_account, dispatched_at: r.dispatched_at, evaluated_at: r.evaluated_at, presented_at: r.presented_at, decided_at: r.decided_at, feedback_state: r.feedback_state, spam_reason: r.spam_reason, deleted: !!r.deleted },
+        customer_account: r.customer_account, linked: r.linked_request_id ? await DB.one(db, 'SELECT id, type, status, vehicle FROM requests WHERE id = ?', r.linked_request_id).then((x) => x && { number: toNumber(x.id), type: x.type, status: x.status, vehicle: x.vehicle }) : null, dispatched_at: r.dispatched_at, evaluated_at: r.evaluated_at, presented_at: r.presented_at, decided_at: r.decided_at, feedback_state: r.feedback_state, spam_reason: r.spam_reason, deleted: !!r.deleted },
         assignments, offers, events, notes, partnerEvents: pevents, billing, tickets });
     }
     if (!sub && method === 'PATCH') {

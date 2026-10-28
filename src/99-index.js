@@ -46,7 +46,8 @@ async function runJobs(ctx, { force } = {}) {
   await safe('support', () => runSupportJobs(ctx));
   const p = berlinParts(nowMs()), day = berlinDate(nowMs()), hm = p.h * 60 + p.mi;
   // Höchstens ein großer Tagesjob je Durchlauf (alle 5 Minuten) – jeder Aufruf hat bei Cloudflare ein eigenes Abfragebudget
-  let heavy = false; const slot = () => force || !heavy;
+  // Wurde gerade eine Anfrage verteilt, wartet der große Tagesjob bis zum nächsten Durchlauf
+  let heavy = !!(res.anfragen && res.anfragen.dispatched); const slot = () => force || !heavy;
   // Backup täglich ab 0:01 (Berliner Zeit)
   if (force === 'backup' || (slot() && hm >= (s.backup_hour * 60 + s.backup_minute) && await jobDue(ctx.db, 'backup', day, ctx))) {
     await safe('backup', () => createBackup(ctx, { kind: force === 'backup' ? 'manuell' : 'auto' }));

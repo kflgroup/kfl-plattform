@@ -385,3 +385,12 @@ a.kpi:hover .go{color:var(--ink);transform:translateX(3px)}
 @media (prefers-reduced-motion:reduce){.contact-card.flash{animation:none;outline:3px solid var(--orange)}}
 .p-auth-art h1 span{display:block}
 .p-auth-art h1 span:nth-child(3){color:var(--orange)}
+
+/* Doppeltes Geschäft (Inzahlungnahme) */
+.rq-s .dual{color:var(--orange);font-weight:700}
+.dual-card{text-align:left;display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:14px;background:linear-gradient(135deg,rgba(255,108,1,.10),rgba(255,108,1,.03));border:1px solid rgba(255,108,1,.35);margin:12px 0}
+.dual-card>svg{flex:none;width:22px;height:22px;color:var(--orange);margin-top:2px}
+.dual-card>div>b{display:block;margin-bottom:3px}
+.dual-card span{display:block;font-size:14px;line-height:1.5}
+.dual-card.big{padding:18px 20px}
+.dual-card .mt-s{margin-top:10px}

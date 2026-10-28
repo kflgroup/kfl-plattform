@@ -23,6 +23,7 @@ async function pRequest(id) {
       ${zTag(r.zustand)}<div class="big">${r.zustand || 'Fahrzeug'}</div>
       <div class="facts"><div><b>${r.brand || '–'}</b><span>Marke</span></div><div><b>PLZ ${r.plz || '–'}</b><span>Wohnort des Kunden</span></div><div><b>${a.distance_km != null ? fNum(a.distance_km) + ' km' : '–'}</b><span>Luftlinie zu dir</span></div><div><b>${fDT(a.deadline_at)}</b><span>Angebotsfrist</span></div></div>
       ${clock(a.deadline_at)}
+      ${r.tradeIn ? html`<div class="dual-card">${icon('refresh')}<div><b>Doppeltes Geschäft möglich</b><span>Der Kunde möchte sein jetziges Auto in Zahlung geben. Nach der Übernahme siehst du die Fahrzeugdaten und kannst zusätzlich den Ankauf übernehmen.</span></div></div>` : ''}
       <p class="muted small">Nach der Übernahme siehst du alle Details der Anfrage. Du hast dann ${4} Stunden für dein Angebot – sonst wird sie wieder für dein Team freigegeben. Kontaktdaten des Kunden bekommst du, sobald er dein Angebot annimmt.</p>
       <button class="btn btn-primary" data-act="ptake" data-id="${a.id}">${icon('bolt')}Anfrage übernehmen</button></section>`);
   }
@@ -51,13 +52,33 @@ async function pRequest(id) {
         <div class="row">${a.contact.phone ? html`<a class="btn btn-ok" href="tel:${a.contact.phone.replace(/[^+\d]/g, '')}">${icon('phone')}Anrufen</a>` : ''}${a.contact.email ? html`<a class="btn" href="mailto:${a.contact.email}?subject=${encodeURIComponent('Ihr Angebot über KFL – Anfrage #' + r.number)}">${icon('mail')}E-Mail</a>` : ''}</div>
         ${['gewonnen', 'nicht_erreicht'].includes(a.status) ? html`<div class="row mt"><button class="btn btn-ok btn-sm" data-act="pcontact" data-s="kontaktiert">${icon('check')}Kunde erfolgreich kontaktiert</button><button class="btn btn-sm" data-act="pcontact" data-s="nicht_erreicht">Kunde nicht erreicht</button></div>` : ''}
         <button class="btn btn-sm btn-ghost" data-act="pcontract">${icon('file')}Vertragsunterlagen vorbereiten</button></section>` : ''}
-      <section class="block"><div class="block-head"><h2>Anfrage des Kunden</h2><span class="small muted">${fDT(r.created_at)}</span></div><div class="block-body">${kv(Object.entries(f).map(([k, v]) => [k === 'body' ? 'Sonstiges' : k, html`<span class="pre">${v}</span>`]))}
+      ${linkedCard(a)}
+      <section class="block"><div class="block-head"><h2>Anfrage des Kunden</h2><span class="small muted">${fDT(r.created_at)}</span></div><div class="block-body">${kv(Object.entries(f).filter(([k]) => !k.startsWith('Altwagen ')).map(([k, v]) => [k === 'body' ? 'Sonstiges' : k, html`<span class="pre">${v}</span>`]))}
         <p class="tiny muted mt">Name, E-Mail, Telefon und Anschrift des Kunden siehst du nach seiner Zusage.</p></div></section>
+      ${Object.keys(f).some((k) => k.startsWith('Altwagen ')) ? html`<section class="block"><div class="block-head"><h2>Altwagen zur Inzahlungnahme</h2></div><div class="block-body">${kv(Object.entries(f).filter(([k]) => k.startsWith('Altwagen ')).map(([k, v]) => [k.slice(9), html`<span class="pre">${v}</span>`]))}</div></section>` : ''}
       ${a.events && a.events.length ? html`<section class="block"><div class="block-head"><h2>Verlauf</h2></div><div class="block-body"><ul class="timeline">${a.events.map((e) => html`<li class="${/^KFL/.test(e.text || '') ? 'kfl' : ''}"><div><div class="tl-meta">${e.actor_name || 'KFL'} · ${fDT(e.created_at)}</div><div>${e.text}</div></div></li>`)}</ul></div></section>` : ''}
     </div><div class="stack">${a.status === 'in_bearbeitung' && a.mine ? offerForm(a) : offerView}</div></div>`);
   // Direkt aus der E-Mail („Kontaktdaten öffnen“): zur Kontaktkarte springen und kurz hervorheben
   if (/[?&]kontakt\b/.test(location.hash)) { const cc = $('.contact-card'); if (cc) { cc.classList.add('flash'); cc.scrollIntoView({ block: 'start', behavior: 'smooth' }); setTimeout(() => cc.classList.remove('flash'), 2600); } }
 }
+// Verknüpfte Anfrage (Inzahlungnahme ↔ Traumwagen-DEAL)
+function linkedCard(a) {
+  const l = a.linked; if (!l) return '';
+  if (a.request.type === 'deal') {
+    const action = l.aid && l.mine ? html`<a class="btn btn-primary btn-sm" href="#/anfragen/${l.aid}">${icon('arrow')}Zur Ankauf-Anfrage #${l.number}</a>`
+      : l.canJoin && a.mine ? html`<button class="btn btn-primary btn-sm" data-act="pjoin" data-id="${a.id}">${icon('plus')}Ankauf zusätzlich übernehmen</button>`
+      : l.aid ? html`<a class="btn btn-sm" href="#/anfragen/${l.aid}">Ankauf-Anfrage #${l.number} ansehen</a>` : html`<span class="small muted">Für den Ankauf werden keine Angebote mehr angenommen.</span>`;
+    return html`<section class="dual-card big">${icon('refresh')}<div><b>Doppeltes Geschäft möglich: Traumwagen + Ankauf</b>
+      <span>Der Kunde möchte sein jetziges Fahrzeug in Zahlung geben – die Angaben findest du unten unter „Altwagen“. Zum Ankauf gibt es die eigene Anfrage <b>#${l.number}</b>${l.vehicle ? ` (${l.vehicle})` : ''}. Übernimm sie zusätzlich, dann gibst du ein Angebot für den Traumwagen und eines für den Ankauf ab.</span>
+      <div class="row mt-s">${action}</div></div></section>`;
+  }
+  return html`<section class="dual-card">${icon('refresh')}<div><b>Kunde kauft gleichzeitig einen Traumwagen</b><span>Dieses Fahrzeug soll beim Kauf über KFL in Zahlung gehen (Traumwagen-DEAL #${l.number}${l.vehicle ? ` · ${l.vehicle}` : ''}).</span>
+    ${l.aid ? html`<div class="row mt-s"><a class="btn btn-sm" href="#/anfragen/${l.aid}">Zur Traumwagen-Anfrage #${l.number}</a></div>` : ''}</div></section>`;
+}
+ACT.pjoin = async (b) => {
+  if (!(await confirmBox('Ankauf zusätzlich übernehmen?', 'Die Ankauf-Anfrage wird dir direkt zugeordnet und für dich reserviert. Du kannst dann ein Angebot für den Ankauf des Altwagens abgeben – zusätzlich zu deinem Angebot für den Traumwagen.', 'Übernehmen'))) return;
+  const r = await POST(`/requests/${b.dataset.id}/linked`); toast('Ankauf-Anfrage übernommen.'); await pcounts(); plast = null; location.hash = '#/anfragen/' + r.id;
+};
 ACT.ptake = async (b) => { await POST(`/requests/${b.dataset.id}/take`); toast('Übernommen – jetzt Angebot erstellen.'); await pcounts(); plast = null; preload(); };
 ACT.prelease = async (b) => { if (!(await confirmBox('Anfrage wieder öffnen?', 'Die Anfrage wird wieder für deine ganze Organisation sichtbar. Das wird vertraulich vermerkt.', 'Wieder öffnen'))) return; await POST(`/requests/${b.dataset.id}/release`); toast('Wieder für dein Team geöffnet.'); location.hash = '#/anfragen'; };
 ACT.pcontact = async (b) => {
@@ -77,7 +98,7 @@ ACT.pcontract = () => {
 const CFG_SKIP = /^(PLZ|Umkreis|Kontaktweg|Kundenart|Zustand|Formular|form|utf8|form_type|AGB akzeptiert|Datenschutz akzeptiert)$/i;
 function custConfig(r, o) {
   const f = r.fields || {};
-  const rows = Object.entries(f).filter(([k, v]) => !CFG_SKIP.test(k) && String(v ?? '').trim() !== '').map(([k, v]) => [k === 'body' ? 'Sonstiges' : k, html`<span class="pre">${v}</span>`]);
+  const rows = Object.entries(f).filter(([k, v]) => !CFG_SKIP.test(k) && !/^(Altwagen |Ankauf-Anfrage|Inzahlungnahme zu$)/.test(k) && String(v ?? '').trim() !== '').map(([k, v]) => [k === 'body' ? 'Sonstiges' : k, html`<span class="pre">${v}</span>`]);
   if (!rows.length) return '';
   return html`<h3 class="mt-l">${o.config === 'alternativ' ? 'Konfiguration laut Kundenanfrage (Angebot weicht ab)' : 'Konfiguration laut Kundenanfrage'}</h3>${o.config === 'gleich' ? html`<p class="small muted">Das Angebot entspricht dieser Konfiguration.</p>` : ''}${kv(rows)}`;
 }

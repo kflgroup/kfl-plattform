@@ -86,6 +86,7 @@ async function pageRequest(no) {
   P.show(html`${head(html`#${r.number} · ${r.vehicle || r.summary || typeLabel(r.type)}`, html`${typeLabel(r.type)} · eingegangen ${fDT(r.created_at)} · Quelle: ${r.source || 'Webseite'}${r.radius_km != null ? html` · Umkreis ${r.radius_km ? r.radius_km + ' km' : 'bundesweit'}` : ''}`,
       html`${statusBadge(RS(), r.status)}${r.billed ? badge('Kopie · in Rechnung gestellt', 'ok') : ''}${r.deleted ? badge('Deaktiviert', 'err') : ''}`, ['#/anfragen', 'Alle Anfragen'])}
     ${r.status_note ? html`<div class="note-box">${icon('alert')}<span>${r.status_note}</span></div>` : ''}
+    ${r.linked ? html`<div class="info-box mt">${icon('refresh')}<span>${r.type === 'deal' ? html`<b>Mit Inzahlungnahme:</b> Der Kunde gibt sein jetziges Auto in Zahlung. Ankauf-Anfrage` : html`<b>Inzahlungnahme:</b> Gehört zum Traumwagen-DEAL`} <a href="#/anfragen/${r.linked.number}">#${r.linked.number}${r.linked.vehicle ? ' · ' + r.linked.vehicle : ''}</a> (${(RS().find((x) => x.key === r.linked.status) || {}).label || r.linked.status}). Partner der Traumwagen-Anfrage können den Ankauf zusätzlich übernehmen.</span></div>` : ''}
     ${r.customer_note_unread ? html`<div class="info-box mt">${icon('note')}<span>Der Kunde hat eine neue Notiz unter „Sonstiges“ hinterlassen. Bitte berücksichtigen und ggf. an die Partner weitergeben.</span></div>` : ''}
     <section class="panel mt">${trackHtml(r)}</section>
     <div class="detail-grid mt">
@@ -131,7 +132,7 @@ async function pageRequest(no) {
 function asgHtml(a, offer) {
   const live = ['neu', 'in_bearbeitung'].includes(a.status);
   return html`<div class="asg"><div class="asg-head"><div><b>${a.org_name}</b>${a.org_city ? html` <span class="muted small">${a.org_city}</span>` : ''}
-      <div class="asg-meta">${a.distance_km != null ? `${fNum(a.distance_km)} km Luftlinie · ` : ''}${a.source === 'manuell' ? 'manuell zugeordnet' : 'automatisch'} · ${a.mailed_at ? 'versendet ' + fDT(a.mailed_at) : 'noch nicht versendet'}${a.reminders ? ` · ${a.reminders}× angemahnt` : ''}</div>
+      <div class="asg-meta">${a.distance_km != null ? `${fNum(a.distance_km)} km Luftlinie · ` : ''}${a.source === 'manuell' ? 'manuell zugeordnet' : a.source === 'verknuepft' ? 'vom Partner zusätzlich übernommen (Inzahlungnahme)' : 'automatisch'} · ${a.mailed_at ? 'versendet ' + fDT(a.mailed_at) : 'noch nicht versendet'}${a.reminders ? ` · ${a.reminders}× angemahnt` : ''}</div>
       <div class="asg-meta">${a.taker_name ? `In Bearbeitung von ${a.taker_name}${a.taken_at ? ' seit ' + fDT(a.taken_at) : ''}` : ''}${live && a.deadline_at ? ` · Frist ${fDT(a.deadline_at)} (${fLeft(a.deadline_at)})` : ''}${a.contact_due_at && ['gewonnen', 'nicht_erreicht'].includes(a.status) ? ` · Kontaktfrist ${fDT(a.contact_due_at)}` : ''}</div>
       ${a.closed_reason ? html`<div class="asg-meta">${a.closed_reason}</div>` : ''}</div>
     ${statusBadge(AS(), a.status)}</div>

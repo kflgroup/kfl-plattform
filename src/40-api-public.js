@@ -46,16 +46,30 @@ async function handleForm(ctx) {
     }
     return cjson({ ok: true, number: id, ticket: true, receivedAt: data['Eingang (Server)'] }, 200, origin);
   }
+  // Traumwagen-DEAL mit Inzahlungnahme: zusätzlich eigene Ankauf-Anfrage, beide verknüpft
+  const sellData = form === 'deal' ? tradeInSplit(data) : null;
   const id = await createRequest(ctx, form, data, { customerAccount: kid !== '0' ? kid : null });
+  let sellId = null;
+  if (sellData) {
+    sellData['Inzahlungnahme zu'] = `Traumwagen-DEAL #${toNumber(id)}`;
+    sellId = await createRequest(ctx, 'sell', sellData, { customerAccount: kid !== '0' ? kid : null });
+    data['Ankauf-Anfrage zum Altwagen'] = `#${toNumber(sellId)}`;
+    const dealData = { ...jparse(await DB.val(ctx.db, 'SELECT data FROM requests WHERE id = ?', id), {}), 'Ankauf-Anfrage zum Altwagen': `#${toNumber(sellId)}` };
+    await ctx.db.batch([
+      ctx.db.prepare('UPDATE requests SET linked_request_id = ?, data = ? WHERE id = ?').bind(sellId, JSON.stringify(dealData), id),
+      // Ankauf wird im nächsten Durchlauf (spätestens 5 Minuten) verteilt – hält den Formular-Eingang schnell und im Abfragelimit
+      ctx.db.prepare('UPDATE requests SET linked_request_id = ?, dispatch_pending = 1 WHERE id = ?').bind(id, sellId)]);
+    await reqEvent(ctx, id, 'verknuepft', `Inzahlungnahme: Ankauf-Anfrage #${toNumber(sellId)} angelegt`);
+  }
   try { await dispatchRequest(ctx, id); } catch (e) { console.log('Verteilung', e.stack || e.message); await DB.update(ctx.db, 'requests', id, { status: 'stoerung', status_note: 'Verteilung fehlgeschlagen: ' + e.message }); }
   // Eingangsbestätigung an den Kunden
   const s = await settingsOf(ctx);
   const link = s.link_my_requests;
   await sendMail(ctx, { category: 'system', to: email, toName: data.Vorname, subject: `Deine Anfrage #${toNumber(id)} ist bei KFL eingegangen${form === 'deal' ? ' – plus 50 % auf unsere Ratgeber' : ''}`, title: form === 'deal' ? 'Danke, deine Anfrage ist bei uns.' : 'Danke, wir bewerten dein Auto.',
-    body: `<p>Hallo ${esc(data.Vorname || '')},</p><p>wir haben deine Anfrage <strong>#${toNumber(id)}</strong> erhalten und an unsere passenden Partner weitergegeben. Innerhalb von 24 Stunden an Werktagen sammeln wir die Angebote und stellen dir das beste vor – <strong>deine Kontaktdaten bleiben bis zu deiner Zusage bei uns</strong>.</p>
+    body: `<p>Hallo ${esc(data.Vorname || '')},</p><p>wir haben deine Anfrage <strong>#${toNumber(id)}</strong> erhalten und an unsere passenden Partner weitergegeben.${sellId ? ` Für dein jetziges Auto haben wir zusätzlich die Ankauf-Anfrage <strong>#${toNumber(sellId)}</strong> angelegt – so bekommst du auch dafür Angebote. Autohäuser, die beides übernehmen, können dir ein Komplettpaket machen.` : ''} Innerhalb von 24 Stunden an Werktagen sammeln wir die Angebote und stellen dir das beste vor – <strong>deine Kontaktdaten bleiben bis zu deiner Zusage bei uns</strong>.</p>
       ${form === 'deal' ? `<p style="background:#000;color:#fff;border-radius:12px;padding:18px 20px">Dein Dankeschön: <strong style="color:#ff6c01;font-size:20px;letter-spacing:1px">TRAUMDEAL50</strong><br><span style="color:#c7c7cc">50 % Rabatt auf die KFL Ratgeber. <a href="https://kfl-group.com/discount/TRAUMDEAL50?redirect=/collections/ratgeber" style="color:#ff6c01">Jetzt einlösen</a></span></p>` : ''}
       <p>Unter <a href="${esc(link)}" style="color:#ff6c01">Meine Anfragen</a> siehst du den Stand, kannst deine Anfrage ändern und uns Notizen schicken.</p>${mailTable(Object.entries(data).filter(([k, v]) => !HIDDEN_KEY.test(k) && String(v).trim()))}` });
-  return cjson({ ok: true, number: toNumber(id), receivedAt: data['Eingang (Server)'] }, 200, origin);
+  return cjson({ ok: true, number: toNumber(id), sellNumber: sellId ? toNumber(sellId) : null, receivedAt: data['Eingang (Server)'] }, 200, origin);
 }
 
 /* ---------- Kundenbereich „Meine Anfragen“ ---------- */
