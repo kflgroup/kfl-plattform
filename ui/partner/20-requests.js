@@ -47,7 +47,7 @@ async function pRequest(id) {
   V.show(html`${phead(html`#${r.number} · ${r.vehicle || [r.brand, r.model].filter(Boolean).join(' ')}`, html`${r.typeLabel} · ${r.summary || ''} · PLZ ${r.plz}${a.distance_km != null ? ` (${fNum(a.distance_km)} km)` : ''}`, html`<div class="row">${['neu', 'in_bearbeitung'].includes(a.status) ? clock(a.deadline_at) : ''}${badge(a.statusLabel, a.tone)}</div>`, back)}
     ${statusBox}
     <div class="p-detail mt"><div class="stack">
-      ${a.contact ? html`<section class="contact-card stack-s"><h3>Kontaktdaten des Kunden</h3>${kv([['Name', a.contact.name], ['Telefon', a.contact.phone], ['E-Mail', a.contact.email], ['Anschrift', [a.contact.street, [a.contact.zip, a.contact.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')], ['Bevorzugt', a.contact.contactWay]])}
+      ${a.contact ? html`<section class="contact-card stack-s" id="kontakt"><h3>Kontaktdaten des Kunden</h3>${kv([['Name', a.contact.name], ['Telefon', a.contact.phone], ['E-Mail', a.contact.email], ['Anschrift', [a.contact.street, [a.contact.zip, a.contact.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')], ['Bevorzugt', a.contact.contactWay]])}
         <div class="row">${a.contact.phone ? html`<a class="btn btn-ok" href="tel:${a.contact.phone.replace(/[^+\d]/g, '')}">${icon('phone')}Anrufen</a>` : ''}${a.contact.email ? html`<a class="btn" href="mailto:${a.contact.email}?subject=${encodeURIComponent('Ihr Angebot über KFL – Anfrage #' + r.number)}">${icon('mail')}E-Mail</a>` : ''}</div>
         ${['gewonnen', 'nicht_erreicht'].includes(a.status) ? html`<div class="row mt"><button class="btn btn-ok btn-sm" data-act="pcontact" data-s="kontaktiert">${icon('check')}Kunde erfolgreich kontaktiert</button><button class="btn btn-sm" data-act="pcontact" data-s="nicht_erreicht">Kunde nicht erreicht</button></div>` : ''}
         <button class="btn btn-sm btn-ghost" data-act="pcontract">${icon('file')}Vertragsunterlagen vorbereiten</button></section>` : ''}
@@ -55,6 +55,8 @@ async function pRequest(id) {
         <p class="tiny muted mt">Name, E-Mail, Telefon und Anschrift des Kunden siehst du nach seiner Zusage.</p></div></section>
       ${a.events && a.events.length ? html`<section class="block"><div class="block-head"><h2>Verlauf</h2></div><div class="block-body"><ul class="timeline">${a.events.map((e) => html`<li class="${/^KFL/.test(e.text || '') ? 'kfl' : ''}"><div><div class="tl-meta">${e.actor_name || 'KFL'} · ${fDT(e.created_at)}</div><div>${e.text}</div></div></li>`)}</ul></div></section>` : ''}
     </div><div class="stack">${a.status === 'in_bearbeitung' && a.mine ? offerForm(a) : offerView}</div></div>`);
+  // Direkt aus der E-Mail („Kontaktdaten öffnen“): zur Kontaktkarte springen und kurz hervorheben
+  if (/[?&]kontakt\b/.test(location.hash)) { const cc = $('.contact-card'); if (cc) { cc.classList.add('flash'); cc.scrollIntoView({ block: 'start', behavior: 'smooth' }); setTimeout(() => cc.classList.remove('flash'), 2600); } }
 }
 ACT.ptake = async (b) => { await POST(`/requests/${b.dataset.id}/take`); toast('Übernommen – jetzt Angebot erstellen.'); await pcounts(); plast = null; preload(); };
 ACT.prelease = async (b) => { if (!(await confirmBox('Anfrage wieder öffnen?', 'Die Anfrage wird wieder für deine ganze Organisation sichtbar. Das wird vertraulich vermerkt.', 'Wieder öffnen'))) return; await POST(`/requests/${b.dataset.id}/release`); toast('Wieder für dein Team geöffnet.'); location.hash = '#/anfragen'; };

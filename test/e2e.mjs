@@ -142,6 +142,7 @@ const rq2 = q1('SELECT * FROM requests WHERE id = 1');
 check(rq2.status === 'kontaktdaten_versendet', 'Status: Kontaktdaten versendet', rq2.status);
 const won = lastMailTo('a_vt1@partner.de');
 check(won && /Gewonnen/.test(won.subject) && won.htmlContent.includes('max@kunde.de') && won.htmlContent.includes('0171 1234567') && won.sender.email === 'vermittlung@kfl-group.com', 'Partner bekommt Kontaktdaten per Mail von vermittlung@');
+check(/https:\/\/w\.test\/partner#\/anfragen\/\d+\?kontakt/.test(won.htmlContent) && /Anfrage &amp; Kontaktdaten im Dashboard öffnen/.test(won.htmlContent), 'Gewonnen-Mail: Button führt direkt zur Anfrage mit Kontaktdaten im Partner-Dashboard');
 check(/Alpha/.test(lastMailTo('max@kunde.de').subject), 'Kunde erhält Partnerdaten');
 r = await c.get(`/papi/requests/${aidA}`, { who: 'a_vt1' });
 check(r.item.status === 'gewonnen' && r.item.contact.email === 'max@kunde.de' && r.item.contact_due_at === '2026-11-04T09:00:00.000Z', 'Partner sieht Kontaktdaten, Kontaktfrist läuft (24 Werktags-Stunden)', r.item.contact_due_at);

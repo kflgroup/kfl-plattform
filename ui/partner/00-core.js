@@ -67,7 +67,7 @@ App.onPw = () => pforcePw();
 function pauthFrame(inner) {
   const l = P.links || {};
   render('#root', html`<div class="p-auth"><section class="p-auth-art"><div>${LOGO}</div>
-    <div><h1>Schnell sein. Bestes Angebot. Deal gewinnen.</h1><p class="claim">Das Partner-Dashboard der KFL GbR. Hier landen die Anfragen deiner Region – wer zuerst ein starkes Angebot abgibt, holt den Kunden.</p></div>
+    <div><h1><span>Schnell sein.</span> <span>Bestes Angebot abgeben.</span> <span>Deal gewinnen.</span></h1><p class="claim">Das Partner-Dashboard der KFL GbR. Hier landen die Anfragen deiner Region – wer zuerst ein starkes Angebot abgibt, holt den Kunden.</p></div>
     <div class="p-auth-points"><div>${icon('bolt')}<span>Neue Anfragen sofort sehen und mit einem Klick übernehmen.</span></div><div>${icon('clock')}<span>Jede Anfrage hat 24 Werktags-Stunden – die Uhr zeigt dir, wie viel Zeit bleibt.</span></div><div>${icon('trophy')}<span>Das beste Angebot gewinnt. Der Kunde meldet sich – du bekommst seine Kontaktdaten.</span></div></div>
     <div class="socials">${l.shop ? html`<a class="social" href="${l.shop}" target="_blank" rel="noopener">${icon('shop')}Webstore</a>` : ''}${l.instagram ? html`<a class="social" href="${l.instagram}" target="_blank" rel="noopener">${icon('insta')}Instagram</a>` : ''}</div></section>
     <section class="p-auth-form">${inner}</section></div>`);

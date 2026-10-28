@@ -129,14 +129,14 @@ async function mailAssignment(ctx, req, org, aid, { targetUserId, deadline, remi
   const asg = await DB.one(ctx.db, 'SELECT * FROM assignments WHERE id = ?', aid);
   const line = teaserLine(req, asg ? asg.distance_km : null);
   const title = reminder ? `Erinnerung: Anfrage #${toNumber(req.id)} wartet auf dein Angebot` : `Neue Anfrage #${toNumber(req.id)} in deiner Nähe`;
-  const link = (s.link_partner || '') + `#/anfragen/${aid}`;
+  const link = partnerUrl(ctx, s, `#/anfragen/${aid}`);
   let mails = 0, mailErrors = 0;
   for (const u of targets) {
     await notify(ctx, 'partner', u.id, { kind: reminder ? 'mahnung' : 'anfrage', title, body: line + (extra ? '\n' + extra : ''), link: `#/anfragen/${aid}` });
     const body = `<p>Hallo ${esc(u.name)},</p><p>${reminder ? 'zu dieser Anfrage liegt uns noch kein Angebot von dir vor:' : 'für dich ist eine neue Anfrage eingegangen:'}</p>
       <p style="font-size:18px;font-weight:700;margin:14px 0">${esc(line)}</p>${extra ? `<p>${esc(extra).replace(/\n/g, '<br>')}</p>` : ''}
       <p>Angebotsfrist: <strong>${esc(fmtDE(deadline || (asg && asg.deadline_at)))}</strong> (gezählt werden Werktage${saturdayOpen(org.opening) ? ' inkl. Samstag' : ''}).</p>
-      ${s.link_partner ? mailBtn(link, 'Anfrage im Partner-Dashboard öffnen') : ''}<p style="color:#6b6b70;font-size:13px">Die Kontaktdaten des Kunden erhältst du, sobald er dein Angebot annimmt.</p>`;
+      ${link ? mailBtn(link, 'Anfrage im Partner-Dashboard öffnen') : ''}<p style="color:#6b6b70;font-size:13px">Die Kontaktdaten des Kunden erhältst du, sobald er dein Angebot annimmt.</p>`;
     const r = await sendMail(ctx, { category: 'partner', to: u.email, toName: u.name, subject: title, title, body });
     mails++; if (r.status === 'fehler') mailErrors++;
   }
@@ -410,10 +410,12 @@ async function markWon(ctx, aid, { initial = false, note = null } = {}) {
   let mailFail = false;
   for (const u of recipients) {
     await notify(ctx, 'partner', u.id, { kind: 'gewonnen', title: `Gewonnen! Anfrage #${toNumber(req.id)}`, body: `Der Kunde wartet auf deinen Anruf oder deine E-Mail. Bitte melde dich innerhalb der Frist (bis ${fmtDE(due)}).`, link: `#/anfragen/${aid}` });
+    const plink = partnerUrl(ctx, s, `#/anfragen/${aid}?kontakt`);
     const r = await sendMail(ctx, { category: 'partner', to: u.email, toName: u.name, subject: `Gewonnen: Kunde zu Anfrage #${toNumber(req.id)} wartet auf dich`, title: 'Glückwunsch, du hast das Angebot gewonnen!',
       body: `<p>Hallo ${esc(u.name)},</p><p>der Kunde hat sich für dein Angebot zu <strong>#${toNumber(req.id)} · ${esc(req.vehicle || '')}</strong> entschieden und wartet auf deinen Anruf oder deine E-Mail.</p>
+        ${plink ? mailBtn(plink, 'Anfrage & Kontaktdaten im Dashboard öffnen') : ''}
         ${mailTable([['Name', c.name], ['Telefon', c.phone], ['E-Mail', c.email], ['Anschrift', [c.street, [c.zip, c.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')], ['Bevorzugter Kontaktweg', c.contactWay]])}
-        <p>Bitte kontaktiere den Kunden bis <strong>${esc(fmtDE(due))}</strong> und setze den Status im Partner-Dashboard auf „Kunde erfolgreich kontaktiert“.</p>${s.link_partner ? mailBtn(s.link_partner + '#/anfragen/' + aid, 'Zur Anfrage') : ''}` });
+        <p>Bitte kontaktiere den Kunden bis <strong>${esc(fmtDE(due))}</strong> und setze den Status im Partner-Dashboard auf „Kunde erfolgreich kontaktiert“.</p>${plink ? `<p style="color:#6b6b70;font-size:13px">Im Dashboard kannst du den Kunden direkt anrufen, ihm schreiben, den Status setzen und die Vertragsunterlagen vorbereiten.</p>` : ''}` });
     if (r.status === 'fehler') mailFail = true;
   }
   await DB.update(ctx.db, 'requests', req.id, { status: mailFail ? 'stoerung' : 'kontaktdaten_versendet', status_note: mailFail ? 'Kontaktdaten konnten nicht per Mail an den Partner gesendet werden' : null, updated_at: t });

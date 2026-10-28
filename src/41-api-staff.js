@@ -358,7 +358,7 @@ async function handleStaffApi(ctx, url) {
           const users = a.taken_by ? await DB.all(db, 'SELECT * FROM partner_users WHERE id = ?', a.taken_by) : await DB.all(db, 'SELECT * FROM partner_users WHERE org_id = ? AND active = 1', a.org_id);
           for (const pu of users) {
             await notify(ctx, 'partner', pu.id, { kind: kind === 'probefahrt' ? 'probefahrt' : 'info', title: `${label} · #${m[1]}`, body: text, link: `#/anfragen/${a.id}` });
-            await sendMail(ctx, { category: 'partner', to: pu.email, toName: pu.name, subject: `${label} · Anfrage #${m[1]}`, title: label, body: `<p>Hallo ${esc(pu.name)},</p><p>zur Anfrage <strong>#${m[1]} · ${esc(teaserLine(r, a.distance_km))}</strong>:</p><p style="white-space:pre-wrap">${esc(text || label)}</p>${s.link_partner ? mailBtn(s.link_partner + '#/anfragen/' + a.id, 'Zur Anfrage') : ''}` });
+            await sendMail(ctx, { category: 'partner', to: pu.email, toName: pu.name, subject: `${label} · Anfrage #${m[1]}`, title: label, body: `<p>Hallo ${esc(pu.name)},</p><p>zur Anfrage <strong>#${m[1]} · ${esc(teaserLine(r, a.distance_km))}</strong>:</p><p style="white-space:pre-wrap">${esc(text || label)}</p>${partnerUrl(ctx, s, '#/anfragen/' + a.id) ? mailBtn(partnerUrl(ctx, s, '#/anfragen/' + a.id), 'Zur Anfrage') : ''}` });
           }
         }
       }

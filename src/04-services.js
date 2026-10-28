@@ -18,6 +18,8 @@ async function saveSettings(ctx, obj) {
   }
   ctx._settings = null;
 }
+// Link ins Partner-Dashboard (eingestellte Startseite, sonst Adresse dieses Systems)
+function partnerUrl(ctx, s, hash = '') { const base = String(s.link_partner || ((ctx.origin || '') + '/partner')).replace(/\/$/, ''); return /^https?:\/\//.test(base) ? base + hash : ''; }
 async function rawSetting(db, key) { const r = await DB.one(db, 'SELECT value FROM settings WHERE key = ?', key); return r ? r.value : null; }
 async function setRawSetting(db, key, value) { await DB.run(db, 'INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES (?, ?, ?, ?)', key, value, nowIso(), 'system'); }
 
