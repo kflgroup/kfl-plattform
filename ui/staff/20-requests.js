@@ -10,34 +10,42 @@ async function pageRequests() {
   const [d] = await Promise.all([GET('/requests', q), can('req_assign') ? GET('/directory').then((r) => { users = r.users; }).catch(() => {}) : null]);
   if (!P.alive()) return;
   const sortBtn = (key, label) => html`<button data-act="reqSort" data-key="${key}" class="${q.sort === key ? 'sort-on' : ''}">${label}${q.sort === key ? (q.dir === 'asc' ? ' ↑' : ' ↓') : ''}</button>`;
-  const flt = (k, v, label) => html`<a class="btn btn-sm ${q[k] === v ? 'btn-dark' : 'btn-ghost'}" href="#/anfragen${qs({ ...q, [k]: q[k] === v ? '' : v, page: '' })}">${label}</a>`;
-  P.show(html`${head('Anfragen', `${plural(d.total, 'Anfrage', 'Anfragen')} · Traumwagen-DEAL und Fahrzeugverkauf`, html`<button class="btn" data-act="reqExport">${icon('download')}Liste exportieren</button>`)}
-    ${tabsBar(REQ_VIEWS.filter(([k]) => k !== 'spam' || canAny('req_spam_confirm', 'req_spam_report')).map(([k, l]) => [k, l, '#/anfragen' + qs({ view: k })]), q.view)}
-    <section class="panel mt"><form class="toolbar" data-submit="reqFilter">
-      <label class="search">${icon('search')}<input name="q" value="${q.q || ''}" placeholder="Nummer, Name, E-Mail, Marke, PLZ …" aria-label="Suche"></label>
-      ${sel('type', [['deal', 'Traumwagen-DEAL'], ['sell', 'Fahrzeugverkauf']], q.type, { empty: 'Alle Arten', attrs: 'aria-label="Art" data-change="reqFilterChange"' })}
-      ${sel('status', RS().map((s) => [s.key, s.label]), q.status, { empty: 'Alle Status', attrs: 'aria-label="Status" data-change="reqFilterChange"' })}
-      ${sel('brand', d.brands, q.brand, { empty: 'Alle Marken', attrs: 'aria-label="Marke" data-change="reqFilterChange"' })}
-      <input name="model" value="${q.model || ''}" placeholder="Modell" aria-label="Modell" size="9">
-      <input type="date" name="from" value="${q.from || ''}" aria-label="Von" data-change="reqFilterChange"><input type="date" name="to" value="${q.to || ''}" aria-label="Bis" data-change="reqFilterChange">
-      ${users.length ? sel('assignee', users.map((u) => [u.id, u.name]), q.assignee, { empty: 'Alle Zuständigen', attrs: 'aria-label="Zuständig" data-change="reqFilterChange"' }) : ''}
-      <button class="btn btn-sm btn-dark" type="submit">Filtern</button>${Object.keys(q).some((k) => !['view', 'page', 'sort', 'dir'].includes(k) && q[k]) ? html`<a class="btn btn-sm btn-ghost" href="#/anfragen?view=${q.view}">Zurücksetzen</a>` : ''}
-    </form>
-    <div class="toolbar">${flt('mine', '1', 'Mir zugewiesen')}${flt('unassigned', '1', 'Ohne Zuständigen')}${flt('notes', '1', 'Neue Kundennotizen')}</div>
-    ${d.items.length ? html`<div class="table-wrap"><table class="table"><thead><tr>
-        <th>${sortBtn('number', 'Nr.')}</th><th>${sortBtn('created_at', 'Datum')}</th><th>${sortBtn('status', 'Status')}</th><th>Anliegen</th><th>${sortBtn('customer', 'Kunde')}</th>
-        <th>${sortBtn('brand', 'Marke')}</th><th>${sortBtn('model', 'Modell')}</th><th class="r">${sortBtn('budget', 'Budget')}</th><th>${sortBtn('assignee', 'Zuständig')}</th><th>Rückmeldung Partner</th><th>Angebote</th></tr></thead>
-      <tbody>${d.items.map((r) => html`<tr class="clickable ${r.customer_note_unread ? 'is-unread' : ''}" data-act="go" data-href="#/anfragen/${r.number}">
-        <td class="num strong">#${r.number}${r.priority !== 'normal' ? html` <span class="tag">${r.priority}</span>` : ''}</td>
-        <td class="nowrap">${fDate(r.created_at)}<span class="cell-sub">${fTime(r.created_at)} Uhr</span></td>
-        <td>${statusBadge(RS(), r.status)}${r.spam_state === 'gemeldet' ? html`<span class="cell-sub">Spam gemeldet</span>` : ''}${r.billed ? html`<span class="cell-sub">Kopie · in Rechnung gestellt</span>` : ''}</td>
-        <td>${r.summary || typeLabel(r.type)}<span class="cell-sub">${typeLabel(r.type)}</span>${r.customer_note_unread ? html`<span class="cell-sub strong">Neue Notiz vom Kunden</span>` : ''}</td>
-        <td>${r.customer || '–'}<span class="cell-sub">${r.email || ''}</span></td><td>${r.brand || '–'}</td><td>${r.model || '–'}</td><td class="r num">${r.budget || '–'}</td>
-        <td>${r.assignee_name || html`<span class="muted">offen</span>`}</td>
-        <td class="nowrap">${r.partners ? html`${r.partners_reacted}/${r.partners} reagiert` : html`<span class="muted">nicht verteilt</span>`}${r.deadline_at && ['versendet', 'angebot_liegt_vor'].includes(r.status) ? html`<span class="cell-sub">${fLeft(r.deadline_at)}</span>` : ''}</td>
-        <td class="nowrap">${r.offers ? html`<b>${r.offers}</b>${r.last_offer_at ? html`<span class="cell-sub">zuletzt ${fDT(r.last_offer_at)}</span>` : ''}` : html`<span class="muted">–</span>`}</td></tr>`)}</tbody></table></div>
+  const chip = (k, v, label, ic) => html`<a class="chip ${q[k] === v ? 'on' : ''}" href="#/anfragen${qs({ ...q, [k]: q[k] === v ? '' : v, page: '' })}">${icon(ic)}${label}</a>`;
+  const stage = PIPE_STAGES.find(([, , st]) => st === q.status);
+  const more = !!(q.status && !stage) || !!q.model || !!q.from || !!q.to;
+  const pl = d.pipeline ? { ...d.pipeline, unassigned: 0, deadlineSoon: 0 } : null;
+  const views = REQ_VIEWS.filter(([k]) => k !== 'spam' || canAny('req_spam_confirm', 'req_spam_report'));
+  P.show(html`${head('Anfragen', `${plural(d.total, 'Anfrage', 'Anfragen')}${stage ? ` in „${stage[1]}“` : ''}`, html`<button class="btn" data-act="reqExport">${icon('download')}Liste exportieren</button>`)}
+    ${pl ? staffPipeline(pl, { active: stage ? stage[0] : null }) : ''}
+    <section class="panel mt list-panel">
+      <div class="list-top"><div class="seg" role="tablist" aria-label="Ansicht">${views.map(([k, l]) => html`<a role="tab" class="${q.view === k && !stage ? 'on' : ''}" aria-selected="${q.view === k}" href="#/anfragen${qs({ view: k })}">${l}</a>`)}</div>
+        <div class="chips">${chip('mine', '1', 'Mir zugewiesen', 'user')}${chip('unassigned', '1', 'Ohne Zuständigen', 'users')}${chip('notes', '1', 'Neue Kundennotizen', 'note')}</div></div>
+      <form class="toolbar" data-submit="reqFilter">
+        <label class="search">${icon('search')}<input name="q" value="${q.q || ''}" placeholder="Nummer, Name, E-Mail, Marke, PLZ …" aria-label="Suche"></label>
+        ${sel('type', [['deal', 'Traumwagen-DEAL'], ['sell', 'Fahrzeugverkauf']], q.type, { empty: 'Alle Arten', attrs: 'aria-label="Art" data-change="reqFilterChange"' })}
+        ${sel('brand', d.brands, q.brand, { empty: 'Alle Marken', attrs: 'aria-label="Marke" data-change="reqFilterChange"' })}
+        ${users.length ? sel('assignee', users.map((u) => [u.id, u.name]), q.assignee, { empty: 'Alle Zuständigen', attrs: 'aria-label="Zuständig" data-change="reqFilterChange"' }) : ''}
+        <details class="more-filters" ${more ? 'open' : ''}><summary>${icon('menu')}Weitere Filter</summary><div class="mf-in">
+          ${sel('status', RS().map((s) => [s.key, s.label]), stage ? '' : q.status, { empty: 'Alle Status', attrs: 'aria-label="Status" data-change="reqFilterChange"' })}
+          <input name="model" value="${q.model || ''}" placeholder="Modell" aria-label="Modell" size="9">
+          <label class="mf-date">Von<input type="date" name="from" value="${q.from || ''}" aria-label="Von" data-change="reqFilterChange"></label><label class="mf-date">Bis<input type="date" name="to" value="${q.to || ''}" aria-label="Bis" data-change="reqFilterChange"></label></div></details>
+        ${stage ? html`<input type="hidden" name="status" value="${q.status}">` : ''}
+        <button class="btn btn-sm btn-dark" type="submit">Filtern</button>${Object.keys(q).some((k) => !['view', 'page', 'sort', 'dir'].includes(k) && q[k]) ? html`<a class="btn btn-sm btn-ghost" href="#/anfragen?view=${q.view}">Zurücksetzen</a>` : ''}
+      </form>
+    ${d.items.length ? html`<div class="table-wrap"><table class="table req-table"><thead><tr>
+        <th>${sortBtn('number', 'Anfrage')}</th><th>${sortBtn('brand', 'Fahrzeug und Anliegen')}</th><th>${sortBtn('customer', 'Kunde')}</th><th>${sortBtn('status', 'Status')}</th>
+        <th>Partner und Angebote</th><th>${sortBtn('assignee', 'Zuständig')}</th></tr></thead>
+      <tbody>${d.items.map((r) => { const live = r.deadline_at && ['versendet', 'angebot_liegt_vor'].includes(r.status); const left = live ? new Date(r.deadline_at) - Date.now() : null;
+        return html`<tr class="clickable ${r.customer_note_unread ? 'is-unread' : ''}" data-act="go" data-href="#/anfragen/${r.number}">
+        <td class="nowrap"><b class="num">#${r.number}</b>${r.priority !== 'normal' ? html` <span class="tag">${r.priority}</span>` : ''}<span class="cell-sub">${fDate(r.created_at)}, ${fTime(r.created_at)} Uhr</span></td>
+        <td class="rq-veh"><b>${r.vehicle || [r.brand, r.model].filter(Boolean).join(' ') || typeLabel(r.type)}</b><span class="cell-sub">${r.summary || ''}${r.budget ? ` · ${r.budget}` : ''}</span>
+          <span class="cell-tags"><span class="tag ${r.type === 'sell' ? 'tag-sell' : ''}">${typeShort(r.type)}</span>${r.customer_note_unread ? html`<span class="tag tag-hot">Neue Kundennotiz</span>` : ''}${r.plz ? html`<span class="tag">PLZ ${r.plz}</span>` : ''}</span></td>
+        <td>${r.customer || '–'}<span class="cell-sub">${r.email || ''}</span></td>
+        <td>${statusBadge(RS(), r.status)}${r.spam_state === 'gemeldet' ? html`<span class="cell-sub">Spam gemeldet</span>` : ''}${r.billed ? html`<span class="cell-sub">in Rechnung gestellt</span>` : ''}</td>
+        <td class="rq-partner">${r.partners ? html`<div class="rp-top"><span>${r.partners_reacted}/${r.partners} reagiert</span>${r.offers ? html`<b>${plural(r.offers, 'Angebot', 'Angebote')}</b>` : ''}</div><span class="rp-bar"><i data-w="${Math.round((r.partners_reacted / r.partners) * 100)}"></i></span>${live ? html`<span class="cell-sub ${left < 4 * 3600e3 ? 'is-hot' : ''}">${icon('clock')}${fLeft(r.deadline_at)}</span>` : ''}` : html`<span class="muted small">nicht verteilt</span>`}</td>
+        <td>${r.assignee_name ? html`<span class="who-cell">${avatar(r.assignee_name)}${r.assignee_name}</span>` : html`<span class="muted small">offen</span>`}</td></tr>`; })}</tbody></table></div>
       <div class="pager"><span>Seite ${d.page} von ${d.pages}</span><span class="row">${d.page > 1 ? html`<a class="btn btn-sm" href="#/anfragen${qs({ ...q, page: d.page - 1 })}">Zurück</a>` : ''}${d.page < d.pages ? html`<a class="btn btn-sm" href="#/anfragen${qs({ ...q, page: d.page + 1 })}">Weiter</a>` : ''}</span></div>`
-      : empty('Keine Anfragen gefunden', 'Passe die Filter an oder setze sie zurück.')}</section>`);
+      : html`<div class="panel-body">${empty('Keine Anfragen gefunden', 'Passe die Filter an oder setze sie zurück.')}</div>`}</section>`);
 }
 SUBMIT.reqFilter = (d) => { const q = hashQuery(); setHashQuery({ view: q.view, mine: q.mine, unassigned: q.unassigned, notes: q.notes, sort: q.sort, dir: q.dir, ...d }); };
 CHANGE.reqFilterChange = (el) => SUBMIT.reqFilter(formData(el.form));

@@ -11,8 +11,8 @@ function partnerPublic(p) {
 }
 function asgTone(a) { return (ASSIGN_STATUSES.find((s) => s.key === a.status) || {}).tone || 'info'; }
 
-async function partnerAssignmentView(ctx, p, a, { detail = false } = {}) {
-  const req = await DB.one(ctx.db, 'SELECT * FROM requests WHERE id = ?', a.request_id);
+async function partnerAssignmentView(ctx, p, a, { detail = false, req = null, takers = null } = {}) {
+  req = req || await DB.one(ctx.db, 'SELECT * FROM requests WHERE id = ?', a.request_id);
   const mine = a.taken_by === p.id;
   const base = { id: a.id, status: a.status, statusLabel: statusLabel(ASSIGN_STATUSES, a.status), tone: a.archived ? 'warn' : asgTone(a), distance_km: a.distance_km, deadline_at: a.deadline_at,
     created_at: a.created_at, lock_until: mine ? a.lock_until : null, taken_at: a.taken_at, sent_at: a.sent_at, won_at: a.won_at, contact_due_at: mine || p.rank >= 2 ? a.contact_due_at : null,
@@ -20,7 +20,7 @@ async function partnerAssignmentView(ctx, p, a, { detail = false } = {}) {
   if (a.status === 'neu') return { ...base, level: 'teaser', request: partnerRequestData(req, 'teaser') };
   if (!mine) {
     if (p.rank < 2) return null;
-    const taker = a.taken_by ? await DB.one(ctx.db, 'SELECT name FROM partner_users WHERE id = ?', a.taken_by) : null;
+    const taker = !a.taken_by ? null : takers ? (takers.has(a.taken_by) ? { name: takers.get(a.taken_by) } : null) : await DB.one(ctx.db, 'SELECT name FROM partner_users WHERE id = ?', a.taken_by);
     return { ...base, level: 'summary', taker: taker ? taker.name : null, request: partnerRequestData(req, 'teaser') };
   }
   const v = { ...base, level: 'full', request: partnerRequestData(req, 'full') };
@@ -150,7 +150,12 @@ async function handlePartnerApi(ctx, url) {
   need(!p.mustChangePw, 428, 'Bitte vergib zuerst ein eigenes Passwort.');
   const visibleAsg = async (where, ...args) => {
     const rows = await DB.all(db, `SELECT * FROM assignments WHERE org_id = ? AND ${where} ORDER BY id DESC LIMIT 300`, p.orgId, ...args);
-    const out2 = []; for (const a of rows) { const v = await partnerAssignmentView(ctx, p, a); if (v) out2.push(v); } return out2;
+    // Anfragen und bearbeitende Personen gesammelt laden (statt einer Abfrage je Zeile)
+    const reqs = new Map(), takers = new Map();
+    const ids = [...new Set(rows.map((a) => a.request_id))], tids = [...new Set(rows.map((a) => a.taken_by).filter(Boolean))];
+    for (let i = 0; i < ids.length; i += 90) { const c = ids.slice(i, i + 90); for (const r of await DB.all(db, `SELECT * FROM requests WHERE id IN (${inList(c)})`, ...c)) reqs.set(r.id, r); }
+    for (let i = 0; i < tids.length; i += 90) { const c = tids.slice(i, i + 90); for (const t of await DB.all(db, `SELECT id, name FROM partner_users WHERE id IN (${inList(c)})`, ...c)) takers.set(t.id, t.name); }
+    const out2 = []; for (const a of rows) { const req = reqs.get(a.request_id); if (!req) continue; const v = await partnerAssignmentView(ctx, p, a, { req, takers }); if (v) out2.push(v); } return out2;
   };
 
   /* ---------- Start ---------- */

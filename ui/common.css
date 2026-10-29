@@ -257,3 +257,43 @@ table.table{width:100%;border-collapse:collapse;font-size:14px}
 .auth-help .spacer{min-width:8px}
 .fi-title{text-decoration:none}
 .fi-title:hover{text-decoration:underline}
+
+/* ---------- Vertriebs-Pipeline („Tempostrecke“) ----------
+   Stufen nebeneinander, getrennt durch den schrägen Tempo-Strich aus dem KFL-Logo. */
+.pipe{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-l);overflow:hidden;position:relative}
+.pipe-st{position:relative;display:flex;flex-direction:column;gap:1px;padding:16px 22px 18px 26px;text-decoration:none;color:inherit;min-width:0}
+.pipe-st + .pipe-st::before{content:"";position:absolute;left:-1px;top:14px;bottom:14px;width:2px;background:var(--line);transform:skewX(-24deg)}
+a.pipe-st:hover{background:var(--sunken)}
+.pipe-n{font-size:30px;font-weight:800;font-style:italic;letter-spacing:-.03em;line-height:1.05}
+.pipe-l{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pipe-s{font-size:12.5px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pipe-bar{display:block;height:4px;border-radius:3px;background:var(--line-2);margin-top:10px;overflow:hidden}
+.pipe-bar i{display:block;height:100%;border-radius:3px;background:var(--ink);transform:skewX(-24deg);transform-origin:left}
+.pipe-st.is-hot .pipe-n{color:var(--orange-ink)}
+.pipe-st.is-hot .pipe-bar i{background:var(--orange)}
+.pipe-st.is-win .pipe-n{color:var(--green)}
+.pipe-st.is-win .pipe-bar i{background:var(--green)}
+.pipe-st.on{background:var(--sunken)}
+.pipe-st.on::after{content:"";position:absolute;left:18px;right:18px;bottom:0;height:3px;border-radius:3px 3px 0 0;background:var(--orange)}
+/* dunkle Variante (Startseite) */
+.pipe-dark{background:var(--asphalt);border-color:var(--asphalt);color:#fff}
+.pipe-dark .pipe-st + .pipe-st::before{background:#3a3d42}
+.pipe-dark a.pipe-st:hover{background:#24272b}
+.pipe-dark .pipe-s{color:#a3a6ac}
+.pipe-dark .pipe-bar{background:#2d3035}
+.pipe-dark .pipe-bar i{background:#fff}
+.pipe-dark .pipe-st.is-hot .pipe-n{color:var(--orange)}
+.pipe-dark .pipe-st.is-win .pipe-n{color:#5fd18f}
+.pipe-dark .pipe-st.is-win .pipe-bar i{background:#5fd18f}
+@media (max-width:820px){
+  .pipe{grid-auto-flow:row;grid-template-columns:1fr 1fr}
+  .pipe-st{padding:14px 16px 16px}
+  .pipe-st + .pipe-st::before{display:none}
+  .pipe-st{border-top:1px solid var(--line-2)}
+  .pipe-st:nth-child(-n+2){border-top:0}
+  .pipe-st:last-child:nth-child(odd){grid-column:1/-1}
+  .pipe-dark .pipe-st{border-top-color:#2d3035}
+  .pipe-bar{margin-top:8px}
+  .pipe-n{font-size:24px}
+}
+@media (prefers-reduced-motion:no-preference){.pipe-bar i{transition:width .6s var(--ease)}}

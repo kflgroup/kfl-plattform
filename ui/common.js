@@ -295,3 +295,16 @@ function offerRows(d) { return OFFER_LABELS.filter(([k]) => d[k] !== undefined &
 const offerHeadline = (d) => (d.monthly_rate ? html`${fEur(d.monthly_rate)} <span class="small muted">/ Monat</span>` : d.price ? fEur(d.price) : d.buy_price ? fEur(d.buy_price) : '–');
 
 function hashQuery() { const i = location.hash.indexOf('?'); return i < 0 ? {} : Object.fromEntries(new URLSearchParams(location.hash.slice(i + 1))); }
+
+/* ---------- Vertriebs-Pipeline („Tempostrecke“): Stufen mit Anzahl und Übergangsquote ----------
+   stages: [{ key, label, value, sub, href, tone: 'hot' | 'win' | '' }], opts: { dark, active, caption } */
+function pipeline(stages, { dark = false, active = null, caption = '' } = {}) {
+  const max = Math.max(1, ...stages.map((s) => +s.value || 0));
+  return html`<nav class="pipe ${dark ? 'pipe-dark' : ''}" aria-label="${caption || 'Pipeline'}">${stages.map((s, i) => {
+    const inner = html`<span class="pipe-n num">${fNum(s.value)}</span><span class="pipe-l">${s.label}</span>${s.sub ? html`<span class="pipe-s">${s.sub}</span>` : ''}<span class="pipe-bar" aria-hidden="true"><i data-w="${Math.round(((+s.value || 0) / max) * 100)}"></i></span>`;
+    const cls = `pipe-st ${s.tone ? 'is-' + s.tone : ''} ${active === s.key ? 'on' : ''}`;
+    return s.href ? html`<a class="${cls}" href="${s.href}" ${active === s.key ? raw('aria-current="true"') : ''}>${inner}</a>` : html`<div class="${cls}">${inner}</div>`;
+  })}</nav>`;
+}
+// Übergangsquote zwischen zwei Stufen als kurzer Text
+const pipeRate = (a, b) => (a ? `${Math.round((b / a) * 100)} % weiter` : '');

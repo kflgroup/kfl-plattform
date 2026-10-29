@@ -16,6 +16,16 @@ function pnewsRow(i) {
   return html`<button class="nw ${i.read ? '' : 'unread'}" data-act="popenFeed" data-kind="${i.kind}" data-id="${i.id}" data-link="${i.link || ''}"><span class="fi-mark ${i.kind === 'post' ? (i.important ? 'important' : 'post') : ''}">${icon(i.kind === 'post' ? 'news' : P_ICON[i.ntype] || 'bell')}</span>
     <span><span class="nw-t">${i.title}</span><span class="nw-m">${i.kind === 'post' ? 'Nachricht der KFL · ' : ''}${fRel(i.created_at)}</span></span></button>`;
 }
+// Vertriebs-Pipeline des Partners: Neu → In Bearbeitung → Beim Kunden → Gewonnen
+function partnerPipeline(L, s, active = null) {
+  const nd = nextDeadline(L.mine), nn = nextDeadline(L.neu), nc = nextDeadline(L.won, 'contact_due_at');
+  return pipeline([
+    { key: 'neu', label: 'Neue Anfragen', value: L.neu.length, sub: L.neu.length ? (nn ? 'Frist ' + fLeft(nn).replace('noch ', '') : 'jetzt übernehmen') : 'aktuell keine', href: '#/anfragen?tab=neu', tone: L.neu.length ? 'hot' : '' },
+    { key: 'meine', label: 'In Bearbeitung', value: L.mine.length, sub: nd ? 'Angebot fällig in ' + fLeft(nd).replace('noch ', '') : 'Angebote abgeben', href: '#/anfragen?tab=meine' },
+    { key: 'beantwortet', label: 'Beim Kunden', value: L.waiting.length, sub: 'Kunde entscheidet', href: '#/anfragen?tab=beantwortet' },
+    { key: 'gewonnen', label: 'Gewonnen', value: L.won.length, sub: L.won.length ? (nc ? 'anrufen bis ' + fDT(nc) : 'Kunden anrufen') : `${fNum(s.won)} insgesamt · ${s.winRate} % Quote`, href: '#/anfragen?tab=gewonnen', tone: 'win' }
+  ], { active, caption: 'Deine Pipeline' });
+}
 let PSTART_SEG = 'mine';
 async function pStart() {
   const V = ppage('start');
@@ -30,11 +40,7 @@ async function pStart() {
   V.show(html`<section class="p-hero"><div><span class="ph-kicker"><i></i>${fLong(new Date())}</span><h1>${pgreet()}, ${P.user.name.split(' ')[0]}</h1><p class="push">${motivation(d)}</p>
       <div class="ph-actions">${d.newRequests.length ? html`<a class="btn btn-primary" href="#/anfragen?tab=neu">${icon('bolt')}${plural(d.newRequests.length, 'neue Anfrage', 'neue Anfragen')} ansehen</a>` : html`<a class="btn btn-primary" href="#/anfragen">${icon('inbox')}Zu meinen Anfragen</a>`}${d.mine.length ? html`<a class="btn btn-glass" href="#/anfragen?tab=meine">${icon('clock')}Angebote fertigstellen</a>` : ''}</div></div>
     <div class="ph-goal"><span class="ring-wrap">${ring(pct, { size: 88, stroke: 9, label: 'Wochenziel' })}<span class="ring-c">${Math.min(100, Math.round(pct * 100))} %</span></span><div><b>${s.weekOffers} / ${s.weekGoal}</b><span>Angebote diese Woche<br>Dein Wochenziel · KW ${d.week}</span></div></div></section>
-    <div class="kpis">
-      ${kpi({ href: '#/anfragen?tab=neu', tone: 'orange', ic: 'inbox', label: 'Neue Anfragen', value: fNum(d.newRequests.length), sub: d.newRequests.length ? 'jetzt übernehmen' : 'aktuell keine offen', hot: d.newRequests.length > 0 })}
-      ${kpi({ href: '#/anfragen?tab=meine', tone: 'blue', ic: 'clock', label: 'In Bearbeitung', value: fNum(d.mine.length), sub: nd ? html`${icon('clock')}nächste Frist ${fLeft(nd).replace('noch ', 'in ')}` : 'nichts offen' })}
-      ${kpi({ href: '#/anfragen?tab=beantwortet', tone: 'amber', ic: 'send', label: 'Beim Kunden', value: fNum(d.waiting.length), sub: 'warten auf Rückmeldung' })}
-      ${kpi({ href: '#/anfragen?tab=gewonnen', tone: 'green', ic: 'trophy', label: 'Deals gewonnen', value: fNum(s.won), sub: `Erfolgsquote ${s.winRate} %` })}</div>
+    ${partnerPipeline({ neu: d.newRequests, mine: d.mine, waiting: d.waiting, won: d.won }, s)}
     <div class="p-grid"><div class="stack">
       ${d.won.length ? html`<section class="urgent-card"><h2>${icon('phone')}${plural(d.won.length, 'Kunde wartet', 'Kunden warten')} auf deinen Anruf</h2><p class="uc-sub">Gewonnen! Melde dich innerhalb der Kontaktfrist – so wird aus dem Angebot ein Abschluss.</p>
         <div class="uc-list">${d.won.map((a) => html`<a class="uc-item" href="#/anfragen/${a.id}"><div><b>${rqTitle(a)} · #${a.request.number}</b><span>${a.contact_due_at ? 'Kontakt bis ' + fDT(a.contact_due_at) : a.statusLabel}</span></div><span class="uc-cta">${icon('phone')}Kontaktdaten</span></a>`)}</div></section>` : ''}

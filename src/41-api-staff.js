@@ -12,9 +12,14 @@ function publicConfig() {
 }
 const REQ_SORT = { number: 'r.id', created_at: 'r.id', status: 'r.status', customer: 'r.customer_name', brand: 'r.brand', model: 'r.model', budget: "CAST(REPLACE(REPLACE(r.budget,'.',''),',','.') AS REAL)", assignee: 'u.name' };
 
+// Kennzahlen je Anfrage als Unterabfragen – die Liste kommt so mit einer einzigen Datenbankabfrage aus
+const REQ_AGG = `(SELECT COUNT(*) FROM assignments x WHERE x.request_id = r.id) AS _an, (SELECT COUNT(*) FROM assignments x WHERE x.request_id = r.id AND x.status != 'neu') AS _ar,
+  (SELECT COUNT(*) FROM assignments x WHERE x.request_id = r.id AND x.offer_id IS NOT NULL) AS _ao, (SELECT MAX(sent_at) FROM assignments x WHERE x.request_id = r.id) AS _al,
+  (SELECT status FROM billing_items b WHERE b.request_id = r.id ORDER BY b.id DESC LIMIT 1) AS _bs`;
 async function staffRequestRow(ctx, r, u) {
-  const a = await DB.one(ctx.db, `SELECT COUNT(*) AS n, SUM(status NOT IN ('neu')) AS reacted, SUM(offer_id IS NOT NULL) AS offers, MAX(sent_at) AS last_offer FROM assignments WHERE request_id = ?`, r.id);
-  const billing = await DB.one(ctx.db, 'SELECT status FROM billing_items WHERE request_id = ? ORDER BY id DESC LIMIT 1', r.id);
+  const pre = r._an !== undefined;
+  const a = pre ? { n: r._an, reacted: r._ar, offers: r._ao, last_offer: r._al } : await DB.one(ctx.db, `SELECT COUNT(*) AS n, SUM(status NOT IN ('neu')) AS reacted, SUM(offer_id IS NOT NULL) AS offers, MAX(sent_at) AS last_offer FROM assignments WHERE request_id = ?`, r.id);
+  const billing = pre ? (r._bs ? { status: r._bs } : null) : await DB.one(ctx.db, 'SELECT status FROM billing_items WHERE request_id = ? ORDER BY id DESC LIMIT 1', r.id);
   return { number: toNumber(r.id), type: r.type, status: r.status, status_note: r.status_note, priority: r.priority, created_at: r.created_at, summary: r.summary,
     customer: can(u, 'req_contact') ? r.customer_name : (r.customer_name ? r.customer_name.split(' ')[0] + ' …' : ''), email: can(u, 'req_contact') ? r.email : '',
     brand: r.brand, model: r.model, vehicle: r.vehicle, budget: r.budget, plz: r.plz, assignee_id: r.assignee_id, assignee_name: r.assignee_name || null,
@@ -139,7 +144,30 @@ async function handleStaffApi(ctx, url) {
     if (can(u, 'acc_view')) { kp.bill = await DB.val(db, "SELECT COUNT(*) FROM billing_items WHERE status = 'offen'"); kp.overdue = await DB.val(db, "SELECT COUNT(*) FROM invoices WHERE status IN ('offen','teilbezahlt') AND kind != 'storno' AND due_date < ?", berlinDate(nowMs())); }
     const abs = await DB.all(db, "SELECT a.*, u.name AS user_name FROM absences a JOIN users u ON u.id = a.user_id WHERE a.substitute_id = ? AND a.status = 'angefragt'", u.id);
     const w = isoWeek(nowMs());
-    return out({ ok: true, today: berlinDate(nowMs()), week: w.week, year: w.year, news, chats, kpis: kp, absenceRequests: abs });
+    // Vertriebs-Pipeline (nur auf der Startseite, nicht beim 30-Sekunden-Abgleich) – eine Sammelabfrage
+    let pipeline = null;
+    if (q.full === '1' && can(u, 'req_view')) {
+      const p = berlinParts(nowMs()), mStart = isoOf(berlinToUtc(p.y, p.m, 1)), lmStart = isoOf(berlinToUtc(p.y, p.m - 1, 1)), dayM = `${p.y}-${String(p.m).padStart(2, '0')}-01`;
+      const stmts = [
+        db.prepare('SELECT status, COUNT(*) AS n FROM requests WHERE deleted = 0 GROUP BY status'),
+        db.prepare("SELECT COUNT(*) AS n, SUM(status IN ('kontaktdaten_versendet','angebot_akzeptiert')) AS won, SUM(type = 'sell') AS sell FROM requests WHERE deleted = 0 AND status != 'spam' AND created_at >= ?").bind(mStart),
+        db.prepare("SELECT COUNT(*) AS n, SUM(status IN ('kontaktdaten_versendet','angebot_akzeptiert')) AS won FROM requests WHERE deleted = 0 AND status != 'spam' AND created_at >= ? AND created_at < ?").bind(lmStart, mStart),
+        db.prepare("SELECT COUNT(*) AS n FROM requests WHERE deleted = 0 AND status IN ('kontaktdaten_versendet','angebot_akzeptiert') AND COALESCE(decided_at, updated_at) >= ?").bind(mStart),
+        db.prepare("SELECT AVG((julianday(a.sent_at) - julianday(a.created_at)) * 24) AS h, COUNT(*) AS n FROM assignments a WHERE a.sent_at IS NOT NULL AND a.created_at >= ?").bind(isoOf(nowMs() - 30 * 86400e3)),
+        db.prepare("SELECT COUNT(*) AS n FROM assignments WHERE status IN ('neu','in_bearbeitung') AND deadline_at < ?").bind(isoOf(nowMs() + 4 * 3600e3)),
+        db.prepare("SELECT COUNT(*) AS n FROM requests WHERE deleted = 0 AND status IN ('eingang','in_bearbeitung') AND assignee_id IS NULL")
+      ];
+      if (can(u, 'acc_view') || can(u, 'stats_view')) stmts.push(db.prepare("SELECT COALESCE(SUM(net),0) AS net FROM invoices WHERE status != 'storniert' AND kind != 'storno' AND issue_date >= ?").bind(dayM));
+      const res = await db.batch(stmts);
+      const row = (i) => ((res[i] && res[i].results) || [])[0] || {};
+      const by = Object.fromEntries(((res[0] && res[0].results) || []).map((x) => [x.status, x.n]));
+      const sum = (...ks) => ks.reduce((a, k) => a + (by[k] || 0), 0);
+      pipeline = { stages: { eingang: sum('eingang', 'in_bearbeitung', 'fehler', 'stoerung'), partner: sum('versendet'), angebote: sum('angebot_liegt_vor', 'angebot_in_bearbeitung'), kunde: sum('angebot_beim_kunden', 'angebot_akzeptiert'), gewonnen: row(3).n || 0 },
+        problems: sum('fehler', 'stoerung', 'kein_angebot'), month: { requests: row(1).n || 0, won: row(1).won || 0, sell: row(1).sell || 0, conversion: row(1).n ? Math.round((row(1).won || 0) / row(1).n * 100) : 0 },
+        lastMonth: { requests: row(2).n || 0, won: row(2).won || 0 }, responseHours: row(4).n ? Math.round(row(4).h * 10) / 10 : null, deadlineSoon: row(5).n || 0, unassigned: row(6).n || 0,
+        revenue: stmts.length > 7 ? Math.round((row(7).net || 0) * 100) / 100 : null };
+    }
+    return out({ ok: true, today: berlinDate(nowMs()), week: w.week, year: w.year, news, chats, kpis: kp, absenceRequests: abs, pipeline });
   }
 
   /* ---------- News & Chat ---------- */
@@ -233,10 +261,16 @@ async function handleStaffApi(ctx, url) {
     const w = where.join(' AND ');
     const total = await DB.val(db, `SELECT COUNT(*) FROM requests r LEFT JOIN users u ON u.id = r.assignee_id WHERE ${w}`, ...args);
     const per = 50, pages = Math.max(1, Math.ceil(total / per)), page = Math.min(pages, Math.max(1, toInt(q.page, 1)));
-    const rows = await DB.all(db, `SELECT r.*, u.name AS assignee_name FROM requests r LEFT JOIN users u ON u.id = r.assignee_id WHERE ${w} ORDER BY ${sort} ${dir}, r.id DESC LIMIT ? OFFSET ?`, ...args, per, (page - 1) * per);
+    const rows = await DB.all(db, `SELECT r.*, u.name AS assignee_name, ${REQ_AGG} FROM requests r LEFT JOIN users u ON u.id = r.assignee_id WHERE ${w} ORDER BY ${sort} ${dir}, r.id DESC LIMIT ? OFFSET ?`, ...args, per, (page - 1) * per);
     const items = []; for (const r of rows) items.push(await staffRequestRow(ctx, r, u));
-    const brands = (await DB.all(db, "SELECT DISTINCT brand FROM requests WHERE brand IS NOT NULL AND brand != '' ORDER BY brand")).map((x) => x.brand);
-    return out({ ok: true, items, total, page, pages, brands });
+    // Marken und Pipeline-Stufen in einer Sammelabfrage
+    const pm = berlinParts(nowMs());
+    const [br, bySt, wonM] = await db.batch([db.prepare("SELECT DISTINCT brand FROM requests WHERE brand IS NOT NULL AND brand != '' ORDER BY brand"), db.prepare('SELECT status, COUNT(*) AS n FROM requests WHERE deleted = 0 GROUP BY status'),
+      db.prepare("SELECT COUNT(*) AS n FROM requests WHERE deleted = 0 AND status IN ('kontaktdaten_versendet','angebot_akzeptiert') AND COALESCE(decided_at, updated_at) >= ?").bind(isoOf(berlinToUtc(pm.y, pm.m, 1)))]);
+    const brands = ((br && br.results) || []).map((x) => x.brand);
+    const by = Object.fromEntries(((bySt && bySt.results) || []).map((x) => [x.status, x.n])), sum = (...ks) => ks.reduce((a, k) => a + (by[k] || 0), 0);
+    const stages = { eingang: sum('eingang', 'in_bearbeitung', 'fehler', 'stoerung'), partner: sum('versendet'), angebote: sum('angebot_liegt_vor', 'angebot_in_bearbeitung'), kunde: sum('angebot_beim_kunden', 'angebot_akzeptiert'), gewonnen: (((wonM && wonM.results) || [])[0] || {}).n || 0 };
+    return out({ ok: true, items, total, page, pages, brands, pipeline: { stages, problems: sum('fehler', 'stoerung', 'kein_angebot') } });
   }
   if ((m = path.match(/^\/requests\/(\d+)(?:\/(.+))?$/))) {
     requirePerm(u, 'req_view');

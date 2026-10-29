@@ -394,3 +394,10 @@ a.kpi:hover .go{color:var(--ink);transform:translateX(3px)}
 .dual-card span{display:block;font-size:14px;line-height:1.5}
 .dual-card.big{padding:18px 20px}
 .dual-card .mt-s{margin-top:10px}
+
+/* Pipeline im Partner-Dashboard */
+.p-main .pipe{margin:16px 0 0;box-shadow:var(--card-shadow);border-color:#e6e7ea;border-radius:var(--r-card)}
+.sub-tabs{display:flex;gap:6px;justify-content:flex-end;margin:10px 0 4px}
+.sub-tabs a{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);text-decoration:none;font-size:13px;font-weight:600}
+.sub-tabs a .ic{width:15px;height:15px;color:var(--steel)}
+.sub-tabs a.on{background:var(--ink);border-color:var(--ink);color:#fff}

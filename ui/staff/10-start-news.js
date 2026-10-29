@@ -31,41 +31,73 @@ ACT.openFeed = async (a) => {
 ACT.toggleRead = async (b) => { const id = +b.dataset.id, read = b.dataset.read !== '1'; await POST('/news/read', { ...(b.dataset.kind === 'post' ? { posts: [id] } : { notifications: [id] }), read }); await refreshCounts(); reload(); };
 ACT.allRead = async () => { await POST('/news/read', { all: true, posts: (NEWS_CACHE?.posts || []).filter((p) => !p.read).map((p) => p.id) }); await refreshCounts(); toast('Alles als gelesen markiert.'); reload(); };
 
+// Stufen der Vertriebs-Pipeline (gleich wie die Fortschrittsstrecke einer Anfrage)
+const PIPE_STAGES = [
+  ['eingang', 'Eingang', 'eingang,in_bearbeitung,fehler,stoerung'], ['partner', 'Bei Partnern', 'versendet'], ['angebote', 'Angebote da', 'angebot_liegt_vor,angebot_in_bearbeitung'],
+  ['kunde', 'Beim Kunden', 'angebot_beim_kunden,angebot_akzeptiert'], ['gewonnen', 'Vermittelt', 'kontaktdaten_versendet,angebot_akzeptiert']];
+const monthStartISO = () => todayISO().slice(0, 8) + '01';
+function staffPipeline(pl, { dark = false, active = null } = {}) {
+  if (!pl) return '';
+  const st = pl.stages;
+  const sub = { eingang: pl.unassigned ? `${fNum(pl.unassigned)} ohne Zuständigen` : 'in Prüfung', partner: pl.deadlineSoon ? `${fNum(pl.deadlineSoon)} Fristen < 4 Std.` : 'warten auf Angebote', angebote: 'auswerten und vorstellen', kunde: 'Entscheidung offen', gewonnen: 'diesen Monat' };
+  const tone = { eingang: pl.unassigned || pl.problems ? 'hot' : '', partner: pl.deadlineSoon ? 'hot' : '', gewonnen: 'win' };
+  return pipeline(PIPE_STAGES.map(([k, l, status]) => ({ key: k, label: l, value: st[k] || 0, sub: sub[k], tone: tone[k] || '',
+    href: '#/anfragen' + qs(k === 'gewonnen' ? { view: 'alle', status, from: monthStartISO() } : { status }) })), { dark, active, caption: 'Vertriebs-Pipeline' });
+}
 async function pageStart() {
   const P = page('start');
-  const d = (await refreshCounts()) || (await GET('/me/start'));
-  if (!P.alive()) return;
+  const d = await GET('/me/start', { full: 1 }).catch(() => null) || (await refreshCounts());
+  if (!P.alive() || !d) return;
   NEWS_CACHE = d.news;
-  const k = d.kpis || {};
-  const tiles = [
-    k.open !== undefined && ['Offene Anfragen', k.open, '#/anfragen'],
-    k.mine !== undefined && ['Mir zugewiesen', k.mine, '#/anfragen?mine=1'],
-    k.today !== undefined && ['Heute eingegangen', k.today, '#/anfragen?view=alle&from=' + todayISO()],
-    k.notes !== undefined && ['Neue Kundennotizen', k.notes, '#/anfragen?notes=1', k.notes > 0],
-    k.problems !== undefined && ['Fehler / ohne Angebot', k.problems, '#/anfragen?view=alle&status=fehler,stoerung,kein_angebot', k.problems > 0],
-    k.spam !== undefined && ['Spam zu prüfen', k.spam, '#/anfragen?view=spam', k.spam > 0],
-    k.tickets !== undefined && ['Offene Tickets', k.tickets, '#/support'],
-    k.bill !== undefined && ['Abrechnungsfälle offen', k.bill, '#/buchhaltung/faelle', k.bill > 0],
-    k.overdue !== undefined && ['Rechnungen überfällig', k.overdue, '#/buchhaltung/rechnungen?overdue=1', k.overdue > 0]
+  const k = d.kpis || {}, pl = d.pipeline;
+  // Aufgaben nach Dringlichkeit: was heute Umsatz sichert oder Kunden warten lässt, steht oben
+  const todo = [
+    k.problems && { ic: 'alert', n: k.problems, t: 'Anfragen mit Fehler oder ohne Angebot', h: 'Partner nachfassen oder manuell zuordnen, bevor der Kunde abspringt.', href: '#/anfragen?view=alle&status=fehler,stoerung,kein_angebot', hot: true },
+    pl && pl.deadlineSoon && { ic: 'clock', n: pl.deadlineSoon, t: 'Angebotsfristen laufen bald ab', h: 'Weniger als 4 Stunden – jetzt die Partner erinnern.', href: '#/anfragen?status=versendet', hot: true },
+    k.notes && { ic: 'note', n: k.notes, t: 'Neue Notizen von Kunden', h: 'Lesen und an die Partner weitergeben.', href: '#/anfragen?notes=1', hot: true },
+    pl && pl.stages.angebote && { ic: 'star', n: pl.stages.angebote, t: 'Angebote liegen vor', h: 'Auswerten und die besten drei dem Kunden vorstellen.', href: '#/anfragen?status=angebot_liegt_vor,angebot_in_bearbeitung' },
+    pl && pl.unassigned && { ic: 'user', n: pl.unassigned, t: 'Neue Eingänge ohne Zuständigen', h: 'Übernehmen oder im Team zuweisen.', href: '#/anfragen?unassigned=1&status=eingang,in_bearbeitung' },
+    k.mine && { ic: 'inbox', n: k.mine, t: 'Mir zugewiesene Anfragen', h: 'Deine offenen Vorgänge.', href: '#/anfragen?mine=1' },
+    k.spam && { ic: 'flag', n: k.spam, t: 'Spam-Meldungen prüfen', h: 'Bestätigen oder wieder freigeben.', href: '#/anfragen?view=spam' },
+    k.tickets && { ic: 'support', n: k.tickets, t: 'Offene Support-Tickets', h: 'Kunden und Partner warten auf Antwort.', href: '#/support' },
+    k.bill && { ic: 'euro', n: k.bill, t: 'Abrechnungsfälle offen', h: 'Vermittlungen abrechnen.', href: '#/buchhaltung/faelle' },
+    k.overdue && { ic: 'alert', n: k.overdue, t: 'Rechnungen überfällig', h: 'Zahlung anmahnen oder klären.', href: '#/buchhaltung/rechnungen?overdue=1', hot: true }
   ].filter(Boolean);
+  const urgent = todo.filter((x) => x.hot).length;
+  const m = pl && pl.month, lm = pl && pl.lastMonth;
   const unread = feedItems(d.news, 'ungelesen').length;
-  P.show(html`${canAny('settings_all', 'acc_view') ? mailWarn() : ''}<div class="hello"><div><h1>${greeting()}, ${S.user.name.split(' ')[0]}</h1><p class="sub muted">${S.user.roleLabel}${S.user.prevLogin ? ` · letzte Anmeldung ${fDT(S.user.prevLogin)}` : ''}</p></div>
-      <div class="date"><b>${fLong(new Date())}</b>KW ${d.week} · ${d.year}</div></div>
-    ${tiles.length ? html`<div class="kpis">${tiles.map(([l, v, href, hot]) => html`<a class="kpi ${hot ? 'hot' : ''}" href="${href}"><b>${fNum(v)}</b><span>${l}</span></a>`)}</div>` : ''}
+  const line = pl ? `${urgent ? plural(urgent, 'Aufgabe braucht', 'Aufgaben brauchen') + ' heute deine Aufmerksamkeit' : 'Nichts Dringendes offen'}, ${plural(pl.stages.eingang + pl.stages.partner + pl.stages.angebote + pl.stages.kunde, 'Anfrage läuft', 'Anfragen laufen')} in der Pipeline.` : S.user.roleLabel;
+  P.show(html`${canAny('settings_all', 'acc_view') ? mailWarn() : ''}
+    <div class="cockpit-head"><div><h1>${greeting()}, ${S.user.name.split(' ')[0]}</h1><p class="sub">${line}</p></div>
+      ${can('req_view') ? html`<div class="row"><a class="btn" href="#/anfragen?mine=1">${icon('user')}Meine Anfragen</a><a class="btn btn-primary" href="#/anfragen">${icon('inbox')}Alle offenen Anfragen</a></div>` : ''}</div>
+    ${pl ? staffPipeline(pl, { dark: true }) : ''}
     ${(d.absenceRequests || []).map((a) => html`<div class="note-box mt">${icon('users')}<div class="spacer"><b>${a.user_name}</b> bittet dich um Vertretung vom ${fDate(a.from_date)} bis ${fDate(a.to_date)}.${a.note ? html` „${a.note}“` : ''}</div>
       <button class="btn btn-sm btn-ok" data-act="absDecide" data-id="${a.id}" data-accept="1">Zusagen</button><button class="btn btn-sm" data-act="absDecide" data-id="${a.id}" data-accept="0">Absagen</button></div>`)}
-    <div class="start-grid">
-      <section class="panel newsroom"><div class="panel-head"><h2>News ${unread ? html`<span class="count hot">${unread}</span>` : ''}</h2>
-        <div class="row">${canAny('news_publish', 'news_partner') ? html`<button class="btn btn-sm btn-dark" data-act="composeNews">${icon('plus')}Mitteilung</button>` : ''}<button class="btn btn-sm btn-ghost" data-act="allRead">Alles gelesen</button><a class="btn btn-sm" href="#/news">Alle News</a></div></div>
-        <div class="feed">${feedItems(d.news).length ? feedItems(d.news).slice(0, 20).map(feedRow) : empty('Keine Neuigkeiten', 'Neue Anfragen, Support-Antworten und Mitteilungen erscheinen hier.')}</div></section>
+    <div class="cockpit-grid">
       <div class="stack">
+        <section class="panel"><div class="panel-head"><h2>Jetzt handeln ${urgent ? html`<span class="count hot">${urgent}</span>` : ''}</h2><span class="small muted">nach Dringlichkeit</span></div>
+          ${todo.length ? html`<div class="todo">${todo.map((x) => html`<a class="todo-row ${x.hot ? 'is-hot' : ''}" href="${x.href}"><span class="todo-ic">${icon(x.ic)}</span><span class="todo-n num">${fNum(x.n)}</span><span class="todo-t"><b>${x.t}</b><span>${x.h}</span></span>${icon('arrow', 'todo-go')}</a>`)}</div>`
+            : html`<div class="panel-body">${empty('Alles erledigt', 'Keine offenen Aufgaben. Neue Anfragen und Rückmeldungen erscheinen hier, sobald sie da sind.')}</div>`}</section>
+        <section class="panel newsroom"><div class="panel-head"><h2>News ${unread ? html`<span class="count hot">${unread}</span>` : ''}</h2>
+          <div class="row">${canAny('news_publish', 'news_partner') ? html`<button class="btn btn-sm btn-dark" data-act="composeNews">${icon('plus')}Mitteilung</button>` : ''}<button class="btn btn-sm btn-ghost" data-act="allRead">Alles gelesen</button><a class="btn btn-sm" href="#/news">Alle News</a></div></div>
+          <div class="feed">${feedItems(d.news).length ? feedItems(d.news).slice(0, 12).map(feedRow) : empty('Keine Neuigkeiten', 'Neue Anfragen, Support-Antworten und Mitteilungen erscheinen hier.')}</div></section>
+      </div>
+      <div class="stack">
+        ${m ? html`<section class="panel month"><div class="panel-head"><h2>${new Intl.DateTimeFormat('de-DE', { month: 'long', timeZone: TZ }).format(new Date())} im Vertrieb</h2>${can('stats_view') ? html`<a class="btn btn-sm btn-ghost" href="#/statistik">Statistik</a>` : ''}</div>
+          <div class="month-grid">
+            <div class="mg"><b class="num">${fNum(m.requests)}</b><span>Anfragen</span>${lm ? html`<em>Vormonat ${fNum(lm.requests)}</em>` : ''}</div>
+            <div class="mg win"><b class="num">${fNum(m.won)}</b><span>Vermittelt</span>${lm ? html`<em>Vormonat ${fNum(lm.won)}</em>` : ''}</div>
+            <div class="mg"><b class="num">${fNum(m.conversion)} %</b><span>Abschlussquote</span></div>
+            <div class="mg"><b class="num">${pl.responseHours != null ? fNum(pl.responseHours, 1) + ' Std.' : '–'}</b><span>Ø Angebotszeit Partner</span></div>
+            ${pl.revenue != null ? html`<div class="mg wide"><b class="num">${fEur(pl.revenue)}</b><span>Umsatz netto (Rechnungen)</span></div>` : ''}
+          </div></section>` : ''}
         <section class="panel"><div class="panel-head"><h2>Chats</h2><button class="btn btn-sm" data-act="newChat">${icon('plus')}Neuer Chat</button></div>
           <div class="panel-body tight">${(d.chats || []).length ? d.chats.map(chatRow) : html`<div class="panel-body">${empty('Noch keine Chats', 'Schreib Kolleginnen und Kollegen direkt an.')}</div>`}</div></section>
-        <section class="panel"><div class="panel-head"><h2>Schnellzugriff</h2></div><div class="panel-body stack-s">
-          ${can('req_view') ? html`<a class="btn btn-block" href="#/anfragen?mine=1">${icon('inbox')}Meine Anfragen</a>` : ''}
-          ${can('acc_view') ? html`<a class="btn btn-block" href="#/buchhaltung/faelle">${icon('euro')}Abrechnungsfälle</a>` : ''}
-          <a class="btn btn-block" href="#/news/vertretung">${icon('calendar')}Urlaub und Vertretung</a>
-          <button class="btn btn-block" data-act="newTicket">${icon('support')}Support kontaktieren</button></div></section>
+        <section class="panel"><div class="panel-head"><h2>Schnellzugriff</h2></div><div class="panel-body quick">
+          ${can('acc_view') ? html`<a href="#/buchhaltung/faelle">${icon('euro')}Abrechnungsfälle</a>` : ''}
+          ${can('partner_view') ? html`<a href="#/partner">${icon('partner')}Geschäftspartner</a>` : ''}
+          <a href="#/news/vertretung">${icon('calendar')}Urlaub und Vertretung</a>
+          <button type="button" data-act="newTicket">${icon('support')}Support kontaktieren</button></div></section>
       </div></div>`);
 }
 

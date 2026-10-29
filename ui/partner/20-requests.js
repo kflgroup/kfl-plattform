@@ -6,7 +6,7 @@ async function pRequests() {
   const tab = hashQuery().tab || 'neu';
   const d = await GET('/requests', { tab }); if (!V.alive()) return;
   if (!P.start) await pcounts(); if (!V.alive()) return;
-  V.show(html`${phead('Anfragen', 'Alle Anfragen aus deiner Region – sortiert nach Status. Wer zuerst ein starkes Angebot abgibt, gewinnt.')}${ptabs(PTABS(), tab)}
+  V.show(html`${phead('Anfragen', 'Alle Anfragen aus deiner Region – sortiert nach Status. Wer zuerst ein starkes Angebot abgibt, gewinnt.')}${P.start ? html`${partnerPipeline({ neu: P.start.newRequests, mine: P.start.mine, waiting: P.start.waiting, won: P.start.won }, P.start.stats, tab)}<div class="sub-tabs">${[['archiv', 'Archiv', '#/anfragen?tab=archiv'], isVL() && ['team', 'Team', '#/anfragen?tab=team']].filter(Boolean).map(([k, l, h]) => html`<a class="${tab === k ? 'on' : ''}" href="${h}">${icon(k === 'team' ? 'users' : 'file')}${l}</a>`)}</div>` : ptabs(PTABS(), tab)}
     ${tab === 'neu' ? html`<div class="hint-bar">${icon('shield')}<span>Vor der Übernahme siehst du nur die Eckdaten. Nach der Übernahme gehört die Anfrage dir – dein Team sieht sie dann nicht mehr.</span></div>` : ''}
     <div class="mt">${d.items.length ? html`<div class="rq-wrap">${rqList(d.items)}</div>` : html`<section class="block">${empty(...TAB_EMPTY[tab])}</section>`}</div>`);
 }
