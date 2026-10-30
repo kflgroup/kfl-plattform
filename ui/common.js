@@ -243,7 +243,9 @@ function ring(pct, { size = 64, stroke = 7, label = '' } = {}) {
   return raw(`<svg class="ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="${esc(label)}"><circle cx="${size / 2}" cy="${size / 2}" r="${r}" class="ring-bg" stroke-width="${stroke}" fill="none"/><circle cx="${size / 2}" cy="${size / 2}" r="${r}" class="ring-fg" stroke-width="${stroke}" fill="none" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p)}" transform="rotate(-90 ${size / 2} ${size / 2})" stroke-linecap="round"/></svg>`);
 }
 // Breiten über CSSOM setzen (Inline-Styles sind per CSP gesperrt)
-function hydrate(root = document) { for (const el of root.querySelectorAll('[data-w]')) el.style.width = el.dataset.w + '%'; for (const el of root.querySelectorAll('[data-h]')) el.style.height = Math.max(+el.dataset.h, +el.dataset.h ? 2 : 0) + '%'; for (const el of root.querySelectorAll('[data-hpx]')) el.style.height = el.dataset.hpx + 'px'; }
+function hydrate(root = document) { labelTables(root); for (const el of root.querySelectorAll('[data-w]')) el.style.width = el.dataset.w + '%'; for (const el of root.querySelectorAll('[data-h]')) el.style.height = Math.max(+el.dataset.h, +el.dataset.h ? 2 : 0) + '%'; for (const el of root.querySelectorAll('[data-hpx]')) el.style.height = el.dataset.hpx + 'px'; }
+// Tabellen auf dem Handy als Karten: jede Zelle bekommt die Spaltenüberschrift als Beschriftung
+function labelTables(root) { for (const t of root.querySelectorAll('table.p-table')) { const hs = [...t.querySelectorAll('thead th')].map((h) => h.textContent.trim()); for (const tr of t.querySelectorAll('tbody tr')) [...tr.children].forEach((td, i) => { if (hs[i] && !td.dataset.l) td.dataset.l = hs[i]; }); } }
 function render(el, content) { if (typeof el === 'string') el = $(el); if (!el) return; el.innerHTML = part(content); hydrate(el); }
 const delta = (cur, prev, { invert = false } = {}) => {
   if (prev == null || cur == null) return '';

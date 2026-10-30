@@ -182,7 +182,7 @@ a.kpi:hover .go{color:var(--ink);transform:translateX(3px)}
 
 /* ---------- Raster Start ---------- */
 .p-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(320px,1fr);gap:16px;margin-top:16px;align-items:start}
-@media (max-width:1060px){.p-grid{grid-template-columns:1fr}}
+@media (max-width:1060px){.p-grid{grid-template-columns:minmax(0,1fr)}}
 
 /* Kunde wartet */
 .urgent-card{border-radius:var(--r-card);background:linear-gradient(135deg,#0b6b33,#0a7d3b 55%,#14964c);color:#fff;padding:16px 18px;box-shadow:0 12px 30px -16px rgba(10,125,59,.9)}
@@ -278,7 +278,7 @@ a.kpi:hover .go{color:var(--ink);transform:translateX(3px)}
 
 /* ---------- Detail ---------- */
 .p-detail{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(340px,1fr);gap:16px;align-items:start}
-@media (max-width:1060px){.p-detail{grid-template-columns:1fr}}
+@media (max-width:1060px){.p-detail{grid-template-columns:minmax(0,1fr)}}
 .teaser{text-align:center;padding:36px 24px;display:flex;flex-direction:column;gap:16px;align-items:center;max-width:760px}
 .teaser .big{font-size:40px;font-weight:900;font-style:italic;letter-spacing:-.025em}
 .teaser .facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;width:100%}
@@ -401,3 +401,54 @@ a.kpi:hover .go{color:var(--ink);transform:translateX(3px)}
 .sub-tabs a{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);text-decoration:none;font-size:13px;font-weight:600}
 .sub-tabs a .ic{width:15px;height:15px;color:var(--steel)}
 .sub-tabs a.on{background:var(--ink);border-color:var(--ink);color:#fff}
+
+/* ===== Handy: alles in Bildschirmbreite, Karten statt breiter Zeilen ===== */
+.p-grid > *,.p-detail > *,.stack > *{min-width:0}
+.uc-item > div{min-width:0}
+.uc-item b,.uc-item span{overflow-wrap:anywhere}
+@media (max-width:640px){
+  .p-main{padding-left:14px;padding-right:14px}
+  /* Gewonnen-Karte: Text oben, Aktion als volle Schaltfläche darunter */
+  .urgent-card{padding:16px}
+  .urgent-card h2{font-size:15.5px;align-items:flex-start;line-height:1.3}
+  .urgent-card h2 .ic{margin-top:1px}
+  .uc-item{flex-direction:column;align-items:stretch;gap:10px;padding:12px}
+  .uc-item .uc-cta{margin-left:0;justify-content:center;padding:10px 12px;font-size:14px}
+  /* Pipeline kompakt: Zahl, Stufe, Hinweis – ohne Balken */
+  .p-main .pipe .pipe-st{padding:12px 14px 13px}
+  .p-main .pipe .pipe-n{font-size:24px}
+  .p-main .pipe .pipe-l{font-size:13.5px}
+  .p-main .pipe .pipe-s{white-space:normal;font-size:12px;line-height:1.35}
+  .p-main .pipe .pipe-bar{display:none}
+  .p-main .pipe .pipe-st.on::after{left:14px;right:14px}
+  /* Kopf von Karten mit Umschaltern umbrechen */
+  .block-head{flex-wrap:wrap}
+  .block-head .seg-tabs{max-width:100%;overflow-x:auto;scrollbar-width:none}
+  .seg-tabs::-webkit-scrollbar{display:none}
+  /* Reiter waagerecht wischen statt umbrechen */
+  .p-main .tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-right:-14px;padding-right:14px}
+  .p-main .tabs::-webkit-scrollbar{display:none}
+  .p-main .tabs .tab{flex:none}
+  /* Tabellen als Karten */
+  .p-table thead{display:none}
+  .p-table,.p-table tbody,.p-table tr,.p-table td{display:block;width:100%}
+  .p-table tr{padding:12px 16px;border-top:1px solid var(--line-2)}
+  .p-table tbody tr:first-child{border-top:0}
+  .p-table td{position:relative;padding:5px 0 5px 40%;border:0;text-align:right;min-height:28px}
+  .p-table td::before{content:attr(data-l);position:absolute;left:0;top:6px;max-width:38%;color:var(--steel);font-size:12.5px;font-weight:600;text-align:left}
+  .p-table td:first-child{font-size:15.5px}
+  .p-table td:not([data-l]),.p-table td[data-l=""]{padding-left:0}
+  .p-table td:not([data-l])::before,.p-table td[data-l=""]::before{display:none}
+  .p-table td:empty{display:none}
+  .p-table td .btn{margin-left:auto}
+  .p-table .cell-sub{display:block}
+  /* Hero kompakter */
+  .p-hero .ph-actions{flex-direction:column;align-items:stretch}
+  .p-hero .ph-actions .btn{justify-content:center}
+  .ph-goal{gap:12px}
+  .sub-tabs{justify-content:flex-start}
+  /* Hinweisboxen mit Schaltfläche: Schaltfläche unter den Text */
+  .p-main .note-box,.p-main .info-box{flex-wrap:wrap}
+  .p-main .note-box > .spacer,.p-main .info-box > .spacer{flex:1 1 calc(100% - 40px)}
+  .p-main .note-box > .btn,.p-main .info-box > .btn{flex:1 1 100%;justify-content:center}
+}
