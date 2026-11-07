@@ -163,4 +163,19 @@ r = await c.post('/api/fibu/entries', { template: 'ka_gebuehr', date: '2027-01-0
 check(r.status === 400 && q1('SELECT COUNT(*) AS n FROM fibu_docs').n === docsBefore, 'Fehlerhafte Buchung: kein verwaister Beleg im Archiv');
 r = await c.post('/api/fibu/entries', { date: '2027-01-09', text: 'Ohne Vorlage', debit: acc('4930').id, credit: acc('1000').id, amount: '11,90', vat_rate: 19 }, { who: 'bh' }); check(r.ok && lines(r.id).length === 3, 'Eigene Buchung ohne Vorlage funktioniert wie bisher');
 check(qa("SELECT detail FROM audit WHERE action = 'buchung_erfasst'").some((a) => /Reverse Charge/.test(a.detail || '')), 'Vorlage im Protokoll vermerkt');
+
+console.log('Mehrere Belege nachträglich an eine Buchung');
+r = await c.post('/api/fibu/entries', { template: 'ka_gebuehr', date: '2027-01-01', debit: acc('4970').id, credit: acc('1200').id, amount: '4,50' }, { who: 'bh' });
+const eid = r.id; check(r.ok && !r.doc, 'Buchung ohne Beleg erfasst');
+r = await c.post(`/api/fibu/entries/${eid}/doc`, { file: pdf('Kontoauszug-1.pdf'), doc_kind: 'kontoauszug' }, { who: 'bh' }); check(r.ok && r.doc && r.count === 1, 'Erster Beleg nachgereicht', r);
+r = await c.post(`/api/fibu/entries/${eid}/doc`, { file: pdf('Kontoauszug-2.pdf'), doc_kind: 'kontoauszug', note: 'Seite 2' }, { who: 'bh' }); check(r.ok && r.count === 2, 'Zweiter Beleg an dieselbe Buchung', r);
+r = await c.post(`/api/fibu/entries/${eid}/doc`, { file: pdf('Gebuehrenaufstellung.pdf'), doc_kind: 'sonstiges' }, { who: 'bh' }); check(r.ok && r.count === 3, 'Dritter Beleg');
+r = await c.get(`/api/fibu/entries/${eid}`, { who: 'bh' });
+check(r.entry.docs.length === 3 && r.entry.docs[0].main === 1 && r.entry.docs[1].added_by === 'Berta BH' && r.entry.doc_count === 3, 'Detail zeigt alle drei Belege (erster als Hauptbeleg, weitere mit „nachgereicht von“)', r.entry.docs);
+const extraDoc = r.entry.docs[1];
+r = await c.post(`/api/fibu/entries/${eid}/doc`, { doc_id: extraDoc.id }, { who: 'bh' }); check(r.status === 409, 'Derselbe Beleg kann nicht doppelt angehängt werden');
+r = await c.get('/api/fibu/entries?q=' + extraDoc.number, { who: 'bh' }); check(r.entries.some((x) => x.id === eid), 'Suche nach einer zusätzlichen Belegnummer findet die Buchung');
+r = await c.get('/api/fibu/docs?q=' + extraDoc.number, { who: 'bh' }); check(r.docs[0].entries && r.docs[0].entries.includes(q1('SELECT number FROM fibu_entries WHERE id = ?', eid).number), 'Belegarchiv zeigt die Buchung auch beim zusätzlichen Beleg');
+r = await c.post(`/api/fibu/entries/${eid}/doc`, { file: pdf('x.pdf') }, { who: 'vt' }); check(r.status === 403, 'Ohne Buchungsrecht kein Anhängen');
+check(qa("SELECT * FROM audit WHERE action = 'beleg_zugeordnet'").length >= 3, 'Jedes Anhängen steht im Protokoll');
 console.log(check.fails ? `\n${check.fails} FEHLER` : '\nFIBU-TEST BESTANDEN');

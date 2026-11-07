@@ -96,6 +96,8 @@ const SCHEMA = [
     debit REAL NOT NULL DEFAULT 0, credit REAL NOT NULL DEFAULT 0)`,
   `CREATE TABLE IF NOT EXISTS fibu_docs (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT NOT NULL UNIQUE, date TEXT NOT NULL, kind TEXT NOT NULL,
     title TEXT NOT NULL, amount REAL, counterparty TEXT, ref TEXT, file_id INTEGER, sha256 TEXT, size INTEGER, note TEXT, created_by TEXT, created_at TEXT NOT NULL)`,
+  // Weitere Belege zu einer Buchung (nachträglich angeheftet; der erste Beleg steht in fibu_entries.doc_id)
+  `CREATE TABLE IF NOT EXISTS fibu_entry_docs (id INTEGER PRIMARY KEY AUTOINCREMENT, entry_id INTEGER NOT NULL, doc_id INTEGER NOT NULL, added_by TEXT, added_at TEXT NOT NULL, UNIQUE(entry_id, doc_id))`,
   `CREATE TABLE IF NOT EXISTS fibu_periods (id INTEGER PRIMARY KEY AUTOINCREMENT, period TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, status TEXT NOT NULL,
     report TEXT, file_id INTEGER, doc_id INTEGER, closed_by TEXT, closed_at TEXT, reopened_by TEXT, reopened_at TEXT)`,
   // Notizen der Buchhaltung zu Rechnungen und Abrechnungsfällen
@@ -145,6 +147,7 @@ const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_fibu_lines ON fibu_lines(account_id, entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_fibu_entries ON fibu_entries(period, date)`,
   `CREATE INDEX IF NOT EXISTS idx_fibu_src ON fibu_entries(source, source_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_fibu_entry_docs ON fibu_entry_docs(doc_id)`,
   `CREATE INDEX IF NOT EXISTS idx_inv_org ON invoices(org_id, status)`,
   `CREATE INDEX IF NOT EXISTS idx_chatmsg ON chat_messages(chat_id, id)`,
   `CREATE INDEX IF NOT EXISTS idx_pev ON partner_events(request_id)`

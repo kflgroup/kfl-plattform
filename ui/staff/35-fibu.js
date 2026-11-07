@@ -20,7 +20,7 @@ async function pageFibu(tab = 'uebersicht') {
 function entryRow(e) {
   return html`<tr class="clickable ${e.reversed_by || e.reverses ? 'is-muted' : ''}" data-act="fibuEntryOpen" data-id="${e.id}"><td class="nowrap num"><b>${e.number}</b><span class="cell-sub">${fDate(e.date)}</span></td>
     <td>${e.text}<span class="cell-sub">${FIBU_SOURCE[e.source] || e.source}${e.reversed_by ? ' · storniert' : ''}</span></td><td class="small acct-cell">${e.debit.map((x) => html`<div title="${x}">${x}</div>`)}</td><td class="small acct-cell">${e.credit.map((x) => html`<div title="${x}">${x}</div>`)}</td>
-    <td class="r num">${fEur(e.amount)}</td><td>${e.doc_number ? html`<span class="tag">${e.doc_number}</span>` : html`<span class="muted small">–</span>`}</td></tr>`;
+    <td class="r num">${fEur(e.amount)}</td><td>${e.doc_number ? html`<span class="tag">${e.doc_number}</span>${e.doc_count > 1 ? html`<span class="cell-sub">+${e.doc_count - 1} weitere</span>` : ''}` : html`<span class="muted small">–</span>`}</td></tr>`;
 }
 const accShort = (x) => String(x || '').split(' ')[0];
 const entryRowCompact = (e) => html`<tr class="clickable ${e.reversed_by || e.reverses ? 'is-muted' : ''}" data-act="fibuEntryOpen" data-id="${e.id}"><td class="nowrap num"><b>${e.number}</b><span class="cell-sub">${fDate(e.date)}</span></td>
@@ -52,12 +52,30 @@ async function fibuEntries(P, tab) {
 SUBMIT.fibuFilter = (d) => setHashQuery(d, '#/fibu/buchungen');
 ACT.fibuEntryOpen = async (b) => {
   const { entry: e } = await GET('/fibu/entries/' + b.dataset.id);
-  modal({ title: `Buchung ${e.number}`, wide: true, body: html`${kv([['Datum', fDate(e.date)], ['Text', e.text], ['Art', FIBU_SOURCE[e.source] || e.source], ['Erfasst', `${e.created_by || 'System'} · ${fDT(e.created_at)}`], ['Beleg', e.doc_id ? html`<a class="link" target="_blank" rel="noopener" href="${fileUrl(`/fibu/docs/${e.doc_id}/file`)}">${e.doc_number} öffnen</a>` : 'kein Beleg'], e.reversed_by && ['Status', 'storniert (Gegenbuchung vorhanden)'], e.reverses && ['Storno zu', 'Buchung #' + e.reverses]])}
+  const docs = e.docs || [];
+  const docList = docs.length ? html`<ul class="doc-list">${docs.map((d) => html`<li><a class="link" target="_blank" rel="noopener" href="${fileUrl(`/fibu/docs/${d.id}/file`)}">${icon('file')}<b>${d.number}</b></a>
+      <span class="small muted">${(S.fibuKinds || {})[d.kind] || d.kind} · ${d.title}${d.main ? '' : ` · nachgereicht ${fDT(d.added_at)}${d.added_by ? ' von ' + d.added_by : ''}`}</span></li>`)}</ul>` : html`<span class="muted">noch kein Beleg</span>`;
+  modal({ title: `Buchung ${e.number}`, wide: true, body: html`${kv([['Datum', fDate(e.date)], ['Text', e.text], ['Art', FIBU_SOURCE[e.source] || e.source], ['Erfasst', `${e.created_by || 'System'} · ${fDT(e.created_at)}`], e.reversed_by && ['Status', 'storniert (Gegenbuchung vorhanden)'], e.reverses && ['Storno zu', 'Buchung #' + e.reverses]])}
+    <div class="row-between mt"><h3>Belege (${docs.length})</h3>${can('fibu_book') ? html`<button class="btn btn-sm" data-act="fibuEntryDoc" data-id="${e.id}" data-text="${e.text}" data-kind="${docs.length ? docs[0].kind : ''}">${icon('upload')}Beleg hinzufügen</button>` : ''}</div>${docList}
     <table class="table mt"><thead><tr><th>Konto</th><th class="r">Soll</th><th class="r">Haben</th></tr></thead><tbody>${e.lines.map((l) => html`<tr><td>${l.number} ${l.name}</td><td class="r num">${l.debit ? fEur(l.debit) : ''}</td><td class="r num">${l.credit ? fEur(l.credit) : ''}</td></tr>`)}</tbody></table>`,
-    foot: html`${can('fibu_book') && !e.reversed_by && !e.reverses ? html`<button class="btn btn-ghost" data-act="fibuReverse" data-id="${e.id}">Stornieren</button>` : ''}${can('fibu_book') && !e.doc_id ? html`<button class="btn" data-act="fibuEntryDoc" data-id="${e.id}">${icon('upload')}Beleg zuordnen</button>` : ''}<span class="spacer"></span><button class="btn btn-dark" data-close>Schließen</button>` });
+    foot: html`${can('fibu_book') && !e.reversed_by && !e.reverses ? html`<button class="btn btn-ghost" data-act="fibuReverse" data-id="${e.id}">Stornieren</button>` : ''}<span class="spacer"></span><button class="btn btn-dark" data-close>Schließen</button>` });
 };
 ACT.fibuReverse = async (b) => { const d = await ask({ title: 'Buchung stornieren?', text: 'Es wird eine Gegenbuchung erstellt. Die ursprüngliche Buchung bleibt unverändert sichtbar (keine Löschung).', ok: 'Stornieren', danger: true, fields: field('Grund *', inp('reason', '', { req: true, attrs: 'minlength="3"' })) }); if (!d) return; const r = await POST(`/fibu/entries/${b.dataset.id}/reverse`, { reason: d.reason }); closeModal(); toast(`Storniert (${r.number}).`); reload(); };
-ACT.fibuEntryDoc = async (b) => { const d = await ask({ title: 'Beleg zuordnen', ok: 'Zuordnen', fields: html`${field('Beleg (PDF)', raw('<input type="file" name="file" accept="application/pdf" required>'))}${field('Belegart', sel('doc_kind', Object.entries(S.fibuKinds || { sonstiges: 'Sonstiger Beleg' }), 'sonstiges'))}` }); if (!d) return; const file = await fileField(d._form.elements.file, { max: 10 }); await POST(`/fibu/entries/${b.dataset.id}/doc`, { file, doc_kind: d.doc_kind }); closeModal(); toast('Beleg zugeordnet.'); reload(); };
+// Belege nachreichen: eine oder mehrere PDFs, jede wird nummeriert archiviert und an die Buchung geheftet
+ACT.fibuEntryDoc = async (b) => {
+  if (!S.fibuKinds) S.fibuKinds = (await GET('/fibu/docs', { q: '___' })).kinds;
+  const d = await ask({ title: 'Beleg hinzufügen', ok: 'Hinzufügen', text: 'Du kannst mehrere PDFs auf einmal auswählen. Jede Datei wird nummeriert im Belegarchiv abgelegt und an die Buchung angehängt.',
+    fields: html`${field('Beleg(e) als PDF *', raw('<input type="file" name="file" accept="application/pdf" multiple required>'), 'max. 8 MB je Datei')}<div class="grid-2">${field('Belegart', sel('doc_kind', Object.entries(S.fibuKinds).filter(([k]) => !['abschluss', 'import'].includes(k)), b.dataset.kind || 'sonstiges'))}${field('Notiz', inp('note', '', { ph: 'z. B. Zahlungsbeleg, Lieferschein' }))}</div>` });
+  if (!d) return;
+  const files = [...(d._form.elements.file.files || [])];
+  const big = files.find((f) => f.size > 8 * 1024 * 1024); if (big) return toast(`„${big.name}“ ist zu groß (max. 8 MB).`, 'err');
+  let n = 0; const nums = [];
+  for (const f of files) {
+    const r = await POST(`/fibu/entries/${b.dataset.id}/doc`, { file: { name: f.name, type: f.type || 'application/pdf', base64: await fileToB64(f) }, doc_kind: d.doc_kind, note: d.note, doc_title: files.length > 1 ? `${b.dataset.text || 'Beleg'} · ${f.name.replace(/\.pdf$/i, '')}` : '' });
+    n++; nums.push(r.doc);
+  }
+  closeModal(); toast(n === 1 ? `Beleg ${nums[0]} angehängt.` : `${n} Belege angehängt (${nums.join(', ')}).`); reload();
+};
 
 // Neue Buchung: Belegart + Vorgang wählen → Soll, Haben und USt werden automatisch gesetzt (bleiben änderbar)
 let FIBU_TPL = null;

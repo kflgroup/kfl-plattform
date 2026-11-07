@@ -1,0 +1,20 @@
+// Eigene Adressen: dashboard.kfl-group.com und partner.kfl-group.com
+import { makeD1, makeR2, installFetch, SECRET, check } from './harness.mjs';
+installFetch();
+const worker = (await import('./wk.mjs')).default;
+const env = { DB: makeD1(), FILES: makeR2(), FORM_SECRET: SECRET, SETUP_TOKEN: 'setup-123' };
+const get = (url) => worker.fetch(new Request(url, { redirect: 'manual' }), env);
+console.log('Eigene Adressen');
+let r = await get('https://dashboard.kfl-group.com/');
+const staffHtml = await r.text(); check(r.status === 200 && /<html/i.test(staffHtml), 'dashboard.kfl-group.com zeigt direkt das interne Dashboard');
+r = await get('https://partner.kfl-group.com/'); const partnerHtml = await r.text();
+check(r.status === 200 && /<html/i.test(partnerHtml) && partnerHtml !== staffHtml.replace(/nonce-[^'"]+/g, ''), 'partner.kfl-group.com zeigt direkt das Partner-Dashboard');
+const norm = (h) => h.replace(/[0-9a-f]{32}/g, 'N');
+check(norm(staffHtml) === norm(await (await get('https://w.test/admin')).text()) && norm(partnerHtml) === norm(await (await get('https://w.test/partner')).text()), 'Gleiche Oberflächen wie unter /admin und /partner');
+r = await get('https://dashboard.kfl-group.com/admin'); check(r.status === 301 && r.headers.get('Location') === 'https://dashboard.kfl-group.com/', 'dashboard…/admin → dashboard…/');
+r = await get('https://partner.kfl-group.com/partner'); check(r.status === 301 && r.headers.get('Location') === 'https://partner.kfl-group.com/', 'partner…/partner → partner…/');
+r = await get('https://partner.kfl-group.com/admin'); check(r.status === 302 && r.headers.get('Location') === 'https://dashboard.kfl-group.com/', 'Interner Bereich auf der Partner-Adresse → dashboard.kfl-group.com');
+r = await get('https://dashboard.kfl-group.com/partner'); check(r.status === 302 && r.headers.get('Location') === 'https://partner.kfl-group.com/', 'Partnerbereich auf der Dashboard-Adresse → partner.kfl-group.com');
+r = await get('https://w.test/'); check(r.status === 302 && /\/partner$/.test(r.headers.get('Location')), 'Alte workers.dev-Adresse funktioniert unverändert');
+r = await get('https://dashboard.kfl-group.com/health'); check(r.status === 200, 'Schnittstellen laufen auch unter der neuen Adresse');
+console.log(check.fails ? `\n${check.fails} FEHLER` : '\nADRESSEN-TEST BESTANDEN');

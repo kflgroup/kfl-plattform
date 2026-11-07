@@ -119,6 +119,11 @@ async function autoImport(ctx) {
   autoImportDone = true;
 }
 
+// Eigene Adressen (Variablen STAFF_HOST / PARTNER_HOST, Standard dashboard.kfl-group.com / partner.kfl-group.com)
+const hostOf = (env, role) => String((role === 'staff' ? env.STAFF_HOST : env.PARTNER_HOST) || (role === 'staff' ? 'dashboard.kfl-group.com' : 'partner.kfl-group.com')).toLowerCase();
+function hostRole(env, hostname) { const h = String(hostname || '').toLowerCase(); return h === hostOf(env, 'staff') ? 'staff' : h === hostOf(env, 'partner') ? 'partner' : null; }
+const hostOrigin = (env, role) => 'https://' + hostOf(env, role);
+
 async function makeCtx(request, env, url) {
   const ip = request ? clientIp(request) : '';
   let origin = url ? url.origin : (env.PUBLIC_ORIGIN || '');
@@ -139,6 +144,14 @@ export default {
       if (p === '/' && (request.method === 'POST' || request.method === 'OPTIONS')) return await handleForm(ctx);
       if (p.startsWith('/my/')) return await handleMy(ctx, url);
       if (p.startsWith('/c/')) return await handleCustomerLinks(ctx, url);
+      // Eigene Adressen: dashboard.kfl-group.com (intern) und partner.kfl-group.com (Geschäftspartner) zeigen die Oberfläche direkt unter „/“
+      const host = hostRole(env, url.hostname);
+      if (host && request.method === 'GET') {
+        const other = host === 'staff' ? hostOrigin(env, 'partner') : hostOrigin(env, 'staff');
+        if (p === '/' || p === '/index.html') return pageResponse(host === 'staff' ? STAFF_HTML : PARTNER_HTML);
+        if (p === '/admin' || p === '/admin/') return host === 'staff' ? Response.redirect(url.origin + '/', 301) : (other ? Response.redirect(other + '/', 302) : pageResponse(STAFF_HTML));
+        if (p === '/partner' || p === '/partner/') return host === 'partner' ? Response.redirect(url.origin + '/', 301) : (other ? Response.redirect(other + '/', 302) : pageResponse(PARTNER_HTML));
+      }
       if (p === '/admin' || p === '/admin/') return pageResponse(STAFF_HTML);
       if (p === '/partner' || p === '/partner/') return pageResponse(PARTNER_HTML);
       if (p.startsWith('/api/')) return await handleStaffApi(ctx, url);

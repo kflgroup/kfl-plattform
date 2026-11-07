@@ -76,6 +76,20 @@ Variable (kein Secret): `PUBLIC_ORIGIN` = Adresse des Workers, z. B. `https://kf
 - **Inzahlungnahme über zwei Formulare:** Schickt ein Kunde einen Traumwagen-DEAL mit „Inzahlungnahme: Ja“ und (vorher oder bis zu 30 Tage später) „Mein Auto verkaufen“, werden beide Anfragen automatisch verknüpft. Der Partner sieht dann in der Traumwagen-Anfrage „Ankauf zusätzlich übernehmen“ und bekommt einen Hinweis in den News.
 - **Ankauf zusätzlich übernehmen** klappt jetzt auch, wenn die eigene Ankauf-Zuordnung schon verfallen war. Sie wird mit neuer Frist wieder geöffnet und direkt übernommen.
 
+## 5d. Mehrere Belege je Buchung (seit 07.11.2026)
+
+- **Buchung öffnen → „Beleg hinzufügen“:** Eine oder mehrere PDFs auf einmal (max. 8 MB je Datei), mit Belegart und Notiz. Jede Datei wird nummeriert archiviert und an die Buchung angehängt.
+- Das geht jederzeit, auch bei stornierten Buchungen und in abgeschlossenen Zeiträumen, weil sich dabei keine Beträge ändern. Jedes Anhängen steht im Protokoll.
+- Die Buchungsliste zeigt den ersten Beleg und „+N weitere“. Die Suche findet Buchungen auch über die Nummer eines zusätzlichen Belegs.
+
+## 5e. Eigene Adressen (seit 07.11.2026)
+
+- **dashboard.kfl-group.com** zeigt direkt das interne Dashboard, **partner.kfl-group.com** das Partner-Dashboard. `/admin` und `/partner` leiten jeweils zur passenden Adresse weiter.
+- Voraussetzung: kfl-group.com läuft als Zone bei Cloudflare (Nameserver bei IONOS umgestellt). Danach im Worker unter **Einstellungen → Domains & Routes → Custom Domain** beide Adressen hinzufügen.
+- Danach unter **Verwaltung → Einstellungen → Links:** `link_staff` = `https://dashboard.kfl-group.com`, `link_partner` = `https://partner.kfl-group.com`. Damit stehen die neuen Adressen auch in E-Mails und Einladungen.
+- Die alte workers.dev-Adresse funktioniert weiter. Formulare des Shops und „Meine Anfragen“ bleiben unverändert.
+- Andere Namen: Variablen `STAFF_HOST` / `PARTNER_HOST` im Worker setzen.
+
 ## 6. Shop umstellen (Go-live)
 
 Im Theme **„KFL 2027 – Neuer Auftritt“** sind bereits enthalten (rückwärtskompatibel mit dem alten Worker):

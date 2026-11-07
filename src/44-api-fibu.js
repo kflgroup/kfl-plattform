@@ -17,7 +17,8 @@ async function handleFibu(ctx, u, path, method, body, q) {
     if (!rows.length) return [];
     const ids = rows.map((r) => r.id);
     const lines = await DB.all(db, `SELECT l.*, a.number, a.name, a.type FROM fibu_lines l JOIN fibu_accounts a ON a.id = l.account_id WHERE l.entry_id IN (${ids.map(() => '?').join(',')}) ORDER BY l.id`, ...ids);
-    return rows.map((e) => { const ls = lines.filter((l) => l.entry_id === e.id); return { ...e, lines: ls, amount: round2(ls.reduce((s, l) => s + l.debit, 0)), debit: ls.filter((l) => l.debit).map((l) => `${l.number} ${l.name}`), credit: ls.filter((l) => l.credit).map((l) => `${l.number} ${l.name}`) }; });
+    const extra = Object.fromEntries((await DB.all(db, `SELECT entry_id, COUNT(*) AS n FROM fibu_entry_docs WHERE entry_id IN (${ids.map(() => '?').join(',')}) GROUP BY entry_id`, ...ids)).map((r) => [r.entry_id, r.n]));
+    return rows.map((e) => { const ls = lines.filter((l) => l.entry_id === e.id); return { ...e, doc_count: (e.doc_id ? 1 : 0) + (extra[e.id] || 0), lines: ls, amount: round2(ls.reduce((s, l) => s + l.debit, 0)), debit: ls.filter((l) => l.debit).map((l) => `${l.number} ${l.name}`), credit: ls.filter((l) => l.credit).map((l) => `${l.number} ${l.name}`) }; });
   };
 
   /* ---------- Übersicht ---------- */
@@ -87,7 +88,7 @@ async function handleFibu(ctx, u, path, method, body, q) {
     if (/^\d{4}(-\d{2})?$/.test(q.period || '')) { where.push('e.period LIKE ?'); args.push(q.period + '%'); }
     if (q.account) { where.push('e.id IN (SELECT entry_id FROM fibu_lines WHERE account_id = ?)'); args.push(toInt(q.account)); }
     if (q.source) { where.push('e.source = ?'); args.push(str(q.source, 30)); }
-    if (q.q) { where.push('(e.text LIKE ? OR e.number LIKE ? OR d.number LIKE ?)'); const t = '%' + str(q.q, 80) + '%'; args.push(t, t, t); }
+    if (q.q) { where.push('(e.text LIKE ? OR e.number LIKE ? OR d.number LIKE ? OR EXISTS (SELECT 1 FROM fibu_entry_docs x JOIN fibu_docs xd ON xd.id = x.doc_id WHERE x.entry_id = e.id AND xd.number LIKE ?))'); const t = '%' + str(q.q, 80) + '%'; args.push(t, t, t, t); }
     const rows = await DB.all(db, `SELECT e.*, d.number AS doc_number FROM fibu_entries e LEFT JOIN fibu_docs d ON d.id = e.doc_id WHERE ${where.join(' AND ')} ORDER BY e.date DESC, e.id DESC LIMIT 500`, ...args);
     return out({ ok: true, entries: await entryView(rows) });
   }
@@ -139,15 +140,26 @@ async function handleFibu(ctx, u, path, method, body, q) {
   }
   if ((m = path.match(/^\/entries\/(\d+)(?:\/(reverse|doc))?$/))) {
     const e = await DB.one(db, 'SELECT * FROM fibu_entries WHERE id = ?', +m[1]); need(e, 404, 'Buchung nicht gefunden.');
-    if (!m[2] && method === 'GET') { const [v] = await entryView([{ ...e, doc_number: e.doc_id ? await DB.val(db, 'SELECT number FROM fibu_docs WHERE id = ?', e.doc_id) : null }]); return out({ ok: true, entry: v }); }
+    if (!m[2] && method === 'GET') {
+      const [v] = await entryView([{ ...e, doc_number: e.doc_id ? await DB.val(db, 'SELECT number FROM fibu_docs WHERE id = ?', e.doc_id) : null }]);
+      const docs = await DB.all(db, `SELECT d.id, d.number, d.kind, d.title, d.date, d.counterparty, d.ref, d.size, x.added_by, x.added_at, 0 AS main FROM fibu_entry_docs x JOIN fibu_docs d ON d.id = x.doc_id WHERE x.entry_id = ?
+        UNION ALL SELECT d.id, d.number, d.kind, d.title, d.date, d.counterparty, d.ref, d.size, d.created_by, d.created_at, 1 AS main FROM fibu_docs d WHERE d.id = ? ORDER BY main DESC, added_at`, e.id, e.doc_id || 0);
+      return out({ ok: true, entry: { ...v, docs } });
+    }
     if (m[2] === 'reverse' && method === 'POST') { book(); const sid = await fibuReverse(ctx, e.id, body.reason); return out({ ok: true, id: sid, number: await DB.val(db, 'SELECT number FROM fibu_entries WHERE id = ?', sid) }); }
     if (m[2] === 'doc' && method === 'POST') {
-      book(); need(!e.doc_id, 409, 'Diese Buchung hat bereits einen Beleg. Belege werden nie ausgetauscht – bitte Storno und neue Buchung.');
+      // Belege lassen sich jederzeit nachreichen – auch mehrere und in abgeschlossenen Zeiträumen (Beträge ändern sich dadurch nicht)
+      book();
       let docId = body.doc_id ? toInt(body.doc_id) : null;
-      if (body.file && body.file.base64) docId = await fibuArchive(ctx, { kind: FIBU_DOC_KINDS[body.doc_kind] ? body.doc_kind : 'sonstiges', title: e.text, date: e.date, ref: body.ref, file: body.file });
-      need(docId && (await DB.one(db, 'SELECT id FROM fibu_docs WHERE id = ?', docId)), 400, 'Bitte einen Beleg wählen oder hochladen.');
-      await DB.update(db, 'fibu_entries', e.id, { doc_id: docId }); await audit(ctx, 'beleg_zugeordnet', 'buchung', e.number, { beleg: docId });
-      return out({ ok: true });
+      if (docId) need(await DB.one(db, 'SELECT id FROM fibu_docs WHERE id = ?', docId), 400, 'Beleg nicht gefunden.');
+      if (!docId && body.file && body.file.base64) docId = await fibuArchive(ctx, { kind: FIBU_DOC_KINDS[body.doc_kind] ? body.doc_kind : 'sonstiges', title: str(body.doc_title, 200) || e.text, date: e.date, ref: str(body.ref, 100) || null, file: body.file, note: str(body.note, 500) || null });
+      need(docId, 400, 'Bitte einen Beleg wählen oder hochladen.');
+      need(docId !== e.doc_id && !(await DB.one(db, 'SELECT id FROM fibu_entry_docs WHERE entry_id = ? AND doc_id = ?', e.id, docId)), 409, 'Dieser Beleg hängt bereits an der Buchung.');
+      if (!e.doc_id) await DB.update(db, 'fibu_entries', e.id, { doc_id: docId });
+      else await DB.insert(db, 'fibu_entry_docs', { entry_id: e.id, doc_id: docId, added_by: fibuWho(ctx), added_at: nowIso() });
+      const dn = await DB.val(db, 'SELECT number FROM fibu_docs WHERE id = ?', docId);
+      await audit(ctx, 'beleg_zugeordnet', 'buchung', e.number, { beleg: dn, zusaetzlich: !!e.doc_id });
+      return out({ ok: true, doc: dn, count: 1 + (await DB.val(db, 'SELECT COUNT(*) FROM fibu_entry_docs WHERE entry_id = ?', e.id)) });
     }
   }
 
@@ -157,7 +169,7 @@ async function handleFibu(ctx, u, path, method, body, q) {
     if (FIBU_DOC_KINDS[q.kind]) { where.push('d.kind = ?'); args.push(q.kind); }
     if (/^\d{4}$/.test(q.year || '')) { where.push('d.date LIKE ?'); args.push(q.year + '%'); }
     if (q.q) { where.push('(d.number LIKE ? OR d.title LIKE ? OR d.counterparty LIKE ? OR d.ref LIKE ?)'); const t = '%' + str(q.q, 80) + '%'; args.push(t, t, t, t); }
-    const docs = await DB.all(db, `SELECT d.*, (SELECT GROUP_CONCAT(e.number, ', ') FROM fibu_entries e WHERE e.doc_id = d.id) AS entries FROM fibu_docs d WHERE ${where.join(' AND ')} ORDER BY d.id DESC LIMIT 500`, ...args);
+    const docs = await DB.all(db, `SELECT d.*, (SELECT GROUP_CONCAT(n, ', ') FROM (SELECT e.number AS n FROM fibu_entries e WHERE e.doc_id = d.id UNION SELECT e.number FROM fibu_entry_docs x JOIN fibu_entries e ON e.id = x.entry_id WHERE x.doc_id = d.id)) AS entries FROM fibu_docs d WHERE ${where.join(' AND ')} ORDER BY d.id DESC LIMIT 500`, ...args);
     return out({ ok: true, kinds: FIBU_DOC_KINDS, docs });
   }
   if (path === '/docs' && method === 'POST') {
