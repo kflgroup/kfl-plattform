@@ -68,6 +68,7 @@ Variable (kein Secret): `PUBLIC_ORIGIN` = Adresse des Workers, z. B. `https://kf
 - **Weiterleitungen statt Doppelbuchungen:** „Eingangsrechnung noch nicht bezahlt“ öffnet „Eingangsrechnung erfassen“. „Zahlungseingang zu einer KFL-Rechnung“ und „Rechnung aus dem Dashboard“ führen zu den Ausgangsrechnungen.
 - **Aussteller merken:** Pro Aussteller oder Lieferant merkt sich das System Vorgang, Kostenart und USt der letzten Buchung und schlägt sie beim nächsten Mal vor.
 - Neue Konten (werden beim ersten Aufruf automatisch angelegt): 1577 Vorsteuer § 13b, 1787 USt § 13b, 1780 USt-Vorauszahlungen, 4360 Versicherungen. Die Kennzahl „USt-Zahllast offen“ berücksichtigt § 13b und die Vorauszahlungen.
+- **Gesellschafter** (`FIBU_PARTNERS`): Tobias Krusch (Festkapital 0870, Privateinlagen 1891, Privatentnahmen 1801) und Rene Lipownik (0871, 1892, 1802). Unter Kontoauszug gibt es je Gesellschafter die Vorlagen „Kapitaleinlage“, „Privateinlage“ und „Privatentnahme“, unter Sonstiger Beleg die Korrektur „Umbuchung: Privateinlage → Kapitaleinlage“.
 - Vorlagen pflegen: `FIBU_TEMPLATES` in `src/00-config.js`. Kontenzuordnung bitte einmal mit der Steuerberatung abstimmen.
 
 ## 5c. Partner-Dashboard: News und Inzahlungnahme (seit 07.11.2026)

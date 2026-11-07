@@ -262,6 +262,11 @@ const DEFAULT_SETTINGS = {
 /* ---------- Finanzbuchhaltung ---------- */
 // Kontenrahmen (angelehnt an SKR03, vereinfacht). sys = feste Rolle f\u00fcr automatische Buchungen.
 const FIBU_TYPES = { aktiv: 'Aktivkonto (Verm\u00f6gen)', passiv: 'Passivkonto (Kapital/Schulden)', aufwand: 'Aufwandskonto', ertrag: 'Ertragskonto' };
+// Gesellschafter (Kapital- und Privatkonten, Vorlagen \u201eKapitaleinlage\u201c, \u201ePrivateinlage\u201c, \u201ePrivatentnahme\u201c)
+const FIBU_PARTNERS = [
+  { key: 'tk', name: 'Tobias Krusch', capital: '0870', deposit: '1891', withdrawal: '1801' },
+  { key: 'rl', name: 'Rene Lipownik', capital: '0871', deposit: '1892', withdrawal: '1802' }
+];
 const FIBU_DEFAULT_ACCOUNTS = [
   ['1000', 'Kasse', 'aktiv', 'kasse'], ['1200', 'Bank', 'aktiv', 'bank'], ['1400', 'Forderungen aus Lieferungen und Leistungen', 'aktiv', 'forderungen'],
   ['1576', 'Abziehbare Vorsteuer 19 %', 'aktiv', 'vorsteuer'], ['1571', 'Abziehbare Vorsteuer 7 %', 'aktiv', 'vorsteuer7'],
@@ -274,7 +279,9 @@ const FIBU_DEFAULT_ACCOUNTS = [
   ['9000', 'Saldenvortr\u00e4ge (Er\u00f6ffnung)', 'passiv', 'eroeffnung'],
   // Erg\u00e4nzt f\u00fcr die Buchungsvorlagen (Reverse Charge, USt-Vorauszahlung, Versicherungen)
   ['1577', 'Abziehbare Vorsteuer \u00a7 13b UStG 19 %', 'aktiv', 'vorsteuer13b'], ['1787', 'Umsatzsteuer \u00a7 13b UStG 19 %', 'passiv', 'umsatzsteuer13b'],
-  ['1780', 'Umsatzsteuer-Vorauszahlungen', 'passiv', 'ust_vorauszahlung'], ['4360', 'Versicherungen', 'aufwand', null]
+  ['1780', 'Umsatzsteuer-Vorauszahlungen', 'passiv', 'ust_vorauszahlung'], ['4360', 'Versicherungen', 'aufwand', null],
+  // Gesellschafter der KFL GbR: je ein Kapitalkonto (Einlage lt. Gesellschaftsvertrag) sowie Privateinlagen und -entnahmen
+  ...FIBU_PARTNERS.flatMap((g) => [[g.capital, `Festkapital ${g.name}`, 'passiv', null], [g.deposit, `Privateinlagen ${g.name}`, 'passiv', null], [g.withdrawal, `Privatentnahmen ${g.name}`, 'passiv', null]])
 ];
 const FIBU_DOC_KINDS = { eingangsrechnung: 'Eingangsrechnung', ausgangsrechnung: 'Ausgangsrechnung', kontoauszug: 'Kontoauszug', quittung: 'Quittung / Kassenbeleg', vertrag: 'Vertrag', abschluss: 'Abschluss', import: 'Import alte Buchf\u00fchrung', sonstiges: 'Sonstiger Beleg' };
 
@@ -292,9 +299,11 @@ const FIBU_TEMPLATES = [
   { key: 'q_bank', kind: 'quittung', label: 'Kartenzahlung mit Kassenbon', debit: '@aufwand', credit: 'bank', vat: 19, text: 'Kartenzahlung', hint: 'Kosten (netto) und Vorsteuer an Bank.' },
   { key: 'ka_rechnung', kind: 'kontoauszug', label: 'Zahlungseingang zu einer KFL-Rechnung \u2192 an der Rechnung erfassen', redirect: 'invoices', hint: 'Zahlungen zu Rechnungen aus dem Dashboard bitte an der Rechnung \u00fcber \u201eZahlung erfassen\u201c buchen. Sonst bleibt die Rechnung offen und wird angemahnt.' },
   { key: 'ka_forderung', kind: 'kontoauszug', label: 'Zahlungseingang zu einer manuell gebuchten Ausgangsrechnung', debit: 'bank', credit: 'forderungen', vat: 0, text: 'Zahlungseingang', hint: 'Bank an Forderungen.' },
+  ...FIBU_PARTNERS.map((g) => ({ key: 'um_kapital_' + g.key, kind: 'sonstiges', label: `Umbuchung: Privateinlage \u2192 Kapitaleinlage ${g.name}`, debit: '1890', credit: g.capital, vat: 0, text: `Umbuchung Kapitaleinlage ${g.name}`, hint: 'Korrektur: eine Einlage, die auf \u201e1890 Privateinlagen\u201c gebucht wurde, auf das Kapitalkonto umbuchen. Im Buchungstext die urspr\u00fcngliche Buchungsnummer nennen.' })),
   { key: 'ka_gebuehr', kind: 'kontoauszug', label: 'Bankgeb\u00fchren / Kontof\u00fchrung', debit: '4970', credit: 'bank', vat: 0, text: 'Kontof\u00fchrungsgeb\u00fchren', hint: 'Bankgeb\u00fchren sind umsatzsteuerfrei \u2013 keine Vorsteuer.' },
-  { key: 'ka_einlage', kind: 'kontoauszug', label: 'Privateinlage (Geld von privat aufs Gesch\u00e4ftskonto)', debit: 'bank', credit: '1890', vat: 0, text: 'Privateinlage' },
-  { key: 'ka_entnahme', kind: 'kontoauszug', label: 'Privatentnahme (Geld vom Gesch\u00e4ftskonto an privat)', debit: '1800', credit: 'bank', vat: 0, text: 'Privatentnahme' },
+  ...FIBU_PARTNERS.map((g) => ({ key: 'ka_kapital_' + g.key, kind: 'kontoauszug', label: `Kapitaleinlage ${g.name} (lt. Gesellschaftsvertrag)`, debit: 'bank', credit: g.capital, vat: 0, text: `Kapitaleinlage ${g.name}`, hint: `Bank an Festkapital ${g.name}. F\u00fcr die im Gesellschaftsvertrag vereinbarte Einlage \u2013 den Vertrag am besten als Beleg anh\u00e4ngen.` })),
+  ...FIBU_PARTNERS.map((g) => ({ key: 'ka_einlage_' + g.key, kind: 'kontoauszug', label: `Privateinlage ${g.name} (zus\u00e4tzliches Geld ins Gesch\u00e4ft)`, debit: 'bank', credit: g.deposit, vat: 0, text: `Privateinlage ${g.name}`, hint: 'Freiwillige Einzahlung \u00fcber die vereinbarte Kapitaleinlage hinaus.' })),
+  ...FIBU_PARTNERS.map((g) => ({ key: 'ka_entnahme_' + g.key, kind: 'kontoauszug', label: `Privatentnahme ${g.name}`, debit: g.withdrawal, credit: 'bank', vat: 0, text: `Privatentnahme ${g.name}` })),
   { key: 'ka_bareinzahlung', kind: 'kontoauszug', label: 'Bareinzahlung auf das Bankkonto', debit: 'bank', credit: 'kasse', vat: 0, text: 'Bareinzahlung' },
   { key: 'ka_barabhebung', kind: 'kontoauszug', label: 'Barabhebung vom Bankkonto in die Kasse', debit: 'kasse', credit: 'bank', vat: 0, text: 'Barabhebung' },
   { key: 'ka_ust', kind: 'kontoauszug', label: 'Umsatzsteuer-Vorauszahlung ans Finanzamt', debit: 'ust_vorauszahlung', credit: 'bank', vat: 0, text: 'USt-Vorauszahlung', hint: 'Im Buchungstext bitte den Zeitraum nennen, z. B. \u201eUSt-Vorauszahlung 10/2026\u201c.' },

@@ -164,6 +164,17 @@ check(r.status === 400 && q1('SELECT COUNT(*) AS n FROM fibu_docs').n === docsBe
 r = await c.post('/api/fibu/entries', { date: '2027-01-09', text: 'Ohne Vorlage', debit: acc('4930').id, credit: acc('1000').id, amount: '11,90', vat_rate: 19 }, { who: 'bh' }); check(r.ok && lines(r.id).length === 3, 'Eigene Buchung ohne Vorlage funktioniert wie bisher');
 check(qa("SELECT detail FROM audit WHERE action = 'buchung_erfasst'").some((a) => /Reverse Charge/.test(a.detail || '')), 'Vorlage im Protokoll vermerkt');
 
+console.log('Gesellschafter: Kapitaleinlage, Privateinlage, Umbuchung');
+check(acc('0870').name === 'Festkapital Tobias Krusch' && acc('0871').name === 'Festkapital Rene Lipownik' && acc('1891') && acc('1892') && acc('1801') && acc('1802'), 'Kapital- und Privatkonten je Gesellschafter angelegt');
+r = await c.get('/api/fibu/templates', { who: 'bh' });
+check(r.templates.some((t) => t.key === 'ka_kapital_tk') && r.templates.some((t) => t.key === 'ka_kapital_rl') && !r.templates.some((t) => t.key === 'ka_einlage'), 'Vorlagen je Gesellschafter statt allgemeiner Privateinlage');
+r = await c.post('/api/fibu/entries', { template: 'ka_kapital_rl', date: '2027-01-01', debit: acc('1200').id, credit: acc('0871').id, amount: '500' }, { who: 'bh' });
+let gl = lines(r.id); check(r.ok && gl[0].number === '1200' && gl[0].debit === 500 && gl[1].number === '0871' && gl[1].credit === 500 && q1('SELECT text FROM fibu_entries WHERE id = ?', r.id).text === 'Kapitaleinlage Rene Lipownik', 'Kapitaleinlage Rene Lipownik: Bank an 0871', gl);
+r = await c.post('/api/fibu/entries', { template: 'ka_einlage_tk', date: '2027-01-01', debit: acc('1200').id, credit: acc('1891').id, amount: '200' }, { who: 'bh' }); check(r.ok && lines(r.id)[1].number === '1891', 'Privateinlage Tobias Krusch auf 1891');
+r = await c.post('/api/fibu/entries', { date: '2027-01-01', text: 'Alte Einlage', debit: acc('1200').id, credit: acc('1890').id, amount: '500' }, { who: 'bh' });
+r = await c.post('/api/fibu/entries', { template: 'um_kapital_tk', date: '2027-01-01', text: 'Umbuchung Kapitaleinlage TK (zu Alte Einlage)', debit: acc('1890').id, credit: acc('0870').id, amount: '500' }, { who: 'bh' });
+check(r.ok && (await saldo('0870')) === 500, 'Umbuchung von 1890 auf das Kapitalkonto 0870');
+
 console.log('Mehrere Belege nachträglich an eine Buchung');
 r = await c.post('/api/fibu/entries', { template: 'ka_gebuehr', date: '2027-01-01', debit: acc('4970').id, credit: acc('1200').id, amount: '4,50' }, { who: 'bh' });
 const eid = r.id; check(r.ok && !r.doc, 'Buchung ohne Beleg erfasst');
