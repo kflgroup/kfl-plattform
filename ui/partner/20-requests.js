@@ -15,7 +15,7 @@ let PA = null;
 const numOf = (v) => { const m = String(v || '').replace(/\./g, '').match(/\d+/g); return m ? +m[m.length - 1] : ''; };
 async function pRequest(id) {
   const V = ppage('anfragen');
-  const d = await GET('/requests/' + id); if (!V.alive()) return;
+  const d = await GET('/requests/' + id); pcounts(); if (!V.alive()) return;
   const a = d.item; PA = a; const r = a.request;
   const back = ['#/anfragen?tab=' + ({ neu: 'neu', in_bearbeitung: 'meine', versendet: 'beantwortet', vorgestellt: 'beantwortet', gewonnen: 'gewonnen', nicht_erreicht: 'gewonnen' }[a.status] || 'archiv'), 'Anfragen'];
   if (a.level === 'teaser') {
@@ -84,7 +84,7 @@ ACT.prelease = async (b) => { if (!(await confirmBox('Anfrage wieder öffnen?', 
 ACT.pcontact = async (b) => {
   const s = b.dataset.s;
   const d = await ask({ title: s === 'kontaktiert' ? 'Kunde erfolgreich kontaktiert' : 'Kunde nicht erreicht', text: s === 'kontaktiert' ? 'Super! Kurze Notiz zum Stand (optional).' : 'Die KFL fragt beim Kunden nach, ob du dich gemeldet hast. Wie oft und wie hast du es versucht?', ok: 'Speichern', fields: field('Notiz', area('note', '', { rows: 3, req: s !== 'kontaktiert' })) });
-  if (!d) return; await POST(`/requests/${PA.id}/contact`, { status: s, note: d.note }); toast('Gespeichert.'); preload();
+  if (!d) return; await POST(`/requests/${PA.id}/contact`, { status: s, note: d.note }); toast('Gespeichert.'); await pcounts(); preload();
 };
 ACT.pcontract = () => {
   const a = PA, r = a.request, o = a.offer ? a.offer.data : {};

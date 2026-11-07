@@ -35,7 +35,7 @@ async function fibuOverview(P, tab) {
     <div class="kpis fibu-kpis mt"><a class="kpi" href="#/fibu/konten"><b>${fEur(k.bank)}</b><span>Bank</span></a><div class="kpi"><b>${fEur(k.kasse)}</b><span>Kasse</span></div>
       <div class="kpi"><b>${fEur(k.forderungen)}</b><span>Forderungen (offen)</span></div><div class="kpi"><b>${fEur(k.verbindlichkeiten)}</b><span>Verbindlichkeiten</span></div>
       <div class="kpi"><b class="${k.monthResult < 0 ? 'neg' : 'pos'}">${fEur(k.monthResult)}</b><span>Ergebnis diesen Monat</span></div><div class="kpi"><b class="${k.yearResult < 0 ? 'neg' : 'pos'}">${fEur(k.yearResult)}</b><span>Ergebnis seit Jahresbeginn</span></div>
-      <div class="kpi"><b>${fEur(k.ust)}</b><span>USt-Zahllast (minus = Erstattung)</span></div><a class="kpi ${d.unbooked ? 'hot' : ''}" href="#/buchhaltung/eingang"><b>${fNum(d.unbooked)}</b><span>Eingangsrechnungen nicht gebucht</span></a></div>
+      <div class="kpi"><b>${fEur(k.ust)}</b><span>USt-Zahllast offen (nach Vorauszahlungen, minus = Erstattung)</span></div><a class="kpi ${d.unbooked ? 'hot' : ''}" href="#/buchhaltung/eingang"><b>${fNum(d.unbooked)}</b><span>Eingangsrechnungen nicht gebucht</span></a></div>
     <div class="detail-grid mt"><section class="panel"><div class="panel-head"><h2>Letzte Buchungen</h2><a class="btn btn-sm btn-ghost" href="#/fibu/buchungen">Alle</a></div>${d.recent.length ? entryTableCompact(d.recent) : html`<div class="panel-body">${empty('Noch keine Buchungen', 'Rechnungen, Zahlungen und Eingangsrechnungen werden automatisch gebucht. Manuelle Buchungen über „Buchung erfassen“.')}</div>`}</section>
       <section class="panel"><div class="panel-head"><h2>Stand</h2></div><div class="panel-body">${kv([['Buchungen gesamt', fNum(d.entries)], ['Belege im Archiv', fNum(d.docs)], ['Letzter Abschluss', d.lastClose ? `${monthName(d.lastClose.period)} (${fDT(d.lastClose.closed_at)})` : 'noch keiner'], ['Nächster Monatsabschluss', 'automatisch am 1. des Folgemonats, 1:00 Uhr']])}
         <p class="small muted mt">Automatisch gebucht werden: Ausgangsrechnungen (Forderung an Erlöse + USt), Zahlungseingänge (Bank an Forderung), Mahngebühren, Eingangsrechnungen (Aufwand + Vorsteuer an Verbindlichkeit) und deren Zahlung.</p></div></section></div>`);
@@ -59,17 +59,127 @@ ACT.fibuEntryOpen = async (b) => {
 ACT.fibuReverse = async (b) => { const d = await ask({ title: 'Buchung stornieren?', text: 'Es wird eine Gegenbuchung erstellt. Die ursprüngliche Buchung bleibt unverändert sichtbar (keine Löschung).', ok: 'Stornieren', danger: true, fields: field('Grund *', inp('reason', '', { req: true, attrs: 'minlength="3"' })) }); if (!d) return; const r = await POST(`/fibu/entries/${b.dataset.id}/reverse`, { reason: d.reason }); closeModal(); toast(`Storniert (${r.number}).`); reload(); };
 ACT.fibuEntryDoc = async (b) => { const d = await ask({ title: 'Beleg zuordnen', ok: 'Zuordnen', fields: html`${field('Beleg (PDF)', raw('<input type="file" name="file" accept="application/pdf" required>'))}${field('Belegart', sel('doc_kind', Object.entries(S.fibuKinds || { sonstiges: 'Sonstiger Beleg' }), 'sonstiges'))}` }); if (!d) return; const file = await fileField(d._form.elements.file, { max: 10 }); await POST(`/fibu/entries/${b.dataset.id}/doc`, { file, doc_kind: d.doc_kind }); closeModal(); toast('Beleg zugeordnet.'); reload(); };
 
-// Neue Buchung (Soll an Haben, mit optionaler USt-Aufteilung und Beleg)
+// Neue Buchung: Belegart + Vorgang wählen → Soll, Haben und USt werden automatisch gesetzt (bleiben änderbar)
+let FIBU_TPL = null;
+async function fibuTemplates(force) { if (!FIBU_TPL || force) FIBU_TPL = await GET('/fibu/templates'); return FIBU_TPL; }
+const fibuNum = (v) => { let s = String(v ?? '').trim().replace(/[€\s]/g, ''); if (!s) return 0; if (/,\d{1,2}$/.test(s)) s = s.replace(/\./g, '').replace(',', '.'); else s = s.replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'); const n = parseFloat(s); return isFinite(n) ? n : 0; };
+const fibuR2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const fibuNorm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+const fibuCostAcc = (a) => a.status === 'offen' && (a.type === 'aufwand' || (a.type === 'aktiv' && !a.sys));
+const fibuAccRef = (accs, ref) => accs.find((a) => a.status === 'offen' && (a.sys === ref || a.number === ref));
+const fibuOptHtml = (list, value, empty) => `<option value="">${esc(empty)}</option>` + list.map((a) => `<option value="${a.id}" ${String(a.id) === String(value ?? '') ? 'selected' : ''}>${esc(`${a.number} · ${a.name}`)}</option>`).join('');
+let FIBU_FORM = null; // { accs, tpl } des offenen Buchungsdialogs
+
+// Buchungszeilen wie auf dem Server (fibuSimple bzw. Reverse Charge) – für die Vorschau
+function fibuPreviewLines(f) {
+  const { accs } = FIBU_FORM, t = FIBU_FORM.tpl, el = f.elements;
+  const da = accs.find((a) => String(a.id) === el.debit.value), ca = accs.find((a) => String(a.id) === el.credit.value);
+  const amount = fibuR2(fibuNum(el.amount.value)), rate = +el.vat_rate.value || 0;
+  if (!da || !ca || !amount) return { info: 'Betrag, Soll- und Haben-Konto eingeben – dann erscheint hier die Buchung.' };
+  if (da.id === ca.id) return { err: 'Soll- und Haben-Konto müssen verschieden sein.' };
+  if (t && t.mode === 'rc') {
+    if (!fibuCostAcc(da)) return { err: 'Bitte als Soll-Konto eine Kostenart wählen.' };
+    const vat = fibuR2(amount * 0.19), vst = fibuAccRef(accs, 'vorsteuer13b'), ust = fibuAccRef(accs, 'umsatzsteuer13b');
+    return { lines: [[da, amount, 0], [vst, vat, 0], [ca, 0, amount], [ust, 0, vat]].filter((l) => l[0] && (l[1] || l[2])) };
+  }
+  if (!rate) return { lines: [[da, amount, 0], [ca, 0, amount]] };
+  const net = fibuR2(amount / (1 + rate / 100)), vat = fibuR2(amount - net);
+  if (da.type === 'aufwand' || (da.type === 'aktiv' && ca.type !== 'ertrag' && !['bank', 'kasse'].includes(da.sys))) return { lines: [[da, net, 0], [fibuAccRef(accs, rate === 7 ? 'vorsteuer7' : 'vorsteuer'), vat, 0], [ca, 0, amount]] };
+  if (ca.type === 'ertrag') return { lines: [[da, amount, 0], [ca, 0, net], [fibuAccRef(accs, rate === 7 ? 'umsatzsteuer7' : 'umsatzsteuer'), 0, vat]] };
+  return { err: 'Umsatzsteuer lässt sich nur bei Kosten (Vorsteuer) oder Erlösen (Umsatzsteuer) herausrechnen. Bitte „keine Aufteilung“ wählen.' };
+}
+function fibuPreview(f) {
+  const box = $('[data-fibu-preview]', f); if (!box || !FIBU_FORM) return;
+  const r = fibuPreviewLines(f);
+  if (!r.lines) { box.className = r.err ? 'note-box' : 'fibu-preview muted small'; box.innerHTML = part(html`${r.err ? icon('alert') : ''}<span>${r.err || r.info}</span>`); return; }
+  const sum = (i) => fibuR2(r.lines.reduce((s, l) => s + l[i], 0));
+  box.className = 'fibu-preview';
+  box.innerHTML = part(html`<div class="small muted">So wird gebucht</div><table class="table table-tight"><thead><tr><th>Konto</th><th class="r">Soll</th><th class="r">Haben</th></tr></thead><tbody>${r.lines.map(([a, d, c]) => html`<tr><td>${a.number} ${a.name}</td><td class="r num">${d ? fEur(d) : ''}</td><td class="r num">${c ? fEur(c) : ''}</td></tr>`)}
+    <tr class="strong"><td>Summe</td><td class="r num">${fEur(sum(1))}</td><td class="r num">${fEur(sum(2))}</td></tr></tbody></table>`);
+}
+function fibuAutoText(f) {
+  const el = f.elements, t = FIBU_FORM.tpl; if (!el.text || el.text.dataset.manual === '1') return;
+  el.text.value = t && !t.redirect ? [t.text, el.counterparty.value.trim(), el.ref.value.trim()].filter(Boolean).join(' · ') : '';
+}
+// Vorlage anwenden: Konten, USt, Hinweis, Feldbeschriftungen
+function fibuApplyTpl(f, key, pre = {}) {
+  const { accs } = FIBU_FORM, el = f.elements, t = key ? FIBU_FORM.all.find((x) => x.key === key) : null;
+  FIBU_FORM.tpl = t;
+  const body = $('[data-fibu-body]', f), hint = $('[data-fibu-hint]', f), okBtn = $('button[type=submit]', f.closest('.modal'));
+  const redirect = !!(t && t.redirect);
+  body.disabled = redirect; body.classList.toggle('hide', redirect);
+  if (okBtn) okBtn.textContent = redirect ? (t.redirect === 'purchase' ? 'Zu den Eingangsrechnungen' : 'Zu den Ausgangsrechnungen') : 'Buchen';
+  hint.classList.toggle('hide', !(t && t.hint));
+  if (t && t.hint) hint.innerHTML = part(html`${icon(redirect ? 'alert' : 'check')}<span>${t.hint}</span>`);
+  hint.className = (redirect ? 'note-box' : 'info-box') + (t && t.hint ? '' : ' hide');
+  if (redirect) return;
+  const cost = accs.filter(fibuCostAcc), open = accs.filter((a) => a.status === 'offen');
+  const setSel = (name, ref, keep) => {
+    const s = el[name];
+    if (ref === '@aufwand') { s.innerHTML = fibuOptHtml(cost, keep || '', 'Kostenart wählen'); $('[data-lbl=' + name + ']', f).textContent = (name === 'debit' ? 'Soll-Konto (Kostenart) *' : 'Haben-Konto (Kostenart) *'); return; }
+    const a = ref ? fibuAccRef(accs, ref) : null;
+    s.innerHTML = fibuOptHtml(open, keep || (a ? a.id : ''), 'Bitte wählen'); $('[data-lbl=' + name + ']', f).textContent = name === 'debit' ? 'Soll-Konto *' : 'Haben-Konto *';
+  };
+  setSel('debit', t ? t.debit : null, pre.debit || (t ? null : el.debit.value));
+  setSel('credit', t ? t.credit : null, pre.credit || (t ? null : el.credit.value));
+  if (t) el.vat_rate.value = String(pre.vat ?? t.vat ?? 0);
+  else if (pre.vat != null) el.vat_rate.value = String(pre.vat);
+  const rc = !!(t && t.mode === 'rc');
+  el.vat_rate.disabled = rc; if (rc) el.vat_rate.value = '19';
+  $('[data-lbl=amount]', f).textContent = rc ? 'Rechnungsbetrag (ohne USt) *' : 'Betrag (brutto) *';
+  $('[data-lbl=vat]', f).textContent = rc ? 'Umsatzsteuer § 13b (19 %, automatisch)' : 'Umsatzsteuer';
+  fibuAutoText(f); fibuPreview(f);
+}
+function fibuTplOptions(kind, value) {
+  const list = FIBU_FORM.all.filter((t) => t.kind === kind);
+  return [['', list.length ? 'Eigene Buchung – Konten selbst wählen' : 'Eigene Buchung'], ...list.map((t) => [t.key, t.label])].map(([k, l]) => `<option value="${esc(k)}" ${k === (value || '') ? 'selected' : ''}>${esc(l)}</option>`).join('');
+}
+CHANGE.fibuKind = (el) => { const f = el.form, first = FIBU_FORM.all.find((t) => t.kind === el.value && !t.redirect); f.elements.template.innerHTML = fibuTplOptions(el.value, first ? first.key : ''); fibuApplyTpl(f, f.elements.template.value); };
+CHANGE.fibuTpl = (el) => fibuApplyTpl(el.form, el.value);
+CHANGE.fibuCalc = (el) => fibuPreview(el.form);
+INPUT.fibuCalc = (el) => fibuPreview(el.form);
+INPUT.fibuText = (el) => { el.dataset.manual = el.value.trim() ? '1' : ''; };
+INPUT.fibuRef = (el) => fibuAutoText(el.form);
+CHANGE.fibuRef = INPUT.fibuRef;
+// Bekannter Aussteller: Vorlage, Kostenart und USt der letzten Buchung vorschlagen
+INPUT.fibuParty = (el) => {
+  const f = el.form; fibuAutoText(f);
+  const m = FIBU_FORM.memory.find((x) => fibuNorm(x.name) === fibuNorm(el.value)); const tip = $('[data-fibu-mem]', f);
+  if (!m || !FIBU_FORM.all.some((t) => t.key === m.template && !t.redirect)) { tip.classList.add('hide'); return; }
+  if (f.elements.doc_kind.value !== m.kind) { f.elements.doc_kind.value = m.kind; f.elements.template.innerHTML = fibuTplOptions(m.kind, m.template); }
+  f.elements.template.value = m.template;
+  fibuApplyTpl(f, m.template, { debit: m.debit, credit: m.credit, vat: m.vat });
+  const t = FIBU_FORM.all.find((x) => x.key === m.template);
+  tip.classList.remove('hide'); tip.textContent = `Vorschlag aus der letzten Buchung für „${m.name}“: ${t.label}. Bitte prüfen.`;
+};
+CHANGE.fibuParty = (el) => INPUT.fibuParty(el);
 ACT.fibuEntry = async () => {
-  const accs = await fibuAccounts(true);
-  if (!S.fibuKinds) S.fibuKinds = (await GET('/fibu/docs', { q: '___' })).kinds;
-  const d = await ask({ title: 'Buchung erfassen', wide: true, ok: 'Buchen', fields: html`<div class="grid-2">${field('Buchungsdatum *', inp('date', todayISO(), { type: 'date', req: true }))}${field('Betrag (brutto) *', inp('amount', '', { req: true, ph: '0,00', attrs: 'inputmode="decimal"' }))}
-      ${field('Soll-Konto *', sel('debit', accOpt(accs), '', { empty: 'Bitte wählen', attrs: 'required' }), 'z. B. Aufwand, Bank bei Einzahlung')}${field('Haben-Konto *', sel('credit', accOpt(accs), '', { empty: 'Bitte wählen', attrs: 'required' }), 'z. B. Bank bei Zahlung, Erlöse')}
-      ${field('Umsatzsteuer', sel('vat_rate', [['0', 'keine Aufteilung'], ['19', '19 % herausrechnen'], ['7', '7 % herausrechnen']], '0'), 'Vorsteuer bei Aufwand, Umsatzsteuer bei Erlös')}${field('Buchungstext *', inp('text', '', { req: true, ph: 'z. B. Miete November' }))}
-      ${field('Beleg (PDF)', raw('<input type="file" name="file" accept="application/pdf">'), 'wird nummeriert archiviert')}${field('Belegart', sel('doc_kind', Object.entries(S.fibuKinds), 'sonstiges'))}</div>` });
-  if (!d) return; const file = await fileField(d._form.elements.file, { max: 10 }); delete d._form;
-  const r = await POST('/fibu/entries', { ...d, debit: +d.debit, credit: +d.credit, file });
-  toast(`Gebucht: ${r.number}${r.doc ? ' · Beleg ' + r.doc : ''}`); FIBU_ACC = null; reload();
+  const [accs, tp] = await Promise.all([fibuAccounts(true), fibuTemplates(true)]);
+  S.fibuKinds = tp.kinds;
+  let parties = tp.memory.map((m) => m.name);
+  if (can('acc_view')) { try { parties = [...new Set([...parties, ...(await GET('/acc/suppliers')).suppliers.filter((x) => x.active).map((x) => x.name)])]; } catch (e) { /* ohne Lieferantenliste */ } }
+  FIBU_FORM = { accs, all: tp.templates, memory: tp.memory, tpl: null };
+  const kinds = Object.entries(tp.kinds).filter(([k]) => !['abschluss', 'import'].includes(k));
+  const startKind = 'eingangsrechnung', startTpl = (tp.templates.find((t) => t.kind === startKind && !t.redirect) || {}).key || '';
+  const open = accs.filter((a) => a.status === 'offen');
+  const p = ask({ title: 'Buchung erfassen', wide: true, ok: 'Buchen', fields: html`<div class="grid-2">${field('Belegart *', sel('doc_kind', kinds, startKind, { attrs: 'data-change="fibuKind"' }))}${field('Vorgang', raw(`<select name="template" data-change="fibuTpl">${fibuTplOptions(startKind, startTpl)}</select>`), 'setzt Soll, Haben und Umsatzsteuer automatisch')}</div>
+    <div data-fibu-hint class="info-box hide"></div>
+    <fieldset data-fibu-body class="stack fieldset-plain"><div class="grid-2">${field('Aussteller / Lieferant', raw(`<input name="counterparty" list="fibu-parties" autocomplete="off" placeholder="z. B. Telekom, Shopify" data-input="fibuParty" data-change="fibuParty"><datalist id="fibu-parties">${parties.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>`), 'Bekannte Aussteller füllen Vorgang und Kostenart vor')}${field('Belegnummer', raw('<input name="ref" placeholder="z. B. Rechnungsnummer" data-input="fibuRef" data-change="fibuRef">'))}</div>
+      <div data-fibu-mem class="small muted hide"></div>
+      <div class="grid-2">${field('Buchungsdatum *', inp('date', todayISO(), { type: 'date', req: true }))}<label class="field"><span class="field-label" data-lbl="amount">Betrag (brutto) *</span><input name="amount" required placeholder="0,00" inputmode="decimal" data-input="fibuCalc"></label>
+      <label class="field"><span class="field-label" data-lbl="debit">Soll-Konto *</span><select name="debit" required data-change="fibuCalc">${raw(fibuOptHtml(open, '', 'Bitte wählen'))}</select></label><label class="field"><span class="field-label" data-lbl="credit">Haben-Konto *</span><select name="credit" required data-change="fibuCalc">${raw(fibuOptHtml(open, '', 'Bitte wählen'))}</select></label>
+      <label class="field"><span class="field-label" data-lbl="vat">Umsatzsteuer</span>${sel('vat_rate', [['0', 'keine Aufteilung'], ['19', '19 % herausrechnen'], ['7', '7 % herausrechnen']], '0', { attrs: 'data-change="fibuCalc"' })}<span class="field-hint">Vorsteuer bei Kosten, Umsatzsteuer bei Erlösen</span></label>${field('Buchungstext *', raw('<input name="text" required placeholder="wird automatisch vorgeschlagen" data-input="fibuText">'))}
+      ${field('Beleg (PDF)', raw('<input type="file" name="file" accept="application/pdf">'), 'wird nummeriert archiviert')}</div>
+      <div data-fibu-preview class="fibu-preview muted small"></div></fieldset>` });
+  const top = modalStack[modalStack.length - 1], form = top && $('form', top.el); if (form) fibuApplyTpl(form, startTpl);
+  const d = await p; if (!d) { FIBU_FORM = null; return; }
+  const t = FIBU_FORM.tpl, manualText = d._form.elements.text && d._form.elements.text.dataset.manual === '1'; FIBU_FORM = null;
+  if (t && !t.redirect && !manualText) d.text = [t.text, (d.counterparty || '').trim(), (d.ref || '').trim()].filter(Boolean).join(' · ');
+  if (t && t.redirect === 'purchase') { location.hash = '#/buchhaltung/eingang'; if (can('acc_manage')) { S.suppliers = (await GET('/acc/suppliers')).suppliers; ACT.piNew(); } return; }
+  if (t && t.redirect) { location.hash = '#/buchhaltung/rechnungen'; return; }
+  const file = await fileField(d._form.elements.file, { max: 10 }); delete d._form;
+  const r = await POST('/fibu/entries', { ...d, template: t ? t.key : '', vat_rate: t && t.mode === 'rc' ? 19 : d.vat_rate, debit: +d.debit, credit: +d.credit, file });
+  toast(`Gebucht: ${r.number}${r.doc ? ' · Beleg ' + r.doc : ''}`); FIBU_ACC = null; FIBU_TPL = null; reload();
 };
 
 async function fibuAccountsPage(P, tab) {

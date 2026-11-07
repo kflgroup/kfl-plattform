@@ -5,6 +5,7 @@
            Admin: alles inkl. Wiederöffnen von Abschlüssen und Konten
    ============================================================ */
 
+const FIBU_MEM_MAX = 300; // gemerkte Aussteller/Lieferanten für Vorschläge
 async function handleFibu(ctx, u, path, method, body, q) {
   const db = ctx.db; let m;
   requirePerm(u, 'fibu_view');
@@ -29,7 +30,7 @@ async function handleFibu(ctx, u, path, method, body, q) {
     const unbooked = await DB.val(db, 'SELECT COUNT(*) FROM purchase_invoices WHERE entry_id IS NULL');
     const lastClose = await DB.one(db, "SELECT period, closed_at FROM fibu_periods WHERE status = 'abgeschlossen' ORDER BY period DESC LIMIT 1");
     return out({ ok: true, kpis: { bank: bySys('bank'), kasse: bySys('kasse'), forderungen: bySys('forderungen'), verbindlichkeiten: bySys('verbindlichkeiten'),
-      ust: round2(bySys('umsatzsteuer') + bySys('umsatzsteuer7') - bySys('vorsteuer') - bySys('vorsteuer7')), monthResult: await res(`${month}-01`), yearResult: await res(`${year}-01-01`) },
+      ust: round2(bySys('umsatzsteuer') + bySys('umsatzsteuer7') + bySys('umsatzsteuer13b') + bySys('ust_vorauszahlung') - bySys('vorsteuer') - bySys('vorsteuer7') - bySys('vorsteuer13b')), monthResult: await res(`${month}-01`), yearResult: await res(`${year}-01-01`) },
       recent, unbooked, lastClose, docs: await DB.val(db, 'SELECT COUNT(*) FROM fibu_docs'), entries: await DB.val(db, 'SELECT COUNT(*) FROM fibu_entries') });
   }
 
@@ -90,16 +91,50 @@ async function handleFibu(ctx, u, path, method, body, q) {
     const rows = await DB.all(db, `SELECT e.*, d.number AS doc_number FROM fibu_entries e LEFT JOIN fibu_docs d ON d.id = e.doc_id WHERE ${where.join(' AND ')} ORDER BY e.date DESC, e.id DESC LIMIT 500`, ...args);
     return out({ ok: true, entries: await entryView(rows) });
   }
+  /* ---------- Buchungsvorlagen (Belegart + Vorgang → Soll/Haben/USt) ---------- */
+  if (path === '/templates' && method === 'GET') {
+    const mem = jparse(await rawSetting(db, '_fibu_tpl_mem'), {}) || {};
+    const memory = Object.values(mem).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, FIBU_MEM_MAX);
+    return out({ ok: true, kinds: FIBU_DOC_KINDS, templates: FIBU_TEMPLATES, memory });
+  }
   if (path === '/entries' && method === 'POST') {
     book();
+    const tpl = body.template ? FIBU_TEMPLATE[str(body.template, 40)] : null;
+    need(!body.template || tpl, 400, 'Unbekannte Buchungsvorlage.');
+    need(!tpl || !tpl.redirect, 400, 'Dieser Vorgang wird nicht hier gebucht: ' + (tpl && tpl.hint));
+    const counterparty = str(body.counterparty, 200) || null;
+    const text = str(body.text, 300) || (tpl ? [tpl.text, counterparty, str(body.ref, 80)].filter(Boolean).join(' · ') : '');
     let docId = body.doc_id ? toInt(body.doc_id) : null;
     if (docId) need(await DB.one(db, 'SELECT id FROM fibu_docs WHERE id = ?', docId), 400, 'Beleg nicht gefunden.');
-    if (body.file && body.file.base64) docId = await fibuArchive(ctx, { kind: FIBU_DOC_KINDS[body.doc_kind] ? body.doc_kind : 'sonstiges', title: str(body.doc_title, 200) || str(body.text, 200), date: body.date, amount: body.amount, ref: body.ref, file: body.file });
+    // Erst prüfen, dann archivieren (keine verwaisten Belege bei Fehleingaben)
+    const docKind = FIBU_DOC_KINDS[body.doc_kind] ? body.doc_kind : (tpl ? tpl.kind : 'sonstiges');
+    const archive = async () => { if (body.file && body.file.base64) docId = await fibuArchive(ctx, { kind: docKind, title: str(body.doc_title, 200) || text, date: body.date, amount: body.amount, counterparty, ref: str(body.ref, 80) || null, file: body.file }); };
     let id;
-    if (Array.isArray(body.lines) && body.lines.length) id = await fibuPost(ctx, { date: body.date, text: body.text, docId, lines: body.lines.map((l) => ({ account: toInt(l.account_id), debit: l.debit, credit: l.credit })) });
-    else id = await fibuSimple(ctx, { date: body.date, text: body.text, debit: toInt(body.debit), credit: toInt(body.credit), amount: body.amount, vatRate: body.vat_rate, docId });
+    if (Array.isArray(body.lines) && body.lines.length) { await archive(); id = await fibuPost(ctx, { date: body.date, text, docId, lines: body.lines.map((l) => ({ account: toInt(l.account_id), debit: l.debit, credit: l.credit })) }); }
+    else if (tpl && tpl.mode === 'rc') {
+      // Reverse Charge: Kosten netto an Bank, zusätzlich Vorsteuer § 13b an Umsatzsteuer § 13b
+      const net = round2(toNum(body.amount, 0) || 0); need(net > 0, 400, 'Bitte den Rechnungsbetrag (ohne USt) angeben.');
+      const da = await fibuAccount(ctx, toInt(body.debit)), ca = await fibuAccount(ctx, toInt(body.credit));
+      need(da.id !== ca.id, 400, 'Soll- und Habenkonto müssen verschieden sein.');
+      need(da.type === 'aufwand' || (da.type === 'aktiv' && !da.sys), 400, 'Reverse Charge: Bitte als Soll-Konto eine Kostenart (Aufwandskonto) wählen.');
+      const vat = round2(net * 0.19);
+      const lines = [{ account: da, debit: net }, { account: ca, credit: net }];
+      if (vat) lines.push({ account: await fibuAccountBySys(ctx, 'vorsteuer13b'), debit: vat }, { account: await fibuAccountBySys(ctx, 'umsatzsteuer13b'), credit: vat });
+      await archive(); id = await fibuPost(ctx, { date: body.date, text, docId, lines });
+    } else {
+      // Validierung ohne Schreiben: fibuSimple prüft Konten und USt-Aufteilung erst beim Buchen – Beleg danach zuordnen
+      id = await fibuSimple(ctx, { date: body.date, text, debit: toInt(body.debit), credit: toInt(body.credit), amount: body.amount, vatRate: body.vat_rate, docId });
+      if (!docId && body.file && body.file.base64) { await archive(); await DB.update(db, 'fibu_entries', id, { doc_id: docId }); }
+    }
+    // Lieferant/Aussteller merken: nächste Buchung schlägt Vorlage, Kostenart und USt vor
+    if (tpl && counterparty) {
+      const mem = jparse(await rawSetting(db, '_fibu_tpl_mem'), {}) || {};
+      mem[normBrand(counterparty) || counterparty.toLowerCase()] = { name: counterparty, template: tpl.key, kind: tpl.kind, debit: toInt(body.debit), credit: toInt(body.credit), vat: toInt(body.vat_rate, 0), at: nowIso() };
+      const keep = Object.entries(mem).sort((a, b) => String(b[1].at).localeCompare(String(a[1].at))).slice(0, FIBU_MEM_MAX);
+      await setRawSetting(db, '_fibu_tpl_mem', JSON.stringify(Object.fromEntries(keep)));
+    }
     const e = await DB.one(db, 'SELECT number FROM fibu_entries WHERE id = ?', id);
-    await audit(ctx, 'buchung_erfasst', 'buchung', e.number, { text: str(body.text, 200), betrag: body.amount });
+    await audit(ctx, 'buchung_erfasst', 'buchung', e.number, { text: str(text, 200), betrag: body.amount, ...(tpl ? { vorlage: tpl.label } : {}), ...(counterparty ? { aussteller: counterparty } : {}) });
     return out({ ok: true, id, number: e.number, doc: docId ? await DB.val(db, 'SELECT number FROM fibu_docs WHERE id = ?', docId) : null });
   }
   if ((m = path.match(/^\/entries\/(\d+)(?:\/(reverse|doc))?$/))) {

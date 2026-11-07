@@ -63,4 +63,52 @@ const d3 = q1('SELECT * FROM requests WHERE id = ?', r.number - 1000);
 check(r.ok && !r.sellNumber && !d3.linked_request_id && !JSON.parse(d3.data)['Altwagen Unfalldetails'], 'Nur eine Anfrage, Altwagen-Reste werden verworfen', r);
 r = await c.post('/', deal({ Inzahlungnahme: 'Ja' }));
 check(r.ok && !r.sellNumber, 'Inzahlungnahme ohne Fahrzeugangaben: keine leere Ankauf-Anfrage');
+
+console.log('Inzahlungnahme über zwei getrennte Formulare');
+const kid2 = '22200000000001';
+const deal2 = (extra = {}) => { const ts = nowSec(); return { ...deal(), _kid: kid2, _ts: ts, _sig: sig(`${kid2}.${ts}.deal`), Kundennummer: kid2, Vorname: 'Eva', name: 'Beispiel', email: 'eva@kunde.de', Inzahlungnahme: 'Ja', ...extra }; };
+const sell2 = (extra = {}) => { const ts = nowSec(); return { _form: 'sell', _kid: kid2, _ts: ts, _sig: sig(`${kid2}.${ts}.sell`), _page: 'https://kfl-group.com/pages/auto-verkaufen', Formular: 'MEIN AUTO VERKAUFEN', Kundennummer: kid2,
+  Marke: 'Opel', Modell: 'Corsa', Erstzulassung: '2021', 'Laufleistung km': '40.000', Unfallfrei: 'Ja', Preisvorstellung: '12.000', Vorname: 'Eva', name: 'Beispiel', email: 'eva@kunde.de', phone: '', 'Straße': 'Weg 1', PLZ: '49451', Ort: 'Holdorf',
+  Umkreis: '100 km', Kontaktweg: 'E-Mail', 'AGB akzeptiert': 'Ja', 'Datenschutz akzeptiert': 'Ja', 'Weitergabe an Partner und Kontaktaufnahme': 'Ja', ...extra }; };
+r = await c.post('/', deal2());
+const nD = r.number, idD = nD - 1000;
+check(r.ok && !r.sellNumber && !q1('SELECT linked_request_id FROM requests WHERE id = ?', idD).linked_request_id, 'DEAL mit „Inzahlungnahme: Ja“ ohne Fahrzeugdaten: zunächst keine Ankauf-Anfrage');
+const aidD = q1('SELECT id FROM assignments WHERE request_id = ? AND org_id = ?', idD, org.A).id;
+check(q1("SELECT COUNT(*) AS n FROM notifications WHERE recipient_type = 'partner' AND recipient_id = ? AND link = ? AND read_at IS NULL", pu.A, `#/anfragen/${aidD}`).n === 1, 'Partner hat ungelesene News „Neue Anfrage“');
+await c.post(`/papi/requests/${aidD}/take`, {}, { who: 'A' });
+check(q1("SELECT COUNT(*) AS n FROM notifications WHERE recipient_type = 'partner' AND recipient_id = ? AND link = ? AND read_at IS NULL", pu.A, `#/anfragen/${aidD}`).n === 0, 'Nach dem Übernehmen: News zur Anfrage automatisch gelesen (Zähler sinkt)');
+r = await c.post('/', sell2());
+const idS = r.number - 1000;
+const lD = q1('SELECT * FROM requests WHERE id = ?', idD), lS = q1('SELECT * FROM requests WHERE id = ?', idS);
+check(r.ok && lD.linked_request_id === idS && lS.linked_request_id === idD && JSON.parse(lS.data)['Inzahlungnahme zu'] === `Traumwagen-DEAL #${nD}`, 'Separates „Auto verkaufen“ desselben Kunden automatisch als Inzahlungnahme verknüpft');
+const note = q1("SELECT * FROM notifications WHERE recipient_type = 'partner' AND recipient_id = ? AND title LIKE 'Inzahlungnahme zu%' ORDER BY id DESC", pu.A);
+check(note && note.link === `#/anfragen/${aidD}` && !note.read_at, 'Partner, der den Traumwagen bearbeitet, bekommt einen Hinweis auf den Ankauf');
+let unread = (await c.get('/papi/start', { who: 'A' })).news.notifications.filter((n) => !n.read).length;
+r = await c.get(`/papi/requests/${aidD}`, { who: 'A' });
+check(r.item.linked && r.item.linked.number === idS + 1000 && r.item.linked.canJoin, 'Traumwagen-Anfrage zeigt „Ankauf zusätzlich übernehmen“');
+check((await c.get('/papi/start', { who: 'A' })).news.notifications.filter((n) => !n.read).length === unread - 1, 'Öffnen der Anfrage markiert den Hinweis als gelesen');
+r = await c.post(`/papi/requests/${aidD}/linked`, {}, { who: 'A' });
+const aS = q1('SELECT * FROM assignments WHERE id = ?', r.id);
+check(r.ok && aS.request_id === idS && aS.taken_by === pu.A && aS.status === 'in_bearbeitung', 'Partner übernimmt den Ankauf im selben Zug');
+
+console.log('Abgelaufene Ankauf-Zuordnung wird für die Inzahlungnahme wieder geöffnet');
+const kid3 = '33300000000001';
+const ts3 = nowSec();
+r = await c.post('/', { ...sell2(), _kid: kid3, _ts: ts3, _sig: sig(`${kid3}.${ts3}.sell`), Kundennummer: kid3, email: 'tom@kunde.de', Vorname: 'Tom' });
+const idS3 = r.number - 1000;
+// Alpha hatte den Ankauf schon einmal, aber die Frist ist ohne Bearbeitung abgelaufen
+sq.prepare("INSERT INTO assignments (request_id, org_id, status, source, archived, reminders, created_at, updated_at, deadline_at) VALUES (?, ?, 'verloren', 'manuell', 0, 0, ?, ?, ?)").run(idS3, org.A, '2026-11-01T09:00:00Z', '2026-11-02T09:00:00Z', '2026-11-02T09:00:00Z');
+const ts4 = nowSec();
+r = await c.post('/', { ...deal2(), _kid: kid3, _ts: ts4, _sig: sig(`${kid3}.${ts4}.deal`), Kundennummer: kid3, email: 'tom@kunde.de', Vorname: 'Tom' });
+const idD3 = r.number - 1000;
+check(q1('SELECT linked_request_id FROM requests WHERE id = ?', idD3).linked_request_id === idS3, 'Auch umgekehrt: erst Verkauf, dann DEAL mit Inzahlungnahme → verknüpft');
+const aidD3 = q1('SELECT id FROM assignments WHERE request_id = ? AND org_id = ?', idD3, org.A).id;
+await c.post(`/papi/requests/${aidD3}/take`, {}, { who: 'A' });
+r = await c.get(`/papi/requests/${aidD3}`, { who: 'A' });
+check(r.item.linked && r.item.linked.canJoin, 'Verfallene eigene Ankauf-Zuordnung: Übernahme trotzdem angeboten');
+r = await c.post(`/papi/requests/${aidD3}/linked`, {}, { who: 'A' });
+const a3 = q1('SELECT * FROM assignments WHERE request_id = ? AND org_id = ?', idS3, org.A);
+check(r.ok && r.id === a3.id && a3.status === 'in_bearbeitung' && a3.taken_by === pu.A && a3.deadline_at > '2026-11-03T09:00:00.000Z', 'Ankauf wieder geöffnet, mit neuer Frist übernommen', a3);
+r = await c.get(`/papi/requests/${a3.id}`, { who: 'A' });
+check(r.ok && r.item.request.type === 'sell', 'Partner kann den Ankauf bearbeiten');
 console.log(check.fails ? `\n${check.fails} FEHLER` : '\nINZAHLUNGNAHME-TEST BESTANDEN');

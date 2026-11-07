@@ -187,6 +187,15 @@ async function notifyStaff(ctx, { perm, roles, userIds, except }, msg) {
   for (const id of uniq(ids)) if (id && id !== except) await notify(ctx, 'staff', id, msg);
   return ids.length;
 }
+// News zu einer Anfrage als gelesen markieren, sobald sie bearbeitet wird (News-Zähler sinkt automatisch).
+// userId: nur dieser Nutzer; orgId + kinds: z. B. „Neue Anfrage“ für das ganze Team, wenn jemand sie übernommen hat
+async function readAssignmentNews(ctx, aids, { userId, orgId, kinds } = {}) {
+  const links = [].concat(aids).filter(Boolean).map((id) => `#/anfragen/${id}`); if (!links.length || (!userId && !orgId)) return;
+  const where = ["recipient_type = 'partner'", 'read_at IS NULL', `link IN (${links.map(() => '?').join(',')})`], args = [...links];
+  if (userId) { where.push('recipient_id = ?'); args.push(userId); } else { where.push('recipient_id IN (SELECT id FROM partner_users WHERE org_id = ?)'); args.push(orgId); }
+  if (kinds) { where.push(`kind IN (${kinds.map(() => '?').join(',')})`); args.push(...kinds); }
+  await DB.run(ctx.db, `UPDATE notifications SET read_at = ? WHERE ${where.join(' AND ')}`, nowIso(), ...args);
+}
 async function notifyPartner(ctx, { orgId, userIds, roles }, msg) {
   let ids = userIds || (await DB.all(ctx.db, `SELECT id, role FROM partner_users WHERE org_id = ? AND active = 1`, orgId)).filter((u) => !roles || roles.includes(u.role)).map((u) => u.id);
   for (const id of uniq(ids)) await notify(ctx, 'partner', id, msg);

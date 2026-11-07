@@ -73,18 +73,56 @@ async function joinLinkedRequest(ctx, p, aid) {
   need(req && req.linked_request_id, 404, 'Zu dieser Anfrage gibt es keinen Ankauf.');
   const sell = await DB.one(ctx.db, 'SELECT * FROM requests WHERE id = ?', req.linked_request_id);
   need(sell && !sell.deleted, 404, 'Die Ankauf-Anfrage ist nicht mehr verfügbar.');
+  need(!SELL_CLOSED.includes(sell.status) && !sell.evaluated_at, 409, 'Für den Ankauf werden keine Angebote mehr angenommen.');
   const ex = await DB.one(ctx.db, 'SELECT * FROM assignments WHERE request_id = ? AND org_id = ?', sell.id, p.orgId);
   if (ex) {
-    if (ex.status === 'neu') await takeAssignment(ctx, p, ex.id).catch(() => null);
+    if (ex.taken_by === p.id && !['verloren', 'geschlossen'].includes(ex.status)) return { ok: true, id: ex.id, existing: true };
+    need(!ex.taken_by || ex.status === 'neu', 409, 'Die Ankauf-Anfrage wird in deinem Team bereits von jemand anderem bearbeitet.');
+    // Noch nicht bearbeitet, aber Frist abgelaufen oder verfallen: für den Bearbeiter des Traumwagens wieder öffnen (gleiche Frist wie eine neue Zuordnung)
+    const expired = ex.status === 'verloren' || (ex.status === 'neu' && ex.deadline_at && ex.deadline_at <= nowIso());
+    need(ex.status === 'neu' || expired, 409, 'Die Ankauf-Anfrage kann nicht mehr übernommen werden.');
+    if (expired) {
+      const s = await settingsOf(ctx), org = await DB.one(ctx.db, 'SELECT opening FROM orgs WHERE id = ?', p.orgId);
+      await DB.run(ctx.db, "UPDATE assignments SET status = 'neu', taken_by = NULL, taken_at = NULL, archived = 0, target_user_id = ?, deadline_at = ?, updated_at = ? WHERE id = ?",
+        p.id, isoOf(addBusinessHours(nowMs(), s.offer_window_hours, { saturday: saturdayOpen(org && org.opening) })), nowIso(), ex.id);
+      await partnerEvent(ctx, { assignmentId: ex.id, requestId: sell.id, orgId: p.orgId, action: 'notiz', text: `Wieder geöffnet für die Inzahlungnahme zum Traumwagen-DEAL #${toNumber(req.id)}.`, visiblePartner: true });
+    }
+    await takeAssignment(ctx, p, ex.id);
+    await reqEvent(ctx, sell.id, 'partner_verknuepft', `${p.org.name} übernimmt den Ankauf zusätzlich zur Traumwagen-Anfrage #${toNumber(req.id)}`);
     return { ok: true, id: ex.id, existing: true };
   }
-  need(!['angebot_beim_kunden', 'angebot_akzeptiert', 'kontaktdaten_versendet', 'angebot_abgelehnt', 'kein_angebot'].includes(sell.status) && !sell.evaluated_at, 409, 'Für den Ankauf werden keine Angebote mehr angenommen.');
   const org = await DB.one(ctx.db, 'SELECT * FROM orgs WHERE id = ?', p.orgId);
   const r = await createAssignment(ctx, sell, org, { source: 'verknuepft', targetUserId: p.id, note: `Weitergeleitet aus Traumwagen-DEAL #${toNumber(req.id)} (Inzahlungnahme) – Angebot für Traumwagen und Ankauf möglich.` });
-  await takeAssignment(ctx, p, r.id).catch(() => null);
+  await takeAssignment(ctx, p, r.id);
   await reqEvent(ctx, sell.id, 'partner_verknuepft', `${org.name} übernimmt den Ankauf zusätzlich zur Traumwagen-Anfrage #${toNumber(req.id)}`);
   await audit(ctx, 'ankauf_verknuepft', 'anfrage', toNumber(sell.id), { partner: org.name, deal: toNumber(req.id) });
   return { ok: true, id: r.id, existing: false };
+}
+const SELL_CLOSED = ['angebot_beim_kunden', 'angebot_akzeptiert', 'kontaktdaten_versendet', 'angebot_abgelehnt', 'kein_angebot', 'spam'];
+
+// Inzahlungnahme über zwei getrennte Formulare (Traumwagen-DEAL mit „Inzahlungnahme: Ja“ ohne Fahrzeugdaten + „Mein Auto verkaufen“):
+// gleiche Kundin bzw. gleicher Kunde innerhalb von 30 Tagen → beide Anfragen automatisch verknüpfen
+async function autoLinkTradeIn(ctx, id) {
+  const r = await DB.one(ctx.db, 'SELECT id, type, data, email, customer_account, linked_request_id FROM requests WHERE id = ?', id);
+  if (!r || r.linked_request_id) return null;
+  const isDeal = r.type === 'deal';
+  if (isDeal && String(jparse(r.data, {}).Inzahlungnahme || '') !== 'Ja') return null;
+  const since = isoOf(nowMs() - 30 * 86400e3);
+  const cands = await DB.all(ctx.db, `SELECT id, type, data, status FROM requests WHERE type = ? AND id != ? AND linked_request_id IS NULL AND deleted = 0 AND status NOT IN ('spam', 'fehler')
+    AND created_at >= ? AND (lower(email) = lower(?) ${r.customer_account ? 'OR customer_account = ?' : ''}) ORDER BY id DESC LIMIT 5`, isDeal ? 'sell' : 'deal', id, since, r.email || '', ...(r.customer_account ? [r.customer_account] : []));
+  const other = cands.find((c) => (isDeal ? !SELL_CLOSED.includes(c.status) : String(jparse(c.data, {}).Inzahlungnahme || '') === 'Ja'));
+  if (!other) return null;
+  const deal = isDeal ? r : other, sell = isDeal ? other : r;
+  const dd = { ...jparse(deal.data, {}), 'Ankauf-Anfrage zum Altwagen': `#${toNumber(sell.id)}` }, sd = { ...jparse(sell.data, {}), 'Inzahlungnahme zu': `Traumwagen-DEAL #${toNumber(deal.id)}` };
+  await ctx.db.batch([
+    ctx.db.prepare('UPDATE requests SET linked_request_id = ?, data = ? WHERE id = ?').bind(sell.id, JSON.stringify(dd), deal.id),
+    ctx.db.prepare('UPDATE requests SET linked_request_id = ?, data = ? WHERE id = ?').bind(deal.id, JSON.stringify(sd), sell.id)]);
+  await reqEvent(ctx, deal.id, 'verknuepft', `Inzahlungnahme: Ankauf-Anfrage #${toNumber(sell.id)} des Kunden automatisch verknüpft`);
+  await reqEvent(ctx, sell.id, 'verknuepft', `Gehört als Inzahlungnahme zum Traumwagen-DEAL #${toNumber(deal.id)} (automatisch verknüpft)`);
+  // Partner, die den Traumwagen schon bearbeiten, auf den Ankauf hinweisen
+  const takers = await DB.all(ctx.db, "SELECT id, taken_by FROM assignments WHERE request_id = ? AND taken_by IS NOT NULL AND status IN ('in_bearbeitung', 'versendet', 'vorgestellt', 'gewonnen', 'kontaktiert', 'nicht_erreicht')", deal.id);
+  for (const t of takers) await notify(ctx, 'partner', t.taken_by, { kind: 'anfrage', title: `Inzahlungnahme zu #${toNumber(deal.id)}: Ankauf #${toNumber(sell.id)} verfügbar`, body: 'Der Kunde möchte sein jetziges Auto in Zahlung geben. Du kannst den Ankauf direkt in der Traumwagen-Anfrage zusätzlich übernehmen.', link: `#/anfragen/${t.id}` });
+  return { deal: deal.id, sell: sell.id };
 }
 // Hinweis für den Partner zur verknüpften Anfrage
 async function linkedInfoFor(ctx, p, req) {
@@ -92,8 +130,8 @@ async function linkedInfoFor(ctx, p, req) {
   const other = await DB.one(ctx.db, 'SELECT id, type, status, deleted, brand, model, vehicle, evaluated_at FROM requests WHERE id = ?', req.linked_request_id);
   if (!other || other.deleted) return null;
   const own = await DB.one(ctx.db, 'SELECT id, status, taken_by FROM assignments WHERE request_id = ? AND org_id = ?', other.id, p.orgId);
-  const open = !other.evaluated_at && !['angebot_beim_kunden', 'angebot_akzeptiert', 'kontaktdaten_versendet', 'angebot_abgelehnt', 'kein_angebot'].includes(other.status);
-  return { number: toNumber(other.id), type: other.type, vehicle: other.vehicle, aid: own && (own.status === 'neu' || own.taken_by === p.id) ? own.id : null, mine: !!(own && own.taken_by === p.id), canJoin: req.type === 'deal' && open && (!own || own.status === 'neu') };
+  const open = !other.evaluated_at && !SELL_CLOSED.includes(other.status);
+  return { number: toNumber(other.id), type: other.type, vehicle: other.vehicle, aid: own && (own.status === 'neu' || own.taken_by === p.id) ? own.id : null, mine: !!(own && own.taken_by === p.id), canJoin: req.type === 'deal' && open && (!own || own.status === 'neu' || (own.status === 'verloren' && !own.taken_by)) };
 }
 
 /* ---------- Automatische Verteilung an Geschäftspartner ---------- */

@@ -222,6 +222,10 @@ tr.is-muted td{color:var(--steel-2)}
 .opening-row input{text-align:right;min-height:36px}
 pre.sample{background:var(--sunken);border-radius:10px;padding:10px 12px;max-height:240px;overflow:auto}
 
+fieldset.fieldset-plain{border:0;padding:0;margin:0;min-width:0}
+.fibu-preview{border:1px solid var(--line);border-radius:var(--r-m);padding:10px 14px;background:var(--bg-soft,#fafafa)}
+.fibu-preview .table{margin-top:6px}
+.table-tight th,.table-tight td{padding:6px 8px}
 .fibu-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));overflow:hidden}
 .fibu-kpis .kpi{min-width:0}
 .fibu-kpis .kpi b{font-size:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

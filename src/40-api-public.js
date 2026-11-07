@@ -61,6 +61,8 @@ async function handleForm(ctx) {
       ctx.db.prepare('UPDATE requests SET linked_request_id = ?, dispatch_pending = 1 WHERE id = ?').bind(id, sellId)]);
     await reqEvent(ctx, id, 'verknuepft', `Inzahlungnahme: Ankauf-Anfrage #${toNumber(sellId)} angelegt`);
   }
+  // Inzahlungnahme über zwei getrennte Formulare: automatisch verknüpfen
+  if (!sellId) { try { await autoLinkTradeIn(ctx, id); } catch (e) { console.log('Verknüpfung Inzahlungnahme', e.message); } }
   try { await dispatchRequest(ctx, id); } catch (e) { console.log('Verteilung', e.stack || e.message); await DB.update(ctx.db, 'requests', id, { status: 'stoerung', status_note: 'Verteilung fehlgeschlagen: ' + e.message }); }
   // Eingangsbestätigung an den Kunden
   const s = await settingsOf(ctx);

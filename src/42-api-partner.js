@@ -205,12 +205,12 @@ async function handlePartnerApi(ctx, url) {
     const a = await DB.one(db, 'SELECT * FROM assignments WHERE id = ? AND org_id = ?', +m[1], p.orgId);
     need(a, 404, 'Anfrage nicht gefunden.');
     const sub = m[2] || '';
-    if (!sub && method === 'GET') { const v = await partnerAssignmentView(ctx, p, a, { detail: true }); need(v, 403, 'Diese Anfrage wird von einer anderen Person bearbeitet.'); return out({ ok: true, item: v }); }
-    if (sub === 'take' && method === 'POST') return out(await takeAssignment(ctx, p, a.id));
+    if (!sub && method === 'GET') { const v = await partnerAssignmentView(ctx, p, a, { detail: true }); need(v, 403, 'Diese Anfrage wird von einer anderen Person bearbeitet.'); await readAssignmentNews(ctx, a.id, { userId: p.id }); return out({ ok: true, item: v }); }
+    if (sub === 'take' && method === 'POST') { const r = await takeAssignment(ctx, p, a.id); await readAssignmentNews(ctx, a.id, { userId: p.id }); await readAssignmentNews(ctx, a.id, { orgId: p.orgId, kinds: ['anfrage', 'mahnung'] }); return out(r); }
     if (sub === 'release' && method === 'POST') { need(a.taken_by === p.id && a.status === 'in_bearbeitung', 409, 'Du kannst nur deine eigenen Anfragen in Bearbeitung wieder öffnen.'); await releaseAssignment(ctx, a.id, { byPartner: true }); await audit(ctx, 'partner_wieder_geoeffnet', 'zuordnung', a.id, null); return out({ ok: true }); }
-    if (sub === 'offer' && method === 'POST') return out(await submitOffer(ctx, p, a.id, body));
-    if (sub === 'linked' && method === 'POST') return out(await joinLinkedRequest(ctx, p, a.id));
-    if (sub === 'contact' && method === 'POST') { await partnerContactStatus(ctx, p, a.id, body.status, str(body.note, 1000)); await audit(ctx, 'partner_kontaktstatus', 'zuordnung', a.id, { status: body.status }); return out({ ok: true }); }
+    if (sub === 'offer' && method === 'POST') { const r = await submitOffer(ctx, p, a.id, body); await readAssignmentNews(ctx, a.id, { userId: p.id }); return out(r); }
+    if (sub === 'linked' && method === 'POST') { const r = await joinLinkedRequest(ctx, p, a.id); await readAssignmentNews(ctx, [a.id, r && r.id], { userId: p.id }); if (r && r.id) await readAssignmentNews(ctx, r.id, { orgId: p.orgId, kinds: ['anfrage', 'mahnung'] }); return out(r); }
+    if (sub === 'contact' && method === 'POST') { await partnerContactStatus(ctx, p, a.id, body.status, str(body.note, 1000)); await readAssignmentNews(ctx, a.id, { userId: p.id }); await audit(ctx, 'partner_kontaktstatus', 'zuordnung', a.id, { status: body.status }); return out({ ok: true }); }
     if (sub === 'parse-pdf' && method === 'POST') {
       need(a.taken_by === p.id, 403, 'Bitte übernimm die Anfrage zuerst.');
       need(body.base64, 400, 'Bitte eine PDF-Datei auswählen.');

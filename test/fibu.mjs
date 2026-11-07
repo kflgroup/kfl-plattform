@@ -121,4 +121,46 @@ r = await c.post('/api/fibu/import/parse', { file: { name: 'saldenliste-2025.pdf
 const sal = r.rows.filter((x) => x.kind === 'saldo');
 check(r.ok && r.docId && sal.length === 3 && sal[0].number === '1200' && sal[0].amount === 5432.1 && sal[1].side === 'H', 'PDF-Saldenliste ausgelesen (3 Konten) und als Beleg archiviert', r.rows);
 check(q1("SELECT COUNT(*) AS n FROM fibu_docs WHERE kind = 'import'").n === 1, 'Import-PDF im Belegarchiv');
+
+console.log('Buchungsvorlagen (Belegart + Vorgang)');
+r = await c.get('/api/fibu/templates', { who: 'vt' }); check(r.status === 403, 'Vertrieb sieht keine Vorlagen');
+r = await c.get('/api/fibu/templates', { who: 'bh' });
+const tpls = r.templates; const tpl = (k) => tpls.find((t) => t.key === k);
+check(tpl('er_bank') && tpl('er_rc') && tpl('ka_gebuehr') && tpl('ar_manuell') && r.memory.length === 0, 'Vorlagen geliefert, noch kein Lieferanten-Gedächtnis');
+check(['vorsteuer13b', 'umsatzsteuer13b', 'ust_vorauszahlung'].every((x) => q1('SELECT id FROM fibu_accounts WHERE sys = ?', x)) && acc('4360'), 'Neue Konten 1577, 1787, 1780, 4360 angelegt');
+// Alle Kontenangaben der Vorlagen existieren im Kontenrahmen
+const accsAll = qa('SELECT number, sys FROM fibu_accounts');
+check(tpls.filter((t) => !t.redirect).every((t) => [t.debit, t.credit].every((ref) => ref === '@aufwand' || accsAll.some((a) => a.sys === ref || a.number === ref))), 'Jede Vorlage verweist auf vorhandene Konten');
+const lines = (id) => qa('SELECT a.number, l.debit, l.credit FROM fibu_lines l JOIN fibu_accounts a ON a.id = l.account_id WHERE l.entry_id = ? ORDER BY l.id', id);
+// Eingangsrechnung per Bank: Kosten netto + Vorsteuer an Bank
+r = await c.post('/api/fibu/entries', { template: 'er_bank', date: '2027-01-05', counterparty: 'Telekom', ref: 'T-4711', debit: acc('4920').id, credit: acc('1200').id, amount: '119,00', vat_rate: 19, file: pdf('Telekom.pdf') }, { who: 'bh' });
+let ls = lines(r.id);
+check(r.ok && r.doc && ls.length === 3 && ls[0].number === '4920' && ls[0].debit === 100 && ls[1].number === '1576' && ls[1].debit === 19 && ls[2].number === '1200' && ls[2].credit === 119, 'Eingangsrechnung per Bank: 4920 100 € + 1576 19 € an 1200 119 €', ls);
+check(q1('SELECT text FROM fibu_entries WHERE id = ?', r.id).text === 'Eingangsrechnung · Telekom · T-4711', 'Buchungstext automatisch aus Vorgang, Aussteller und Belegnummer');
+const tdoc = q1("SELECT d.* FROM fibu_docs d JOIN fibu_entries e ON e.doc_id = d.id WHERE e.id = ?", r.id);
+check(tdoc.kind === "eingangsrechnung" && tdoc.counterparty === "Telekom" && tdoc.ref === 'T-4711', 'Beleg mit Belegart der Vorlage, Aussteller und Nummer archiviert');
+r = await c.get('/api/fibu/templates', { who: 'bh' });
+check(r.memory.length === 1 && r.memory[0].name === 'Telekom' && r.memory[0].template === 'er_bank' && r.memory[0].debit === acc('4920').id && r.memory[0].vat === 19, 'Aussteller „Telekom“ mit Vorgang und Kostenart gemerkt');
+// Reverse Charge: Betrag netto, Vorsteuer und USt § 13b gleichen sich aus
+r = await c.post('/api/fibu/entries', { template: 'er_rc', date: '2027-01-06', counterparty: 'Shopify International', debit: acc('4964').id, credit: acc('1200').id, amount: '100' }, { who: 'bh' });
+ls = lines(r.id);
+check(r.ok && ls.length === 4 && ls.find((l) => l.number === '4964').debit === 100 && ls.find((l) => l.number === '1577').debit === 19 && ls.find((l) => l.number === '1787').credit === 19 && ls.find((l) => l.number === '1200').credit === 100, 'Reverse Charge: 4964 100 € + 1577 19 € an 1200 100 € + 1787 19 €', ls);
+r = await c.post('/api/fibu/entries', { template: 'er_rc', date: '2027-01-06', debit: acc('1000').id, credit: acc('1200').id, amount: '100' }, { who: 'bh' }); check(r.status === 400, 'Reverse Charge nur mit Kostenart im Soll');
+// Kontoauszug ohne USt, Ausgangsrechnung mit USt
+r = await c.post('/api/fibu/entries', { template: 'ka_gebuehr', date: '2027-01-07', debit: acc('4970').id, credit: acc('1200').id, amount: '9,90', vat_rate: 0 }, { who: 'bh' });
+ls = lines(r.id); check(r.ok && ls.length === 2 && ls[0].number === '4970' && ls[0].debit === 9.9 && q1('SELECT text FROM fibu_entries WHERE id = ?', r.id).text === 'Kontoführungsgebühren', 'Bankgebühren 4970 an 1200 ohne Vorsteuer, Text aus Vorlage');
+r = await c.post('/api/fibu/entries', { template: 'ar_manuell', date: '2027-01-08', counterparty: 'Autohaus Muster', debit: acc('1400').id, credit: acc('8400').id, amount: '238', vat_rate: 19 }, { who: 'bh' });
+ls = lines(r.id); check(r.ok && ls[0].number === '1400' && ls[0].debit === 238 && ls[1].number === '8400' && ls[1].credit === 200 && ls[2].number === '1776' && ls[2].credit === 38, 'Ausgangsrechnung: 1400 238 € an 8400 200 € + 1776 38 €', ls);
+// USt-Vorauszahlung mindert die offene Zahllast
+const ustBefore = (await c.get('/api/fibu/overview', { who: 'bh' })).kpis.ust;
+r = await c.post('/api/fibu/entries', { template: 'ka_ust', date: '2027-01-01', text: 'USt-Vorauszahlung 12/2026', debit: acc('1780').id, credit: acc('1200').id, amount: '10' }, { who: 'bh' });
+check(r.ok && (await c.get('/api/fibu/overview', { who: 'bh' })).kpis.ust === Math.round((ustBefore - 10) * 100) / 100, 'USt-Vorauszahlung mindert die offene Zahllast');
+// Weiterleitungen werden nicht gebucht, unbekannte Vorlagen abgelehnt, fehlerhafte Buchung hinterlässt keinen Beleg
+r = await c.post('/api/fibu/entries', { template: 'er_offen', date: '2027-01-09', debit: acc('4930').id, credit: acc('1200').id, amount: '10' }, { who: 'bh' }); check(r.status === 400, 'Vorgang „noch nicht bezahlt“ wird nicht direkt gebucht (läuft über Eingangsrechnungen)');
+r = await c.post('/api/fibu/entries', { template: 'gibtsnicht', date: '2027-01-09', debit: acc('4930').id, credit: acc('1200').id, amount: '10' }, { who: 'bh' }); check(r.status === 400, 'Unbekannte Vorlage abgelehnt');
+const docsBefore = q1('SELECT COUNT(*) AS n FROM fibu_docs').n;
+r = await c.post('/api/fibu/entries', { template: 'ka_gebuehr', date: '2027-01-09', debit: acc('1200').id, credit: acc('1200').id, amount: '5', file: pdf('Fehler.pdf') }, { who: 'bh' });
+check(r.status === 400 && q1('SELECT COUNT(*) AS n FROM fibu_docs').n === docsBefore, 'Fehlerhafte Buchung: kein verwaister Beleg im Archiv');
+r = await c.post('/api/fibu/entries', { date: '2027-01-09', text: 'Ohne Vorlage', debit: acc('4930').id, credit: acc('1000').id, amount: '11,90', vat_rate: 19 }, { who: 'bh' }); check(r.ok && lines(r.id).length === 3, 'Eigene Buchung ohne Vorlage funktioniert wie bisher');
+check(qa("SELECT detail FROM audit WHERE action = 'buchung_erfasst'").some((a) => /Reverse Charge/.test(a.detail || '')), 'Vorlage im Protokoll vermerkt');
 console.log(check.fails ? `\n${check.fails} FEHLER` : '\nFIBU-TEST BESTANDEN');

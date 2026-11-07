@@ -61,6 +61,21 @@ Variable (kein Secret): `PUBLIC_ORIGIN` = Adresse des Workers, z. B. `https://kf
 5. Altdaten prüfen (passiert automatisch beim ersten Start; Eintrag „altdaten importiert“ im Protokoll).
 6. Mitarbeiter anlegen (Einladung per E-Mail), Geschäftspartner mit Marken, Öffnungszeiten und Konten anlegen, Einladungen senden.
 
+## 5b. Buchungsvorlagen (seit 07.11.2026)
+
+- **Finanzbuchhaltung → Buchung erfassen:** erst **Belegart** wählen (Eingangsrechnung, Quittung, Kontoauszug, Ausgangsrechnung, Vertrag), dann den **Vorgang**. Soll, Haben und USt werden automatisch gesetzt und bleiben änderbar. Darunter steht eine Vorschau mit allen Buchungszeilen.
+- 21 Vorgänge, z. B. Eingangsrechnung per Bank/bar/Reverse Charge (§ 13b), Bankgebühren, Privateinlage/-entnahme, Bareinzahlung, USt-Vorauszahlung, Miete, Versicherung, Abo.
+- **Weiterleitungen statt Doppelbuchungen:** „Eingangsrechnung noch nicht bezahlt“ öffnet „Eingangsrechnung erfassen“. „Zahlungseingang zu einer KFL-Rechnung“ und „Rechnung aus dem Dashboard“ führen zu den Ausgangsrechnungen.
+- **Aussteller merken:** Pro Aussteller oder Lieferant merkt sich das System Vorgang, Kostenart und USt der letzten Buchung und schlägt sie beim nächsten Mal vor.
+- Neue Konten (werden beim ersten Aufruf automatisch angelegt): 1577 Vorsteuer § 13b, 1787 USt § 13b, 1780 USt-Vorauszahlungen, 4360 Versicherungen. Die Kennzahl „USt-Zahllast offen“ berücksichtigt § 13b und die Vorauszahlungen.
+- Vorlagen pflegen: `FIBU_TEMPLATES` in `src/00-config.js`. Kontenzuordnung bitte einmal mit der Steuerberatung abstimmen.
+
+## 5c. Partner-Dashboard: News und Inzahlungnahme (seit 07.11.2026)
+
+- **News-Zähler:** Öffnet, übernimmt oder bearbeitet ein Partner eine Anfrage (Angebot, Kontaktstatus, Ankauf zusätzlich), werden die News zu dieser Anfrage automatisch als gelesen markiert. Übernimmt jemand die Anfrage, verschwindet „Neue Anfrage“ auch bei den Kolleginnen und Kollegen.
+- **Inzahlungnahme über zwei Formulare:** Schickt ein Kunde einen Traumwagen-DEAL mit „Inzahlungnahme: Ja“ und (vorher oder bis zu 30 Tage später) „Mein Auto verkaufen“, werden beide Anfragen automatisch verknüpft. Der Partner sieht dann in der Traumwagen-Anfrage „Ankauf zusätzlich übernehmen“ und bekommt einen Hinweis in den News.
+- **Ankauf zusätzlich übernehmen** klappt jetzt auch, wenn die eigene Ankauf-Zuordnung schon verfallen war. Sie wird mit neuer Frist wieder geöffnet und direkt übernommen.
+
 ## 6. Shop umstellen (Go-live)
 
 Im Theme **„KFL 2027 – Neuer Auftritt“** sind bereits enthalten (rückwärtskompatibel mit dem alten Worker):

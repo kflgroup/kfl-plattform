@@ -267,9 +267,42 @@ const FIBU_DEFAULT_ACCOUNTS = [
   ['4210', 'Miete', 'aufwand', null], ['4500', 'Fahrzeugkosten', 'aufwand', null], ['4600', 'Werbekosten', 'aufwand', null], ['4920', 'Telefon und Internet', 'aufwand', null],
   ['4930', 'Bürobedarf', 'aufwand', null], ['4964', 'Software und IT-Dienste', 'aufwand', null], ['4970', 'Nebenkosten des Geldverkehrs', 'aufwand', null],
   ['4950', 'Rechts- und Beratungskosten', 'aufwand', null], ['4900', 'Sonstige betriebliche Aufwendungen', 'aufwand', null],
-  ['9000', 'Saldenvorträge (Eröffnung)', 'passiv', 'eroeffnung']
+  ['9000', 'Saldenvorträge (Eröffnung)', 'passiv', 'eroeffnung'],
+  // Ergänzt für die Buchungsvorlagen (Reverse Charge, USt-Vorauszahlung, Versicherungen)
+  ['1577', 'Abziehbare Vorsteuer § 13b UStG 19 %', 'aktiv', 'vorsteuer13b'], ['1787', 'Umsatzsteuer § 13b UStG 19 %', 'passiv', 'umsatzsteuer13b'],
+  ['1780', 'Umsatzsteuer-Vorauszahlungen', 'passiv', 'ust_vorauszahlung'], ['4360', 'Versicherungen', 'aufwand', null]
 ];
 const FIBU_DOC_KINDS = { eingangsrechnung: 'Eingangsrechnung', ausgangsrechnung: 'Ausgangsrechnung', kontoauszug: 'Kontoauszug', quittung: 'Quittung / Kassenbeleg', vertrag: 'Vertrag', abschluss: 'Abschluss', import: 'Import alte Buchführung', sonstiges: 'Sonstiger Beleg' };
+
+/* ---------- Buchungsvorlagen ----------
+   Belegart + Vorgang → Soll, Haben und USt werden in der Buchungsmaske automatisch gesetzt (bleiben änderbar).
+   Konten: Systemrolle (sys) oder Kontonummer; '@aufwand' = Kostenart wählt der Nutzer (Aufwandskonto).
+   mode 'rc'  = Reverse Charge (§ 13b UStG): Betrag ist netto, USt und Vorsteuer werden zusätzlich gebucht.
+   redirect   = Vorgang läuft über eine andere Funktion (verhindert Doppelbuchungen). */
+const FIBU_TEMPLATES = [
+  { key: 'er_bank', kind: 'eingangsrechnung', label: 'Per Bank bezahlt (Überweisung, Lastschrift, Karte)', debit: '@aufwand', credit: 'bank', vat: 19, text: 'Eingangsrechnung', hint: 'Kosten (netto) und Vorsteuer an Bank (brutto).' },
+  { key: 'er_kasse', kind: 'eingangsrechnung', label: 'Bar bezahlt', debit: '@aufwand', credit: 'kasse', vat: 19, text: 'Eingangsrechnung bar', hint: 'Kosten (netto) und Vorsteuer an Kasse (brutto).' },
+  { key: 'er_rc', kind: 'eingangsrechnung', label: 'Aus dem Ausland ohne deutsche USt (Reverse Charge § 13b), per Bank bezahlt', debit: '@aufwand', credit: 'bank', vat: 19, mode: 'rc', text: 'Eingangsrechnung § 13b', hint: 'Z. B. Shopify, Google, Meta, Cloudflare. Betrag = Rechnungsbetrag ohne USt. Umsatzsteuer und Vorsteuer (§ 13b) werden zusätzlich gebucht und gleichen sich aus.' },
+  { key: 'er_offen', kind: 'eingangsrechnung', label: 'Noch nicht bezahlt → als Eingangsrechnung erfassen', redirect: 'purchase', hint: 'Offene Rechnungen bitte unter Buchhaltung → Eingangsrechnungen erfassen. Dort werden sie automatisch gebucht und landen in der Zahlungsliste.' },
+  { key: 'q_kasse', kind: 'quittung', label: 'Barausgabe mit Quittung / Kassenbon', debit: '@aufwand', credit: 'kasse', vat: 19, text: 'Barausgabe', hint: 'Kosten (netto) und Vorsteuer an Kasse. Bei Lebensmitteln, Büchern o. Ä. 7 % wählen.' },
+  { key: 'q_bank', kind: 'quittung', label: 'Kartenzahlung mit Kassenbon', debit: '@aufwand', credit: 'bank', vat: 19, text: 'Kartenzahlung', hint: 'Kosten (netto) und Vorsteuer an Bank.' },
+  { key: 'ka_rechnung', kind: 'kontoauszug', label: 'Zahlungseingang zu einer KFL-Rechnung → an der Rechnung erfassen', redirect: 'invoices', hint: 'Zahlungen zu Rechnungen aus dem Dashboard bitte an der Rechnung über „Zahlung erfassen“ buchen. Sonst bleibt die Rechnung offen und wird angemahnt.' },
+  { key: 'ka_forderung', kind: 'kontoauszug', label: 'Zahlungseingang zu einer manuell gebuchten Ausgangsrechnung', debit: 'bank', credit: 'forderungen', vat: 0, text: 'Zahlungseingang', hint: 'Bank an Forderungen.' },
+  { key: 'ka_gebuehr', kind: 'kontoauszug', label: 'Bankgebühren / Kontoführung', debit: '4970', credit: 'bank', vat: 0, text: 'Kontoführungsgebühren', hint: 'Bankgebühren sind umsatzsteuerfrei – keine Vorsteuer.' },
+  { key: 'ka_einlage', kind: 'kontoauszug', label: 'Privateinlage (Geld von privat aufs Geschäftskonto)', debit: 'bank', credit: '1890', vat: 0, text: 'Privateinlage' },
+  { key: 'ka_entnahme', kind: 'kontoauszug', label: 'Privatentnahme (Geld vom Geschäftskonto an privat)', debit: '1800', credit: 'bank', vat: 0, text: 'Privatentnahme' },
+  { key: 'ka_bareinzahlung', kind: 'kontoauszug', label: 'Bareinzahlung auf das Bankkonto', debit: 'bank', credit: 'kasse', vat: 0, text: 'Bareinzahlung' },
+  { key: 'ka_barabhebung', kind: 'kontoauszug', label: 'Barabhebung vom Bankkonto in die Kasse', debit: 'kasse', credit: 'bank', vat: 0, text: 'Barabhebung' },
+  { key: 'ka_ust', kind: 'kontoauszug', label: 'Umsatzsteuer-Vorauszahlung ans Finanzamt', debit: 'ust_vorauszahlung', credit: 'bank', vat: 0, text: 'USt-Vorauszahlung', hint: 'Im Buchungstext bitte den Zeitraum nennen, z. B. „USt-Vorauszahlung 10/2026“.' },
+  { key: 'ka_lastschrift', kind: 'kontoauszug', label: 'Lastschrift / Abbuchung ohne eigene Rechnung', debit: '@aufwand', credit: 'bank', vat: 0, text: 'Abbuchung', hint: 'Nur Vorsteuer wählen, wenn auf dem Kontoauszug bzw. Beleg USt ausgewiesen ist.' },
+  { key: 'ar_kfl', kind: 'ausgangsrechnung', label: 'Rechnung aus dem Dashboard → wird automatisch gebucht', redirect: 'invoices', hint: 'Rechnungen, die über die Buchhaltung des Dashboards erstellt werden, bucht das System selbst (Forderung an Erlöse + USt). Bitte nicht zusätzlich buchen.' },
+  { key: 'ar_manuell', kind: 'ausgangsrechnung', label: 'Außerhalb des Dashboards erstellt (noch nicht bezahlt)', debit: 'forderungen', credit: 'erloese', vat: 19, text: 'Ausgangsrechnung', hint: 'Forderung (brutto) an Erlöse (netto) und Umsatzsteuer.' },
+  { key: 'ar_bezahlt', kind: 'ausgangsrechnung', label: 'Außerhalb des Dashboards erstellt und sofort bezahlt', debit: 'bank', credit: 'erloese', vat: 19, text: 'Erlös', hint: 'Bank (brutto) an Erlöse (netto) und Umsatzsteuer.' },
+  { key: 'v_miete', kind: 'vertrag', label: 'Miete per Bank', debit: '4210', credit: 'bank', vat: 0, text: 'Miete', hint: '19 % nur wählen, wenn im Mietvertrag Umsatzsteuer ausgewiesen ist.' },
+  { key: 'v_versicherung', kind: 'vertrag', label: 'Versicherungsbeitrag per Bank', debit: '4360', credit: 'bank', vat: 0, text: 'Versicherungsbeitrag', hint: 'Versicherungsbeiträge enthalten keine Umsatzsteuer.' },
+  { key: 'v_abo', kind: 'vertrag', label: 'Laufender Vertrag / Abo per Bank (Software, Telefon, Leasing …)', debit: '@aufwand', credit: 'bank', vat: 19, text: 'Vertrag', hint: 'Kostenart wählen. Bei ausländischen Anbietern ohne deutsche USt die Vorlage „Reverse Charge“ unter Eingangsrechnung nutzen.' }
+];
+const FIBU_TEMPLATE = Object.fromEntries(FIBU_TEMPLATES.map((t) => [t.key, t]));
 
 // Faktoren der automatischen Angebotsauswahl
 const SCORE_FACTORS = [
