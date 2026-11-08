@@ -8,6 +8,8 @@ Router
   .on(/^#\/fibu\/?([a-z]*)/, (t) => pageFibu(t || 'uebersicht'))
   .on(/^#\/partner\/(\d+)/, (id) => pagePartner(id))
   .on(/^#\/partner(\?.*)?$/, () => pagePartners())
+  .on(/^#\/kunden\/(\d+)/, (id) => pageCustomer(id))
+  .on(/^#\/kunden\/?([a-z]*)/, (t) => pageCustomers(t))
   .on(/^#\/statistik\/?([a-z]*)/, (t) => pageStats(t))
   .on(/^#\/support\/(\d+|systemfehler)/, (id) => pageSupport(id))
   .on(/^#\/support(\?.*)?$/, () => pageSupport())

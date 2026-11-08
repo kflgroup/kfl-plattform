@@ -541,6 +541,27 @@ async function handleStaffApi(ctx, url) {
   if (path === '/stats/partners' && method === 'GET') { need(can(u, 'stats_view') || can(u, 'partner_stats'), 403, 'Dafür fehlt dir die Berechtigung.'); return out({ ok: true, partners: await partnerPerformance(ctx, q) }); }
   if (path === '/stats/shop' && method === 'GET') { requirePerm(u, 'stats_shop'); return out({ ok: true, ...(await shopifyStats(ctx, q)) }); }
 
+  /* ---------- Kunden (Shopify): Besucher und Kundendatenbank – live abgerufen, nicht gespeichert ---------- */
+  if (path === '/customers/visitors' && method === 'GET') {
+    requirePerm(u, 'visitors_view');
+    if (!shopifyConfigured(ctx.env)) return out({ ok: true, configured: false });
+    return out({ ok: true, configured: true, shopAdmin: (await settingsOf(ctx)).link_shopify_admin, ...(await shopifyVisitors(ctx.env, str(q.range, 10))) });
+  }
+  if (path === '/customers' && method === 'GET') {
+    requirePerm(u, 'customers_view');
+    if (!shopifyConfigured(ctx.env)) return out({ ok: true, configured: false });
+    const r = await shopifyCustomers(ctx, q);
+    if (q.q) await audit(ctx, 'kunden_gesucht', 'kunde', null, { suche: str(q.q, 80), treffer: r.customers.length });
+    return out({ ok: true, configured: true, shopAdmin: (await settingsOf(ctx)).link_shopify_admin, ...r });
+  }
+  if ((m = path.match(/^\/customers\/(\d{1,20})$/)) && method === 'GET') {
+    requirePerm(u, 'customers_view');
+    need(shopifyConfigured(ctx.env), 503, 'Shopify ist noch nicht verbunden.');
+    const c = await shopifyCustomer(ctx, m[1]);
+    await audit(ctx, 'kunde_angesehen', 'kunde', m[1], { name: c.name });
+    return out({ ok: true, customer: c, shopAdmin: (await settingsOf(ctx)).link_shopify_admin });
+  }
+
   /* ---------- Support ---------- */
   if (path === '/tickets' && method === 'GET') {
     requirePerm(u, 'support_view');

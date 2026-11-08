@@ -14,6 +14,7 @@ const NAV = [
   { key: 'start', href: '#/', label: 'Cockpit', icon: 'home', group: 'Vertrieb' },
   { key: 'anfragen', href: '#/anfragen', label: 'Anfragen', icon: 'inbox', perm: ['req_view'], count: 'open', group: 'Vertrieb' },
   { key: 'partner', href: '#/partner', label: 'Geschäftspartner', icon: 'partner', perm: ['partner_view'], group: 'Vertrieb' },
+  { key: 'kunden', href: '#/kunden', label: 'Kunden', icon: 'users', perm: ['customers_view', 'visitors_view'], group: 'Vertrieb' },
   { key: 'statistik', href: '#/statistik', label: 'Statistik', icon: 'chart', perm: ['stats_view', 'team_stats', 'partner_stats'], group: 'Vertrieb' },
   { key: 'buchhaltung', href: '#/buchhaltung', label: 'Buchhaltung', icon: 'euro', perm: ['acc_view'], count: 'bill', group: 'Finanzen' },
   { key: 'fibu', href: '#/fibu', label: 'Finanzbuchhaltung', icon: 'file', perm: ['fibu_view'], group: 'Finanzen' },

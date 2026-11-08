@@ -78,7 +78,7 @@ async function statsPartners(P, q) {
 async function statsShop(P, q) {
   if (!can('stats_shop')) return P.show(noAccess());
   const d = await GET('/stats/shop', q); if (!P.alive()) return;
-  if (!d.configured) return P.show(html`${statHead('shop')}<section class="panel mt"><div class="panel-body">${empty('Webshop-Statistik noch nicht verbunden', 'Hinterlege in Cloudflare das Secret SHOPIFY_ADMIN_TOKEN (Admin-API, Lesezugriff auf Bestellungen) und optional SHOPIFY_SHOP. Danach erscheinen hier Bestellungen, Umsatz und Topseller von kfl-group.com.')}</div></section>`);
+  if (!d.configured) return P.show(html`${statHead('shop')}<section class="panel mt"><div class="panel-body">${empty('Webshop-Statistik noch nicht verbunden', 'Verbinde den Shop einmalig (Anleitung unter Kunden → Besucher & Herkunft). Danach erscheinen hier Umsätze, Bestellungen und Top-Produkte aus Shopify.')}</div></section>`);
   if (d.error) return P.show(html`${statHead('shop')}<div class="err-box mt">${icon('alert')}<span>Shopify meldet einen Fehler: ${d.error}</span></div>`);
   const c = d.cur, p = d.prev, ly = d.ly;
   P.show(html`${statHead('shop')}<section class="panel mt">${periodBar(q, '#/statistik/shop')}

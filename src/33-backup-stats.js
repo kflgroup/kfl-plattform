@@ -196,14 +196,10 @@ async function partnerPerformance(ctx, q, orgId) {
   return out;
 }
 async function shopifyStats(ctx, q) {
-  const token = ctx.env.SHOPIFY_ADMIN_TOKEN, shop = ctx.env.SHOPIFY_SHOP || '3r1qns-2d.myshopify.com';
-  if (!token) return { configured: false };
+  if (!shopifyConfigured(ctx.env)) return { configured: false };
+  const shop = shopDomain(ctx.env);
   const P = periodOf(q);
-  const gql = async (query, variables) => {
-    const res = await fetch(`https://${shop}/admin/api/2025-10/graphql.json`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': token }, body: JSON.stringify({ query, variables }) });
-    if (!res.ok) throw new Error('Shopify ' + res.status);
-    const j = await res.json(); if (j.errors) throw new Error(JSON.stringify(j.errors).slice(0, 200)); return j.data;
-  };
+  const gql = (query, variables) => shopifyGql(ctx.env, query, variables);
   const range = async (from, to) => {
     let after = null, orders = [], guard = 0;
     do {

@@ -178,7 +178,7 @@ const OLD_STATUS_MAP = { neu: 'eingang', in_bearbeitung: 'in_bearbeitung', angeb
 const OLD_ROLE_MAP = { admin: 'admin', bearbeiter: 'teamleitung', team_angebote: 'vertrieb', team_ankauf: 'vertrieb' };
 
 // Rechte, die nach dem Start hinzukamen: welche festen Rollen sie automatisch bekommen
-const NEW_ROLE_PERMS = { acc_cancel: ['gf', 'buchhaltung'], fibu_view: ['gf', 'buchhaltung'], fibu_book: ['gf', 'buchhaltung'], fibu_manage: ['gf'] };
+const NEW_ROLE_PERMS = { acc_cancel: ['gf', 'buchhaltung'], fibu_view: ['gf', 'buchhaltung'], fibu_book: ['gf', 'buchhaltung'], fibu_manage: ['gf'], customers_view: ['gf', 'teamleitung', 'vertrieb'], visitors_view: ['gf'] };
 
 let migrated = false;
 // Fingerabdruck des Datenbankschemas: ändert sich bei jeder Schema-/Rechte-/Kontenänderung → Migration läuft genau dann erneut

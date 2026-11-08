@@ -44,6 +44,9 @@ const PERMISSIONS = [
   { key: 'partner_stats',     group: 'Geschäftspartner', label: 'Partner-Statistik sehen' },
   { key: 'partner_pw',        group: 'Geschäftspartner', label: 'Partner-Passwörter zurücksetzen' },
   { key: 'partner_delete',    group: 'Geschäftspartner', label: 'Organisationen und Partnerkonten löschen' },
+  // Kunden (Shopify)
+  { key: 'customers_view',    group: 'Kunden', label: 'Kundendatenbank sehen (Kontaktdaten, Adressen, Einwilligungen aus Shopify)' },
+  { key: 'visitors_view',     group: 'Kunden', label: 'Besucherzahlen und Herkunft der Webseite sehen' },
   // Statistik
   { key: 'stats_view',        group: 'Statistik', label: 'Statistik sehen' },
   { key: 'stats_shop',        group: 'Statistik', label: 'Webshop-Statistik (Shopify) sehen' },
@@ -71,11 +74,11 @@ const PERMISSIONS = [
 const PERM_KEYS = PERMISSIONS.map((p) => p.key);
 
 const ROLE_PERMS = (() => {
-  const vertrieb = ['req_view', 'req_edit', 'req_contact', 'req_message', 'req_spam_report', 'support_view', 'support_manage', 'partner_view'];
+  const vertrieb = ['req_view', 'req_edit', 'req_contact', 'req_message', 'req_spam_report', 'support_view', 'support_manage', 'partner_view', 'customers_view'];
   const teamleitung = [...vertrieb, 'req_partner', 'req_assign', 'req_spam_confirm', 'req_status_force', 'team_stats', 'users_view', 'users_create_vt'];
   const buchhaltung = ['acc_view', 'acc_manage', 'acc_cancel', 'fibu_view', 'fibu_book', 'partner_view'];
   const gf = [...new Set([...teamleitung, ...buchhaltung, 'fibu_manage', 'acc_settings', 'acc_release', 'partner_manage', 'partner_terms', 'partner_stats',
-    'stats_view', 'stats_shop', 'support_changes', 'links_view', 'users_create', 'news_publish', 'news_partner'])];
+    'stats_view', 'stats_shop', 'visitors_view', 'support_changes', 'links_view', 'users_create', 'news_publish', 'news_partner'])];
   return { admin: PERM_KEYS.slice(), gf, teamleitung, vertrieb, buchhaltung };
 })();
 

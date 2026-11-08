@@ -280,6 +280,14 @@ fieldset.fieldset-plain{border:0;padding:0;margin:0;min-width:0}
 .chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--line);text-decoration:none;font-size:13px;font-weight:600;color:var(--ink);background:var(--surface)}
 .chip .ic{width:15px;height:15px;color:var(--steel)}
 .chip:hover{border-color:var(--ink)}
+.chip-ok,.chip-off{height:24px;padding:0 8px;font-size:12px;gap:4px;cursor:default}
+.chip-ok{background:#e9f7ef;border-color:#bfe5cd;color:#17643a}.chip-ok .ic{color:#17643a;width:12px;height:12px}
+.chip-off{color:var(--steel-2);border-style:dashed}.chip-off .ic{width:12px;height:12px;color:var(--steel-2)}
+.chip-ok:hover,.chip-off:hover{border-color:inherit}
+.kpis.kpis-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media (max-width:900px){.kpis.kpis-4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.steps{margin:6px 0 0;padding-left:20px;display:grid;gap:6px}
+.cu-table td{vertical-align:top}
 .chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
 .chip.on .ic{color:var(--orange)}
 .more-filters{position:relative}

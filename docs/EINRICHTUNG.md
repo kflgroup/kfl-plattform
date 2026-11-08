@@ -44,7 +44,8 @@ Worker `tiny-lab-d971kfl-forms` → Einstellungen → **Variablen und Secrets** 
 | `SMTP_PASS` | Passwort dieses IONOS-Postfachs |
 | `SMTP_PASS_VERMITTLUNG`, `SMTP_PASS_SUPPORT` | optional: Passwörter der Postfächer vermittlung@, support@ (Rechnungen gehen immer über noreplay@, Antworten an info@) (sonst wird über noreplay@ mit passender Antwortadresse gesendet) |
 | `BREVO_API_KEY` | optional: Alternative zum Postfach (Brevo) |
-| `SHOPIFY_ADMIN_TOKEN` | optional: Admin-API-Token (Lesezugriff Bestellungen) für die Webshop-Statistik |
+| `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET` | Shopify-App aus dem Dev Dashboard für Kunden, Besucher und Webshop-Statistik (siehe 5f) |
+| `SHOPIFY_ADMIN_TOKEN` | nur für alte, vor 2026 im Shopify-Admin angelegte Apps (statt Client-ID/Secret) |
 | `SHOPIFY_SHOP` | optional, Standard `3r1qns-2d.myshopify.com` |
 | `CF_API_TOKEN`, `CF_ACCOUNT_ID` | optional: Systemcode zusätzlich im täglichen Backup |
 
@@ -90,6 +91,21 @@ Variable (kein Secret): `PUBLIC_ORIGIN` = Adresse des Workers, z. B. `https://kf
 - Danach unter **Verwaltung → Einstellungen → Links:** `link_staff` = `https://dashboard.kfl-group.com`, `link_partner` = `https://partner.kfl-group.com`. Damit stehen die neuen Adressen auch in E-Mails und Einladungen.
 - Die alte workers.dev-Adresse funktioniert weiter. Formulare des Shops und „Meine Anfragen“ bleiben unverändert.
 - Andere Namen: Variablen `STAFF_HOST` / `PARTNER_HOST` im Worker setzen.
+
+## 5f. Kunden: Besucher und Kundendatenbank (seit 08.11.2026)
+
+- Neuer Menüpunkt **Kunden** mit zwei Reitern:
+  - **Besucher & Herkunft:** Besucher der aktuellen Stunde und der letzten 24 Stunden, Besucher und Sitzungen pro Stunde, Tag oder Woche. Dazu Herkunft (Direkt, Suchmaschine, Social Media …), Orte, Einstiegsseiten, Geräte sowie Warenkorb, Kasse, Bestellungen und Conversion-Rate. Quelle sind die Shopify-Analysen, mit wenigen Minuten Verzögerung.
+  - **Kundendatenbank:** alle Shopify-Kunden mit Name, E-Mail, Telefon und Adresse, Bestellungen, Umsatz und Anfragen. Suche, Filter (Konto, Einwilligungen, Käufer, Newsletter) und Kundenakte mit allen Adressen, Bestellungen und Anfragen.
+- **Einwilligungen je Kunde:** AGB, Widerrufsbelehrung, Datenschutz und Weitergabe an Partner kommen aus den Formularen der Webseite, mit Version und Zeitpunkt. Der vorzeitige Beginn bei digitalen Inhalten kommt aus der Warenkorb-Checkbox an der Bestellung, der Newsletter-Status aus Shopify. Bei der Kontoerstellung selbst fragt Shopify (neue Kundenkonten) keine AGB ab.
+- **Datenschutz:** Kundendaten werden live aus Shopify abgerufen und nicht in der Datenbank der Plattform gespeichert. Suchen und das Öffnen einer Kundenakte stehen im Protokoll.
+- **Rechte:** „Kundendatenbank sehen“ haben Admin, Geschäftsführung, Teamleitung und Vertrieb, „Besucherzahlen sehen“ Admin und Geschäftsführung. Beides ist pro Rolle anpassbar.
+- **Shop verbinden (einmalig):**
+  1. Shopify-Admin → Shopname oben rechts → **Dev Dashboard** → **App erstellen** („KFL Dashboard“).
+  2. Unter **Versionen** die Zugriffe `read_customers`, `read_orders`, `read_reports` wählen und **geschützte Kundendaten** (Name, E-Mail, Telefon, Adresse) freigeben. Version freigeben.
+  3. App auf dem Shop installieren.
+  4. Unter **Einstellungen** Client-ID und Secret kopieren und im Worker als Secrets `SHOPIFY_CLIENT_ID` und `SHOPIFY_CLIENT_SECRET` hinterlegen.
+- Technik: `src/36-shopify.js`, Token per Client-Credentials-Verfahren (24 Stunden gültig, nur im Arbeitsspeicher), Admin API 2026-10, Test `test/kunden.mjs`.
 
 ## 6. Shop umstellen (Go-live)
 
