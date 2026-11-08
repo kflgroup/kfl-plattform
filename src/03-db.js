@@ -164,7 +164,7 @@ const EXTRA_COLUMNS = {
     deadline_at: 'TEXT', dispatched_at: 'TEXT', evaluated_at: 'TEXT', presented_at: 'TEXT', decided_at: 'TEXT', won_assignment_id: 'INTEGER',
     spam_state: 'TEXT', spam_by: 'INTEGER', spam_reason: 'TEXT', deleted: "INTEGER NOT NULL DEFAULT 0", billed: "INTEGER NOT NULL DEFAULT 0",
     feedback_state: 'TEXT', customer_note_at: 'TEXT', customer_note_unread: "INTEGER NOT NULL DEFAULT 0", first_action_at: 'TEXT', status_note: 'TEXT',
-    linked_request_id: 'INTEGER', dispatch_pending: 'INTEGER NOT NULL DEFAULT 0'
+    linked_request_id: 'INTEGER', dispatch_pending: 'INTEGER NOT NULL DEFAULT 0', offer_reminded_at: 'TEXT', feedback_optout: 'INTEGER NOT NULL DEFAULT 0'
   },
   notes: { visibility: "TEXT NOT NULL DEFAULT 'intern'", org_id: 'INTEGER', author_type: "TEXT NOT NULL DEFAULT 'staff'", acc_relevant: 'INTEGER NOT NULL DEFAULT 0', acc_marked_by: 'TEXT', acc_marked_at: 'TEXT' },
   users: { extra_perms: "TEXT NOT NULL DEFAULT '[]'", revoked_perms: "TEXT NOT NULL DEFAULT '[]'", department: 'TEXT', phone: 'TEXT',

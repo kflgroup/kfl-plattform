@@ -1,0 +1,41 @@
+{%- comment -%}
+  Pflicht-Einwilligungen für Anfrageformulare.
+  Usage: {% render 'kfl-consents', type: 'deal' %}  (deal | sell | support)
+  Rechtsgrundlage der Weitergabe an Partner: Art. 6 Abs. 1 lit. b DSGVO (Vertragsanbahnung) – daher
+  Kenntnisnahme statt Einwilligung; die Werbe-/Kontakteinwilligung ist separat.
+  Optional (deal/sell): Einwilligung in Zufriedenheitsumfragen per E-Mail (§ 7 Abs. 2 UWG), jederzeit per Link widerrufbar.
+{%- endcomment -%}
+{%- capture legal_v -%}{% render 'kfl-config', key: 'legal' %}{%- endcapture -%}{%- assign legal_v = legal_v | strip -%}
+{%- liquid
+  assign agb = shop.terms_of_service.url | default: '/policies/terms-of-service'
+  assign privacy = shop.privacy_policy.url | default: '/policies/privacy-policy'
+  assign refund = shop.refund_policy.url | default: '/policies/refund-policy'
+-%}
+<div class="k-consents" role="group" aria-label="Einwilligungen und rechtliche Hinweise">
+  <label class="k-consent k-field">
+    <input type="checkbox" name="contact[AGB akzeptiert]" value="Ja (Version {{ legal_v }})" required>
+    <span>Ich akzeptiere die <a href="{{ agb }}" target="_blank" rel="noopener">AGB</a> der KFL GbR.{% if type != 'support' %} Die <a href="{{ refund }}" target="_blank" rel="noopener">Widerrufsbelehrung</a> habe ich zur Kenntnis genommen.{% endif %} <span class="k-error-text" hidden>Bitte bestätigen.</span></span>
+  </label>
+  <label class="k-consent k-field">
+    <input type="checkbox" name="contact[Datenschutz akzeptiert]" value="Ja (Version {{ legal_v }})" required>
+    <span>Ich habe die <a href="{{ privacy }}" target="_blank" rel="noopener">Datenschutzerklärung</a> gelesen und bin mit der Verarbeitung meiner Angaben zur Bearbeitung meiner Anfrage einverstanden. <span class="k-error-text" hidden>Bitte bestätigen.</span></span>
+  </label>
+  {%- if type == 'deal' or type == 'sell' -%}
+    <label class="k-consent k-field">
+      <input type="checkbox" name="contact[Weitergabe an Partner und Kontaktaufnahme]" value="Ja" required>
+      <span>
+        {%- if type == 'deal' -%}
+          Mir ist bekannt, dass KFL meine Angaben im erforderlichen Umfang an ausgewählte Partner (Autohäuser, Banken, Leasinggesellschaften und, wenn ich ein Servicepaket wähle, Service- und Versicherungspartner) weitergibt, um Angebote für mich einzuholen, und dass KFL und diese Partner mich dazu per E-Mail oder Telefon kontaktieren. Gebe ich mein jetziges Auto in Zahlung, gehen dessen Fahrzeugdaten zusätzlich an ausgewählte Ankaufpartner, um ein Angebot für mein Fahrzeug einzuholen. Ohne diese Weitergabe kann KFL den Service nicht erbringen.
+        {%- else -%}
+          Mir ist bekannt, dass KFL meine Fahrzeug- und Kontaktdaten im erforderlichen Umfang an ausgewählte Ankaufpartner weitergibt, um ein Angebot für mein Fahrzeug einzuholen, und dass KFL und diese Partner mich dazu per E-Mail oder Telefon kontaktieren. Ohne diese Weitergabe kann KFL den Service nicht erbringen.
+        {%- endif %}
+        <span class="k-error-text" hidden>Bitte bestätigen.</span>
+      </span>
+    </label>
+    <label class="k-consent k-field">
+      <input type="checkbox" name="contact[Einwilligung Feedback und Erinnerungen]" value="Ja (Version {{ legal_v }})">
+      <span><span class="k-muted">Optional:</span> KFL darf mich per E-Mail fragen, wie zufrieden ich mit dem Service und dem Partner war. Diese Einwilligung kann ich jederzeit über den Abmeldelink in jeder E-Mail widerrufen.</span>
+    </label>
+  {%- endif -%}
+  <input type="hidden" name="contact[Einwilligung Zeitpunkt]" value="">
+</div>

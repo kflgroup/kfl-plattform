@@ -86,5 +86,27 @@ async function statsShop(P, q) {
       <div class="kpi"><b>${fEur(c.aov)}</b><span>Ø Warenkorb</span>${delta(c.aov, p.aov)}</div><div class="kpi"><b>${fNum(c.newCustomers)}</b><span>Neukunden</span>${delta(c.newCustomers, p.newCustomers)}</div></div></section>
     <div class="grid-2 mt"><section class="panel"><div class="panel-head"><h2>Topseller</h2></div><div class="panel-body">${hbars(c.top.map(([l, v]) => ({ label: l, value: v })))}</div></section>
       <section class="panel"><div class="panel-head"><h2>Vorjahr</h2></div><div class="panel-body">${kv([['Bestellungen', html`${fNum(ly.orders)} ${delta(c.orders, ly.orders)}`], ['Umsatz', html`${fEur(ly.revenue)} ${delta(c.revenue, ly.revenue)}`], ['Ø Warenkorb', fEur(ly.aov)], ['Neukunden', fNum(ly.newCustomers)]])}
-        <p class="small muted mt">Shop: ${d.shop}</p></div></section></div>`);
+        <p class="small muted mt">Shop: ${d.shop}</p></div></section></div>
+    ${d.cart ? cartPanel(d) : ''}`);
+}
+/* Warenkorb-Erinnerung mit Gutschein: abgebrochene Kassen → Erinnerung mit Code → Kauf */
+function cartPanel(d) {
+  const c = d.cart, p = c.prev || {}, cc = d.cart_code;
+  if (c.error) return html`<section class="panel mt"><div class="panel-head"><h2>Warenkorb-Erinnerung · Gutschein ${c.code}</h2></div><div class="panel-body"><div class="err-box">${icon('alert')}<span>${c.error}</span></div>
+    <p class="small muted mt">Die Shopify-App braucht dafür den Zugriff <b>read_orders</b> (abgebrochene Kassen und Bestellungen).</p></div></section>`;
+  const status = !cc ? html`<span class="badge t-warn">Code ${c.code} in Shopify nicht gefunden</span>` : cc.error ? html`<span class="small muted">${cc.error}</span>`
+    : html`${cc.status === 'ACTIVE' ? badge('aktiv', 'ok') : badge(cc.status === 'EXPIRED' ? 'abgelaufen' : cc.status === 'SCHEDULED' ? 'geplant' : cc.status.toLowerCase(), cc.status === 'EXPIRED' ? 'err' : 'muted')} <span class="small muted">${cc.ends_at ? 'gültig bis ' + fDate(cc.ends_at) : 'unbefristet'}${d.cart_code_renew ? ' · verlängert sich automatisch' : ''} · insgesamt ${fNum(cc.used)}× eingelöst</span>`;
+  const funnel = [{ label: 'Abgebrochene Kassen', value: c.abandoned }, { label: 'Erinnerung mit Code versendet', value: c.sent }, { label: 'Käufe mit Code', value: c.code_orders }];
+  return html`<section class="panel mt"><div class="panel-head"><h2>Warenkorb-Erinnerung · Gutschein ${c.code}</h2><div>${status}</div></div>
+    <div class="kpis kpis-flat"><div class="kpi"><b>${fNum(c.abandoned)}</b><span>Abgebrochene Kassen</span>${delta(c.abandoned, p.abandoned)}</div>
+      <div class="kpi"><b>${fNum(c.sent)}</b><span>Gutscheincodes versendet</span>${delta(c.sent, p.sent)}</div>
+      <div class="kpi"><b>${fNum(c.code_customers)}</b><span>Kunden mit Code gekauft</span>${delta(c.code_customers, p.code_customers)}</div>
+      <div class="kpi"><b>${c.conversion != null ? fNum(c.conversion, 1) + ' %' : '–'}</b><span>Einlösequote (Käufe je versendetem Code)</span></div></div>
+    <div class="grid-2"><div class="panel-body">${hbars(funnel)}</div><div class="panel-body">${kv([
+      ['Offener Warenwert abgebrochener Kassen', fEur(c.abandoned_open_value)],
+      ['Wiederhergestellte Käufe (mit oder ohne Code)', html`${fNum(c.recovered)}${c.recovery_rate != null ? html` <span class="small muted">(${fNum(c.recovery_rate, 1)} %)</span>` : ''}`],
+      ['Bestellungen mit Code', fNum(c.code_orders) + (c.more ? '+' : '')],
+      ['Umsatz mit Code (brutto)', fEur(c.code_revenue)],
+      ['Gewährter Rabatt', fEur(c.code_discount)]])}
+      <p class="small muted mt">Versendet zählt jede Warenkorb-Erinnerung, die Shopify verschickt hat. Jede Erinnerung enthält den Code ${c.code}. Bestellungen mit Code zählen auch Kunden, die den Code weitergegeben bekommen haben.</p></div></div></section>`;
 }

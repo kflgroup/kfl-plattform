@@ -163,3 +163,64 @@ async function shopifyCustomer(ctx, id) {
   v.request_list = (cons[String(id)] || {}).requests || [];
   return v;
 }
+
+/* ---------- Warenkorb-Erinnerung mit Gutscheincode (Versand über Shopify-Automatisierung) ---------- */
+// Abgebrochene Kassen, versendete Erinnerungen (enthalten den Code), wiederhergestellte Käufe und Bestellungen mit dem Code
+async function shopifyCartStats(env, from, to, code) {
+  const span = `created_at:>=${from} created_at:<${addDaysDate(to, 1)}`;
+  const d = await shopifyGql(env, `query($a:String!,$s:String!,$r:String!,$o:String!){
+    ab: abandonedCheckoutsCount(query:$a){count precision}
+    sent: abandonedCheckoutsCount(query:$s){count precision}
+    rec: abandonedCheckoutsCount(query:$r){count precision}
+    list: abandonedCheckouts(first:100, query:$a){ nodes { completedAt totalPriceSet{shopMoney{amount}} } }
+    orders(first:100, query:$o){ pageInfo{hasNextPage} nodes { totalPriceSet{shopMoney{amount}} totalDiscountsSet{shopMoney{amount}} customer{id} } } }`,
+  { a: span, s: span + ' email_state:sent', r: span + ' recovery_state:recovered', o: `${span} discount_code:${code}` });
+  const amt = (m) => qlNum(m && m.shopMoney && m.shopMoney.amount);
+  const open = d.list.nodes.filter((x) => !x.completedAt);
+  const orders = d.orders.nodes;
+  const customers = new Set(orders.map((o) => (o.customer && o.customer.id) || Math.random()));
+  const sent = d.sent.count, buyers = orders.length;
+  return {
+    code, abandoned: d.ab.count, abandoned_open_value: round2(open.reduce((a, x) => a + amt(x.totalPriceSet), 0)), sent, recovered: d.rec.count,
+    code_orders: buyers, code_customers: customers.size, code_revenue: round2(orders.reduce((a, o) => a + amt(o.totalPriceSet), 0)),
+    code_discount: round2(orders.reduce((a, o) => a + amt(o.totalDiscountsSet), 0)), more: !!d.orders.pageInfo.hasNextPage,
+    conversion: sent ? round2((buyers / sent) * 100) : null, recovery_rate: d.ab.count ? round2((d.rec.count / d.ab.count) * 100) : null
+  };
+}
+const CART_CODE_Q = `query($c:String!){ codeDiscountNodeByCode(code:$c){ id codeDiscount { __typename ... on DiscountCodeBasic { title status startsAt endsAt asyncUsageCount } } } }`;
+async function shopifyCartCode(env, code) {
+  const d = await shopifyGql(env, CART_CODE_Q, { c: code });
+  const n = d.codeDiscountNodeByCode; if (!n) return null;
+  const c = n.codeDiscount || {};
+  return { id: n.id, title: c.title || '', status: c.status || '', starts_at: c.startsAt || null, ends_at: c.endsAt || null, used: toInt(c.asyncUsageCount, 0) };
+}
+// Täglich: Gutschein kurz vor (oder kurz nach) Ablauf automatisch um cart_code_days verlängern
+async function renewCartCode(ctx, s) {
+  if (!shopifyConfigured(ctx.env) || !s.cart_code_renew || !s.cart_code) return 'aus';
+  let c;
+  try { c = await shopifyCartCode(ctx.env, s.cart_code); } catch (e) { return cartCodeWarn(ctx, e); }
+  if (!c) return 'Code nicht gefunden';
+  if (!c.ends_at) return 'unbefristet';
+  const end = msOf(c.ends_at), now = nowMs();
+  if (end - now > 3 * 86400e3) return 'gültig bis ' + berlinDate(end);
+  if (now - end > 2 * 86400e3) return 'abgelaufen (manuell beendet?)';
+  const day = addDaysDate(berlinDate(Math.max(end, now)), toInt(s.cart_code_days, 30) || 30);
+  const [y, m, dd] = day.split('-').map(Number);
+  const endsAt = isoOf(berlinToUtc(y, m, dd + 1) - 1000);
+  try {
+    const r = await shopifyGql(ctx.env, `mutation($id:ID!,$d:DiscountCodeBasicInput!){ discountCodeBasicUpdate(id:$id, basicCodeDiscount:$d){ userErrors{ message } } }`, { id: c.id, d: { endsAt } });
+    const errs = r.discountCodeBasicUpdate.userErrors || [];
+    if (errs.length) return 'Fehler: ' + errs.map((x) => x.message).join(' · ');
+  } catch (e) { return cartCodeWarn(ctx, e); }
+  await audit(ctx, 'gutschein_verlaengert', 'gutschein', s.cart_code, { bis: day });
+  return 'verlängert bis ' + day;
+}
+async function cartCodeWarn(ctx, e) {
+  if (!(e instanceof HttpError) || e.status !== 403) throw e;
+  const last = await rawSetting(ctx.db, '_cart_code_warn');
+  if (!last || nowMs() - msOf(last) > 7 * 86400e3) {
+    await ctx.db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES ('_cart_code_warn', ?, ?, 'system')").bind(nowIso(), nowIso()).run();
+    await notifyStaff(ctx, { perm: 'stats_shop' }, { kind: 'fehler', title: 'Gutschein kann nicht automatisch verlängert werden', body: 'Der Shopify-App fehlen die Zugriffe read_discounts und write_discounts. Bitte im Shopify Dev Dashboard ergänzen oder den Code in Shopify selbst verlängern.', link: '#/statistik/shop' });
+  }
+  return 'Berechtigung fehlt';
+}

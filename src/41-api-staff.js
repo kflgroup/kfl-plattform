@@ -777,6 +777,7 @@ async function handleStaffApi(ctx, url) {
       else if (Array.isArray(def)) upd[k] = Array.isArray(v) ? v : String(v).split(',').map((x) => toInt(x.trim())).filter((x) => !isNaN(x));
       else upd[k] = str(v, 4000);
       if (/^mail_from_/.test(k)) need(emailOk(upd[k]), 400, `Bitte eine gültige Absenderadresse für ${k} angeben.`);
+      if (k === 'cart_code') { upd[k] = upd[k].toUpperCase().replace(/\s+/g, ''); need(!upd[k] || /^[A-Z0-9_-]{3,40}$/.test(upd[k]), 400, 'Gutscheincode: nur Buchstaben, Ziffern, - und _ (ohne Leerzeichen).'); }
     }
     await saveSettings(ctx, upd);
     await audit(ctx, 'einstellungen_geaendert', 'einstellungen', null, upd);

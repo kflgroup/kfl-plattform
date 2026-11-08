@@ -211,6 +211,12 @@ const DEFAULT_SETTINGS = {
   review_before_present: false,
   feedback_delay_hours: 24,
   survey_delay_days: 3,
+  // Kunden-Erinnerungen und Nachfragen (0 = aus)
+  offer_reminder_hours: 24,   // Erinnerung, wenn der Kunde auf ein vorgestelltes Angebot nicht reagiert
+  service_survey_days: 5,     // Nachfrage zu Anfragetool, Service und Partnerkontakt nach der Zusage (nur mit Einwilligung)
+  cart_code: 'SCHNELLSEIN',   // Gutscheincode der Warenkorb-Erinnerung (Shopify)
+  cart_code_renew: true,      // Gutschein vor Ablauf automatisch um cart_code_days verlängern
+  cart_code_days: 30,
   // Buchhaltung
   lead_price_deal: 0,
   lead_price_sell: 0,
@@ -262,6 +268,8 @@ const DEFAULT_SETTINGS = {
 // Kontenrahmen (angelehnt an SKR03, vereinfacht). sys = feste Rolle für automatische Buchungen.
 const FIBU_TYPES = { aktiv: 'Aktivkonto (Vermögen)', passiv: 'Passivkonto (Kapital/Schulden)', aufwand: 'Aufwandskonto', ertrag: 'Ertragskonto' };
 // Gesellschafter (Kapital- und Privatkonten, Vorlagen „Kapitaleinlage“, „Privateinlage“, „Privatentnahme“)
+// Optionale Einwilligung im Anfrageformular: Zufriedenheitsumfragen per E-Mail (Werbung i. S. v. § 7 UWG)
+const FEEDBACK_CONSENT_KEY = 'Einwilligung Feedback und Erinnerungen';
 const FIBU_PARTNERS = [
   { key: 'tk', name: 'Tobias Krusch', capital: '0870', deposit: '1891', withdrawal: '1801' },
   { key: 'rl', name: 'Rene Lipownik', capital: '0871', deposit: '1892', withdrawal: '1802' }

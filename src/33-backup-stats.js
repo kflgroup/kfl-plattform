@@ -212,6 +212,14 @@ async function shopifyStats(ctx, q) {
     return { orders: orders.length, revenue, aov: orders.length ? round2(revenue / orders.length) : 0, newCustomers, top: Object.entries(products).sort((a, b) => b[1] - a[1]).slice(0, 10) };
   };
   try {
-    return { configured: true, shop, period: { from: P.from, to: P.to }, cur: await range(P.from, P.to), prev: await range(P.prevFrom, P.prevTo), ly: await range(P.lyFrom, P.lyTo) };
+    const out = { configured: true, shop, period: { from: P.from, to: P.to }, cur: await range(P.from, P.to), prev: await range(P.prevFrom, P.prevTo), ly: await range(P.lyFrom, P.lyTo) };
+    // Warenkorb-Erinnerung mit Gutschein: eigene Fehlerbehandlung, damit fehlende Zugriffe die Umsatzzahlen nicht blockieren
+    const s = await settingsOf(ctx), code = String(s.cart_code || '').trim();
+    if (code) {
+      try { out.cart = await shopifyCartStats(ctx.env, P.from, P.to, code); out.cart.prev = await shopifyCartStats(ctx.env, P.prevFrom, P.prevTo, code); } catch (e) { out.cart = { code, error: e.message }; }
+      try { out.cart_code = await shopifyCartCode(ctx.env, code); } catch (e) { out.cart_code = { error: e.status === 403 ? 'Für Status und Laufzeit des Codes braucht die Shopify-App den Zugriff read_discounts.' : e.message }; }
+      out.cart_code_renew = !!s.cart_code_renew;
+    }
+    return out;
   } catch (e) { return { configured: true, error: e.message }; }
 }

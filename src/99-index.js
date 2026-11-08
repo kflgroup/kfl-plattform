@@ -84,6 +84,8 @@ async function runJobs(ctx, { force } = {}) {
   if (force === 'tagesabschluss' || (slot() && hm >= ch * 60 + cm && await jobDue(ctx.db, 'tagesabschluss', day, ctx))) { await safe('tagesabschluss', () => runDayClose(ctx)); await jobDone(ctx.db, 'tagesabschluss', day, res.tagesabschluss); heavy = true; }
   // Finanzbuchhaltung: Monatsabschluss am 1. (ab 1:00 Uhr) für den Vormonat, Jahresabschluss am 1. Januar
   if (force === 'fibu' || (slot() && hm >= 60 && await jobDue(ctx.db, 'fibu', day, ctx))) { await safe('fibu', () => runFibuJobs(ctx, { force: force === 'fibu' })); const f = res.fibu; if (f && typeof f === 'object') res.fibu = f.result; if (!(f && f.pending)) await jobDone(ctx.db, 'fibu', day, res.fibu); else await jobPause(ctx.db, 'fibu', 'teilweise: ' + res.fibu); heavy = true; }
+  // Gutschein der Warenkorb-Erinnerung täglich ab 9:00 prüfen und bei Bedarf verlängern
+  if (force === 'gutschein' || (slot() && hm >= 9 * 60 && await jobDue(ctx.db, 'gutschein', day, ctx))) { await safe('gutschein', () => renewCartCode(ctx, s)); await jobDone(ctx.db, 'gutschein', day, res.gutschein); heavy = true; }
   // Sammelrechnungen am letzten Tag des Monats
   const month = day.slice(0, 7);
   const isLast = p.d === lastDayOfMonth(p.y, p.m);

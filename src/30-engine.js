@@ -48,7 +48,7 @@ async function createRequest(ctx, type, data, { customerAccount, source }) {
 
 /* ---------- Inzahlungnahme: eigene Ankauf-Anfrage aus dem Traumwagen-DEAL ---------- */
 const TRADE_PREFIX = 'Altwagen ';
-const TRADE_COPY = /^(Vorname|name|email|phone|Straße|PLZ|Ort|Kontaktweg|Umkreis|Kundennummer|Kundenkonto-ID|Eingang \(Server\)|Einwilligung Zeitpunkt|AGB akzeptiert|Datenschutz akzeptiert|Weitergabe an Partner und Kontaktaufnahme|_page|_src)$/;
+const TRADE_COPY = /^(Vorname|name|email|phone|Straße|PLZ|Ort|Kontaktweg|Umkreis|Kundennummer|Kundenkonto-ID|Eingang \(Server\)|Einwilligung Zeitpunkt|Einwilligung Feedback und Erinnerungen|AGB akzeptiert|Datenschutz akzeptiert|Weitergabe an Partner und Kontaktaufnahme|_page|_src)$/;
 // Liefert die Formulardaten der Ankauf-Anfrage (oder null) und entfernt Altwagen-Angaben, wenn keine Inzahlungnahme gewünscht ist
 function tradeInSplit(data) {
   const keys = Object.keys(data).filter((k) => k.startsWith(TRADE_PREFIX));
@@ -654,13 +654,70 @@ async function runRequestJobs(ctx) {
   // 5) Bewertungsumfrage an Kunden
   const s = await settingsOf(ctx);
   const cutoff = isoOf(nowMs() - (s.survey_delay_days || 3) * 86400e3);
-  for (const sv of await DB.all(ctx.db, "SELECT s.*, a.contact_at FROM surveys s JOIN assignments a ON a.request_id = s.request_id AND a.org_id = s.org_id WHERE s.kind = 'bewertung' AND s.sent_at IS NULL AND a.contact_at < ?", cutoff)) {
+  for (const sv of await DB.all(ctx.db, "SELECT s.*, a.contact_at FROM surveys s JOIN assignments a ON a.request_id = s.request_id AND a.org_id = s.org_id WHERE s.kind = 'bewertung' AND s.sent_at IS NULL AND a.contact_at < ? LIMIT 5", cutoff)) {
     const req = await DB.one(ctx.db, 'SELECT * FROM requests WHERE id = ?', sv.request_id);
-    const tok = await linkToken(ctx.env, 'sv', sv.id);
-    const stars = [1, 2, 3, 4, 5].map((n) => `<a href="${esc((ctx.origin || '') + `/c/survey?s=${sv.id}&t=${tok}&r=${n}`)}" style="display:inline-block;width:44px;height:44px;line-height:44px;text-align:center;border-radius:50%;background:${n >= 4 ? '#ff6c01' : '#f4f4f4'};color:#000;font-weight:700;text-decoration:none;margin-right:6px">${n}</a>`).join('');
+    // Umfragen sind Werbung (§ 7 UWG) → nur mit Einwilligung aus dem Formular; ohne Einwilligung als erledigt markieren
+    if (!feedbackAllowed(req)) { await DB.update(ctx.db, 'surveys', sv.id, { sent_at: t, answer: 'keine_einwilligung' }); continue; }
     await sendMail(ctx, { category: 'system', to: req.email, subject: 'Wie zufrieden warst du mit unserem Partner?', title: 'Wie war deine Erfahrung?',
-      body: `<p>Hallo ${esc(jparse(req.data, {}).Vorname || '')},</p><p>wie zufrieden warst du mit dem Partner zu deiner Anfrage <strong>#${toNumber(req.id)}</strong>? 1 = gar nicht, 5 = sehr zufrieden.</p><p style="margin:20px 0">${stars}</p>` });
+      body: `<p>Hallo ${esc(jparse(req.data, {}).Vorname || '')},</p><p>wie zufrieden warst du mit dem Partner zu deiner Anfrage <strong>#${toNumber(req.id)}</strong>? 1 = gar nicht, 5 = sehr zufrieden.</p><p style="margin:20px 0">${await surveyStars(ctx, sv.id)}</p>${await optoutNote(ctx, req)}` });
     await DB.update(ctx.db, 'surveys', sv.id, { sent_at: t }); res.surveys++;
   }
+  // 6) Kunde hat auf das vorgestellte Angebot nicht reagiert → einmalige Erinnerung (gehört zur angefragten Leistung, daher ohne Werbeeinwilligung)
+  res.offer_reminders = 0;
+  if (+s.offer_reminder_hours > 0) {
+    const due = isoOf(nowMs() - s.offer_reminder_hours * 3600e3);
+    for (const req of await DB.all(ctx.db, "SELECT * FROM requests WHERE deleted = 0 AND status = 'angebot_beim_kunden' AND decided_at IS NULL AND offer_reminded_at IS NULL AND presented_at IS NOT NULL AND presented_at < ? ORDER BY presented_at LIMIT 2", due)) {
+      await DB.update(ctx.db, 'requests', req.id, { offer_reminded_at: t });
+      await remindOffer(ctx, s, req); res.offer_reminders++;
+    }
+  }
+  // 7) Nachfrage nach der Zusage: Zufriedenheit mit Anfragetool und Service + hat sich der Partner gemeldet? (nur mit Einwilligung)
+  res.service_surveys = 0;
+  if (+s.service_survey_days > 0) {
+    const due = isoOf(nowMs() - s.service_survey_days * 86400e3);
+    for (const req of await DB.all(ctx.db, `SELECT * FROM requests WHERE deleted = 0 AND won_assignment_id IS NOT NULL AND decided_at IS NOT NULL AND decided_at < ? AND decided_at > ? AND feedback_optout = 0
+        AND instr(data, ?) > 0 AND NOT EXISTS (SELECT 1 FROM surveys v WHERE v.request_id = requests.id AND v.kind = 'service') ORDER BY decided_at LIMIT 2`, due, isoOf(nowMs() - (s.service_survey_days + 30) * 86400e3), FEEDBACK_CONSENT_KEY)) {
+      const svId = await DB.insert(ctx.db, 'surveys', { request_id: req.id, org_id: null, kind: 'service', sent_at: t, created_at: t });
+      if (!feedbackAllowed(req)) { await DB.update(ctx.db, 'surveys', svId, { answer: 'keine_einwilligung' }); continue; }
+      await serviceSurvey(ctx, req, svId); res.service_surveys++;
+    }
+  }
   return res;
+}
+// Einwilligung für Umfragen: Haken im Anfrageformular und nicht abgemeldet
+function feedbackAllowed(req) {
+  if (!req || req.feedback_optout) return false;
+  return /^ja\b/i.test(String(jparse(req.data, {})[FEEDBACK_CONSENT_KEY] || '').trim());
+}
+const SURVEY_BTN = (href, label, bg, fg = '#000') => `<a href="${esc(href)}" style="display:inline-block;width:44px;height:44px;line-height:44px;text-align:center;border-radius:50%;background:${bg};color:${fg};font-weight:700;text-decoration:none;margin-right:6px">${label}</a>`;
+async function surveyStars(ctx, svId) {
+  const tok = await linkToken(ctx.env, 'sv', svId);
+  return [1, 2, 3, 4, 5].map((n) => SURVEY_BTN((ctx.origin || '') + `/c/survey?s=${svId}&t=${tok}&r=${n}`, n, n >= 4 ? '#ff6c01' : '#f4f4f4')).join('');
+}
+async function optoutNote(ctx, req) {
+  const href = (ctx.origin || '') + `/c/optout?r=${toNumber(req.id)}&t=${await linkToken(ctx.env, 'oo', req.id)}`;
+  return `<p style="color:#6b6b70;font-size:12px;margin-top:26px">Du bekommst diese E-Mail, weil du bei deiner Anfrage der Kundenumfrage zugestimmt hast. Keine Umfragen mehr? <a href="${esc(href)}" style="color:#6b6b70">Hier abmelden</a>.</p>`;
+}
+async function remindOffer(ctx, s, req) {
+  const d = jparse(req.data, {}), n = toNumber(req.id);
+  const offers = await DB.val(ctx.db, "SELECT COUNT(*) FROM offers WHERE request_id = ? AND status = 'vorgestellt'", req.id);
+  const link = s.link_my_requests + '#anfrage-' + n;
+  const help = String(s.link_shop || 'https://kfl-group.com').replace(/\/$/, '') + '/pages/support';
+  const r = await sendMail(ctx, { category: 'system', to: req.email, toName: d.Vorname, subject: `Dein Angebot zu Anfrage #${n} wartet auf dich`, title: 'Dein Angebot wartet noch.',
+    body: `<p>Hallo ${esc(d.Vorname || '')},</p><p>zu deiner Anfrage <strong>#${n}</strong> (${esc(req.vehicle || REQUEST_TYPES[req.type].label)}) ${offers > 1 ? `liegen <strong>${offers} geprüfte Angebote</strong>` : 'liegt ein <strong>geprüftes Angebot</strong>'} für dich bereit. Wir haben sie aus allen Partnerangeboten für dich ausgewählt.</p>
+      <p>Passt eins? Ein Klick auf <strong>„Interessiert mich“</strong> genügt, dann meldet sich der Partner direkt bei dir. Passt keins, kannst du die Angebote dort auch ablehnen.</p>${mailBtn(link, 'Angebote ansehen')}
+      <p><strong>Fragen zum Angebot?</strong> Antworte einfach auf diese E-Mail oder schreib uns über den <a href="${esc(help)}" style="color:#ff6c01">Support</a>. Wir helfen dir gern bei Finanzierung, Leasing, Inzahlungnahme oder beim Vergleich.</p>
+      <p style="color:#6b6b70;font-size:13px">Bis zu deiner Zusage bleiben deine Kontaktdaten bei uns.</p>` });
+  await reqEvent(ctx, req.id, 'kunde_erinnert', r && r.status === 'fehler' ? 'Erinnerung an das Angebot fehlgeschlagen' : 'Kunde an das offene Angebot erinnert');
+}
+async function serviceSurvey(ctx, req, svId) {
+  const d = jparse(req.data, {}), n = toNumber(req.id);
+  const asked = ['ja', 'nein'].includes(req.feedback_state);
+  const fb = (ctx.origin || '') + `/c/feedback?r=${n}&t=${await linkToken(ctx.env, 'fb', req.id)}`;
+  const contact = asked ? '' : `<p style="margin-top:24px"><strong>Hat sich der Partner bei dir gemeldet?</strong></p>
+    <p style="margin:12px 0 22px"><a href="${esc(fb + '&a=ja')}" style="display:inline-block;background:#0a7d3b;color:#fff;font-weight:700;padding:10px 24px;border-radius:999px;text-decoration:none;margin-right:10px">Ja</a><a href="${esc(fb + '&a=nein')}" style="display:inline-block;background:#1a1a1a;color:#fff;font-weight:700;padding:10px 24px;border-radius:999px;text-decoration:none">Nein</a></p>`;
+  await sendMail(ctx, { category: 'system', to: req.email, toName: d.Vorname, subject: `Wie zufrieden bist du mit KFL? (Anfrage #${n})`, title: 'Wie war es mit KFL?',
+    body: `<p>Hallo ${esc(d.Vorname || '')},</p><p>vor ein paar Tagen hast du dich für ein Angebot zu deiner Anfrage <strong>#${n}</strong> entschieden. Wie zufrieden bist du mit unserem Anfragetool und unserem Service? 1 = gar nicht, 5 = sehr zufrieden.</p>
+      <p style="margin:20px 0">${await surveyStars(ctx, svId)}</p>${contact}<p>Fehlt dir etwas oder hakt es irgendwo? Antworte einfach auf diese E-Mail, wir kümmern uns.</p>${await optoutNote(ctx, req)}` });
+  await reqEvent(ctx, req.id, 'umfrage_service', 'Nachfrage zu Zufriedenheit und Partnerkontakt versendet');
 }

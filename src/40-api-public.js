@@ -204,12 +204,23 @@ async function handleCustomerLinks(ctx, url) {
     if (!sid || rating < 1 || rating > 5 || !(await linkTokenOk(ctx.env, url.searchParams.get('t'), 'sv', sid))) return simplePage('Link ungültig', 'Dieser Link ist leider nicht (mehr) gültig.', false);
     const sv = await DB.one(ctx.db, 'SELECT * FROM surveys WHERE id = ?', sid);
     if (!sv) return simplePage('Link ungültig', 'Diese Umfrage gibt es nicht mehr.', false);
+    const service = sv.kind === 'service';
     if (!sv.answered_at) {
       await DB.update(ctx.db, 'surveys', sid, { rating, answered_at: nowIso() });
       ctx.actor = { type: 'customer', name: 'Kunde' };
-      await reqEvent(ctx, sv.request_id, 'bewertung', `Kunde bewertet den Partner mit ${rating} von 5`);
+      await reqEvent(ctx, sv.request_id, service ? 'bewertung_service' : 'bewertung', service ? `Kunde bewertet Anfragetool und Service mit ${rating} von 5` : `Kunde bewertet den Partner mit ${rating} von 5`);
+      if (rating <= 2) await notifyStaff(ctx, { perm: 'req_edit' }, { kind: 'anfrage', title: `#${toNumber(sv.request_id)}: Kunde unzufrieden (${rating} von 5)`, body: service ? 'Bewertung von Anfragetool und Service. Bitte beim Kunden nachfassen.' : 'Bewertung des Partners. Bitte beim Kunden nachfassen.', link: `#/anfragen/${toNumber(sv.request_id)}` });
     }
-    return simplePage('Vielen Dank!', `Du hast ${rating} von 5 Punkten vergeben. Dein Feedback hilft uns, dir immer die besten Partner zu vermitteln.`);
+    return simplePage('Vielen Dank!', service ? `Du hast ${rating} von 5 Punkten vergeben. ${rating <= 2 ? 'Das tut uns leid. Unser Team meldet sich bei dir.' : 'Dein Feedback hilft uns, KFL noch besser zu machen.'}` : `Du hast ${rating} von 5 Punkten vergeben. Dein Feedback hilft uns, dir immer die besten Partner zu vermitteln.`);
+  }
+  if (url.pathname === '/c/optout') {
+    const rid = fromNumber(url.searchParams.get('r') || '');
+    if (!(rid > 0) || !(await linkTokenOk(ctx.env, url.searchParams.get('t'), 'oo', rid))) return simplePage('Link ungültig', 'Dieser Link ist leider nicht (mehr) gültig.', false);
+    const req = await DB.one(ctx.db, 'SELECT id, email FROM requests WHERE id = ?', rid);
+    if (!req) return simplePage('Link ungültig', 'Diese Anfrage gibt es nicht mehr.', false);
+    const r = await ctx.db.prepare('UPDATE requests SET feedback_optout = 1 WHERE lower(email) = lower(?) AND feedback_optout = 0').bind(req.email).run();
+    if (r.meta && r.meta.changes) { ctx.actor = { type: 'customer', name: 'Kunde' }; await reqEvent(ctx, rid, 'umfrage_abgemeldet', 'Kunde hat sich von Umfragen abgemeldet'); }
+    return simplePage('Abgemeldet', 'Du bekommst von uns keine Umfragen mehr. Nachrichten zu deinen Anfragen und Angeboten erhältst du weiterhin.');
   }
   return new Response('Nicht gefunden', { status: 404 });
 }
