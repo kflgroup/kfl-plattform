@@ -84,7 +84,23 @@ check(r.ok && r.customer.order_list[0].digital === '03.10.2026, 12:00' && r.cust
 check(qa("SELECT * FROM audit WHERE action = 'kunde_angesehen' AND entity_id = '11134009573715'").length === 1, 'Aufruf der Kundenakte steht im Protokoll');
 r = await c.get('/api/customers/99999', { who: 'vt' }); check(r.status === 404, 'Unbekannter Kunde: 404');
 r = await c.get('/api/customers/abc', { who: 'vt' }); check(r.status === 404 || r.status === 400, 'Ungültige Nummer abgelehnt');
-check(!qa('SELECT name FROM sqlite_master').some((t) => /customer/i.test(t.name)), 'Keine Kundentabelle in der Datenbank (Daten nur live aus Shopify)');
+check(!qa("SELECT name FROM sqlite_master WHERE type = 'table'").some((t) => /customer/i.test(t.name) && t.name !== 'customer_consents'), 'Keine Kopie der Kundendaten in der Datenbank (nur Einwilligungsnachweise)');
+check(qa("SELECT name FROM pragma_table_info('customer_consents')").every((c) => !/name|email|phone|address/i.test(c.name)), 'Einwilligungsnachweise ohne Name, E-Mail, Telefon, Adresse');
+
+console.log('Bestätigung im Kundenkonto (Hinweis auf der Webseite)');
+const { sig: sigF, nowSec: nowF } = await import('./harness.mjs');
+const myTok = (kid) => { const ts = nowF(); return { _kid: kid, _ts: ts, _sig: sigF(`${kid}.${ts}.my`) }; };
+r = await c.post('/my/consent/status', { ...myTok('22200000000002'), version: '2026-10' }); check(r.ok && r.needed === true, 'Kunde ohne Bestätigung: Hinweis nötig');
+r = await c.post('/my/consent/status', { _kid: '22200000000002', _ts: nowF(), _sig: 'falsch', version: '2026-10' }); check(r.status === 403, 'Ohne gültige Signatur abgelehnt');
+r = await c.post('/my/consent', { ...myTok('22200000000002'), version: '2026-10', agb: true, privacy: false }); check(r.status === 400, 'Nur eine Bestätigung reicht nicht');
+r = await c.post('/my/consent', { ...myTok('22200000000002'), version: '2026-10', agb: true, privacy: true }); check(r.ok, 'AGB, Widerrufsbelehrung und Datenschutz bestätigt');
+check(qa("SELECT kind FROM customer_consents WHERE customer_account = '22200000000002' ORDER BY kind").map((x) => x.kind).join(',') === 'agb,privacy,withdrawal', 'Drei Nachweise gespeichert (mit Version, Zeitpunkt, IP als Hash)');
+r = await c.post('/my/consent/status', { ...myTok('22200000000002'), version: '2026-10' }); check(r.ok && r.needed === false, 'Danach kein Hinweis mehr');
+r = await c.post('/my/consent/status', { ...myTok('22200000000002'), version: '2027-01' }); check(r.ok && r.needed === true, 'Neue Version der Rechtstexte: erneut nachfragen');
+r = await c.get('/api/customers', { who: 'admin' });
+const oth = r.customers.find((x) => x.id === '22200000000002');
+check(oth.consents.agb && oth.consents.agb.account && oth.consents.privacy && oth.consents.withdrawal && /Version 2026-10/.test(oth.consents.agb.value), 'Kundendatenbank zeigt die Bestätigung aus dem Kundenkonto', oth.consents);
+r = await c.get('/api/customers?consent=fehlt', { who: 'admin' }); check(r.customers.length === 0, 'Filter „Einwilligungen fehlen“ jetzt leer');
 
 console.log('Token läuft ab');
 SHOP.expire = true; const before = SHOP.tokens;

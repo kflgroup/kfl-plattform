@@ -1,0 +1,71 @@
+{%- comment -%}
+  Einmalige Bestätigung von AGB, Widerrufsbelehrung und Datenschutz für angemeldete Kunden.
+  Shopify (neue Kundenkonten) fragt bei der Kontoerstellung keine AGB ab – dieser Hinweis holt das nach.
+  Gespeichert wird im KFL-Formular-Dienst (/my/consent, Nachweis mit Version und Zeitpunkt), sichtbar in der Kundendatenbank.
+  Erscheint nur, wenn für die aktuelle Version der Rechtstexte (kfl-config „legal“) noch keine Bestätigung vorliegt,
+  nicht auf Seiten mit eigenen Einwilligungen (Formulare) und blockiert die Seite nicht („Später“).
+{%- endcomment -%}
+{%- if customer -%}
+  {%- capture k_ep -%}{% render 'kfl-config', key: 'endpoint' %}{%- endcapture -%}{%- capture k_sec -%}{% render 'kfl-config', key: 'secret' %}{%- endcapture -%}{%- capture k_legal -%}{% render 'kfl-config', key: 'legal' %}{%- endcapture -%}
+  {%- assign k_ep = k_ep | strip -%}{%- assign k_sec = k_sec | strip -%}{%- assign k_legal = k_legal | strip -%}
+  {%- if k_ep != blank and k_sec != blank -%}
+    {%- liquid
+      assign k_ts = 'now' | date: '%s'
+      assign k_kid = customer.id | append: ''
+      assign k_pl = k_kid | append: '.' | append: k_ts | append: '.my'
+      assign k_agb = shop.terms_of_service.url | default: '/policies/terms-of-service'
+      assign k_privacy = shop.privacy_policy.url | default: '/policies/privacy-policy'
+      assign k_refund = shop.refund_policy.url | default: '/policies/refund-policy'
+    -%}
+    <script type="application/json" id="k-consent-auth">{"ep":{{ k_ep | json }},"kid":{{ k_kid | json }},"ts":{{ k_ts | json }},"sig":{{ k_pl | hmac_sha256: k_sec | json }},"version":{{ k_legal | json }}}</script>
+    <div class="k-cons" id="k-cons" hidden>
+      <div class="k-cons__backdrop" data-cons-later></div>
+      <form class="k-cons__card" role="dialog" aria-modal="true" aria-labelledby="k-cons-title" novalidate>
+        <span class="k-cons__eyebrow">Dein Kundenkonto</span>
+        <h2 class="k-cons__title" id="k-cons-title">Kurz bestätigen{% if customer.first_name != blank %}, {{ customer.first_name | escape }}{% endif %}</h2>
+        <p class="k-cons__text">Damit wir dein Konto, deine Anfragen und Bestellungen sauber und rechtssicher führen können, bestätige bitte einmalig unsere Rechtstexte.</p>
+        <label class="k-consent k-cons__check">
+          <input type="checkbox" name="agb" required>
+          <span>Ich akzeptiere die <a href="{{ k_agb }}" target="_blank" rel="noopener">AGB</a> der KFL GbR. Die <a href="{{ k_refund }}" target="_blank" rel="noopener">Widerrufsbelehrung</a> habe ich zur Kenntnis genommen.</span>
+        </label>
+        <label class="k-consent k-cons__check">
+          <input type="checkbox" name="privacy" required>
+          <span>Ich habe die <a href="{{ k_privacy }}" target="_blank" rel="noopener">Datenschutzerklärung</a> gelesen.</span>
+        </label>
+        <p class="k-cons__error" role="alert" hidden></p>
+        <div class="k-cons__actions">
+          <button type="submit" class="k-btn k-btn--primary">Bestätigen</button>
+          <button type="button" class="k-cons__later" data-cons-later>Später</button>
+        </div>
+        <p class="k-cons__fine">Version {{ k_legal }} · Deine Bestätigung wird mit Datum gespeichert.</p>
+      </form>
+    </div>
+    <style>
+      .k-cons{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px}
+      .k-cons[hidden]{display:none}
+      .k-cons__backdrop{position:absolute;inset:0;background:rgba(0,0,0,.45);opacity:0;transition:opacity .25s}
+      .k-cons__card{position:relative;width:100%;max-width:520px;background:#fff;color:#111;border-radius:22px;padding:28px 28px 22px;box-shadow:0 24px 80px rgba(0,0,0,.25);display:grid;gap:14px;transform:translateY(16px);opacity:0;transition:transform .25s,opacity .25s}
+      .k-cons.is-open .k-cons__backdrop{opacity:1}.k-cons.is-open .k-cons__card{transform:none;opacity:1}
+      .k-cons__eyebrow{font-size:1.2rem;letter-spacing:.08em;text-transform:uppercase;color:#FF6C01;font-weight:700}
+      .k-cons__title{margin:0;font-size:2.4rem;line-height:1.15;font-weight:700}
+      .k-cons__text{margin:0;color:#555;font-size:1.5rem}
+      .k-cons__check{font-size:1.45rem}
+      .k-cons__error{margin:0;color:#c0262d;font-size:1.4rem}
+      .k-cons__actions{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:4px}
+      .k-cons__later{background:none;border:0;padding:8px 4px;font:inherit;font-size:1.45rem;color:#555;text-decoration:underline;cursor:pointer}
+      .k-cons__fine{margin:0;font-size:1.2rem;color:#888}
+      .k-cons__done{font-size:1.6rem;font-weight:600;color:#17643a}
+      html.k-cons-lock{overflow:hidden}
+      @media (max-width:640px){.k-cons{align-items:flex-end;padding:0}.k-cons__card{max-width:none;border-radius:22px 22px 0 0;padding:24px 20px calc(18px + env(safe-area-inset-bottom))}}
+      @media (prefers-reduced-motion:reduce){.k-cons__card,.k-cons__backdrop{transition:none}}
+    </style>
+    <script src="{{ 'kfl-account-consent.js' | asset_url }}" defer></script>
+  {%- endif -%}
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "KFL Bestätigung Kundenkonto",
+  "enabled_on": { "groups": ["footer"] }
+}
+{% endschema %}

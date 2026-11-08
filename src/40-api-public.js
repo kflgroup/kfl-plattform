@@ -103,6 +103,22 @@ async function handleMy(ctx, url) {
   const kid = v.kid;
   ctx.actor = { type: 'customer', id: null, name: 'Kunde ' + kid };
   const path = url.pathname.replace(/^\/my/, '').replace(/\/+$/, '');
+  // Bestätigung von AGB, Widerrufsbelehrung und Datenschutz im Kundenkonto (einmalig je Version der Rechtstexte)
+  if (path === '/consent/status') {
+    const version = str(b.version, 30) || null;
+    const have = await DB.all(ctx.db, "SELECT kind, version FROM customer_consents WHERE customer_account = ? AND kind IN ('agb','privacy')", kid);
+    const ok = (k) => have.some((h) => h.kind === k && (!version || h.version === version));
+    return cjson({ ok: true, needed: !(ok('agb') && ok('privacy')) }, 200, origin);
+  }
+  if (path === '/consent') {
+    if (b.agb !== true || b.privacy !== true) return cjson({ ok: false, error: 'Bitte beide Punkte bestätigen' }, 400, origin);
+    const version = str(b.version, 30) || null, t = nowIso(), ua = str(request.headers.get('User-Agent'), 200) || null;
+    const rows = [['agb', 'AGB der KFL GbR akzeptiert'], ['withdrawal', 'Widerrufsbelehrung zur Kenntnis genommen'], ['privacy', 'Datenschutzerklärung gelesen']];
+    await ctx.db.batch(rows.map(([kind, text]) => ctx.db.prepare('INSERT INTO customer_consents (customer_account, kind, version, text, source, ip_hash, user_agent, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(kid, kind, version, text + (version ? ` (Version ${version})` : ''), str(b.source, 40) || 'Kundenkonto', ctx.ipHash, ua, t)));
+    await audit(ctx, 'kunde_einwilligung', 'kunde', kid, { version, quelle: str(b.source, 40) || 'Kundenkonto' });
+    return cjson({ ok: true, at: fmtDE(nowMs()) }, 200, origin);
+  }
   if (path === '/requests') {
     let sql = "SELECT * FROM requests WHERE customer_account = ? AND deleted = 0", args = [kid];
     if (b.id !== undefined && b.id !== null && b.id !== '') { const id = fromNumber(b.id); if (!(id > 0)) return cjson({ ok: true, requests: [] }, 200, origin); sql += ' AND id = ?'; args.push(id); }
@@ -178,14 +194,14 @@ h1{font-size:28px;letter-spacing:-.02em;margin:18px 0 8px}p{color:#6b6b70;margin
 async function handleCustomerLinks(ctx, url) {
   if (url.pathname === '/c/feedback') {
     const rid = fromNumber(url.searchParams.get('r') || ''), a = url.searchParams.get('a');
-    if (!(rid > 0) || !['ja', 'nein'].includes(a) || url.searchParams.get('t') !== await linkToken(ctx.env, 'fb', rid)) return simplePage('Link ungültig', 'Dieser Link ist leider nicht (mehr) gültig.', false);
+    if (!(rid > 0) || !['ja', 'nein'].includes(a) || !(await linkTokenOk(ctx.env, url.searchParams.get('t'), 'fb', rid))) return simplePage('Link ungültig', 'Dieser Link ist leider nicht (mehr) gültig.', false);
     ctx.actor = { type: 'customer', name: 'Kunde' };
     await customerFeedback(ctx, rid, a);
     return simplePage('Danke für deine Rückmeldung!', a === 'ja' ? 'Schön, dass sich der Partner gemeldet hat. Wir wünschen dir viel Freude mit deinem Fahrzeug!' : 'Das tut uns leid. Unser Team kümmert sich sofort darum und meldet sich bei dir.');
   }
   if (url.pathname === '/c/survey') {
     const sid = toInt(url.searchParams.get('s')), rating = toInt(url.searchParams.get('r'));
-    if (!sid || rating < 1 || rating > 5 || url.searchParams.get('t') !== await linkToken(ctx.env, 'sv', sid)) return simplePage('Link ungültig', 'Dieser Link ist leider nicht (mehr) gültig.', false);
+    if (!sid || rating < 1 || rating > 5 || !(await linkTokenOk(ctx.env, url.searchParams.get('t'), 'sv', sid))) return simplePage('Link ungültig', 'Dieser Link ist leider nicht (mehr) gültig.', false);
     const sv = await DB.one(ctx.db, 'SELECT * FROM surveys WHERE id = ?', sid);
     if (!sv) return simplePage('Link ungültig', 'Diese Umfrage gibt es nicht mehr.', false);
     if (!sv.answered_at) {

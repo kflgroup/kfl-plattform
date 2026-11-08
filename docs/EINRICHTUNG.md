@@ -38,7 +38,7 @@ Worker `tiny-lab-d971kfl-forms` → Einstellungen → **Variablen und Secrets** 
 | Name | Inhalt |
 |---|---|
 | `FORM_SECRET` | ist schon hinterlegt (derselbe Schlüssel wie im Shopify-Snippet `kfl-config`) – bleibt beim Deploy erhalten |
-| `APP_SECRET` | neuer Zufallsschlüssel, mind. 32 Zeichen (signierte Links, Server-Verschlüsselung) |
+| `APP_SECRET` | eigener Zufallsschlüssel, mind. 32 Zeichen (signierte Links, Server-Verschlüsselung; Umstellung automatisch, siehe 5g) |
 | `SETUP_TOKEN` | nur nötig, falls die Datenbank leer startet (ohne Altdaten) |
 | `SMTP_USER` | E-Mail-Postfach für den Versand: `noreplay@kfl-group.com` (IONOS) |
 | `SMTP_PASS` | Passwort dieses IONOS-Postfachs |
@@ -106,6 +106,12 @@ Variable (kein Secret): `PUBLIC_ORIGIN` = Adresse des Workers, z. B. `https://kf
   3. App auf dem Shop installieren.
   4. Unter **Einstellungen** Client-ID und Secret kopieren und im Worker als Secrets `SHOPIFY_CLIENT_ID` und `SHOPIFY_CLIENT_SECRET` hinterlegen.
 - Technik: `src/36-shopify.js`, Token per Client-Credentials-Verfahren (24 Stunden gültig, nur im Arbeitsspeicher), Admin API 2026-10, Test `test/kunden.mjs`.
+
+## 5g. Bestätigung im Kundenkonto und APP_SECRET (seit 08.11.2026)
+
+- **Hinweis für angemeldete Kunden** (Theme-Section `kfl-account-consent` im Footer-Bereich, Skript `assets/kfl-account-consent.js`): Wer im Shop angemeldet ist und für die aktuelle Version der Rechtstexte (`kfl-config` → `legal`) noch keine Bestätigung abgegeben hat, sieht einmalig ein Fenster. Darin bestätigt er die AGB, nimmt die Widerrufsbelehrung zur Kenntnis und bestätigt, die Datenschutzerklärung gelesen zu haben. Mit „Später“ kommt der Hinweis erst in der nächsten Sitzung wieder. Auf Formularseiten mit eigenen Einwilligungen erscheint er nicht.
+- Gespeichert wird in `customer_consents` (Kundennummer, Art, Version, Text, Zeitpunkt, IP nur als Hash). Die Einträge werden nie überschrieben, nur ergänzt. Sie dienen als Nachweis nach Art. 7 Abs. 1 DSGVO und erscheinen in der Kundendatenbank. Bei einer neuen Version der Rechtstexte wird erneut nachgefragt.
+- **APP_SECRET:** eigener Zufallsschlüssel für Server-Verschlüsselung und signierte Links, getrennt vom `FORM_SECRET` des Themes. Nach dem Setzen verschlüsselt der nächste Cron-Lauf (spätestens 5 Minuten) Backup-Passwort und E-Mail-Zugang automatisch neu (Protokoll „schluessel_umgestellt“). Links aus älteren E-Mails bleiben gültig. Erzeugen z. B. im Mac-Terminal mit `openssl rand -base64 48` und direkt als Geheimnis `APP_SECRET` in Cloudflare einfügen.
 
 ## 6. Shop umstellen (Go-live)
 

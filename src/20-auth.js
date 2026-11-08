@@ -128,3 +128,9 @@ async function verifyCustomerToken(env, b, scope = 'my', maxAgeSec = 12 * 3600) 
 }
 // signierte Links in E-Mails (Rückfrage ja/nein, Umfrage)
 async function linkToken(env, ...parts) { return (await hmacHex(serverKey(env), parts.join('|'))).slice(0, 40); }
+// Prüfen mit aktuellem und altem Schlüssel (Links in E-Mails, die vor dem Schlüsselwechsel verschickt wurden)
+async function linkTokenOk(env, token, ...parts) {
+  if (typeof token !== 'string' || token.length !== 40) return false;
+  for (const k of serverKeys(env)) if (safeEqual(token, (await hmacHex(k, parts.join('|'))).slice(0, 40))) return true;
+  return false;
+}

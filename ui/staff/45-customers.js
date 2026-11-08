@@ -60,7 +60,7 @@ ACT.cuRefresh = () => reload();
 const CU_CONSENTS = [['agb', 'AGB'], ['withdrawal', 'Widerruf'], ['privacy', 'Datenschutz'], ['digital', 'Digitale Inhalte']];
 const consentChip = (ok, label, title) => html`<span class="chip ${ok ? 'chip-ok' : 'chip-off'}" title="${title}">${ok ? icon('check') : icon('x')}${label}</span>`;
 function consentChips(c) {
-  return html`<div class="chips">${CU_CONSENTS.map(([k, l]) => { const v = c.consents[k]; return consentChip(!!v, l, v ? `${l}: ${v.order ? 'Bestellung ' + v.order : 'Anfrage #' + v.number} · ${v.at || ''}` : `${l}: nicht erfasst`); })}
+  return html`<div class="chips">${CU_CONSENTS.map(([k, l]) => { const v = c.consents[k]; return consentChip(!!v, l, v ? `${l}: ${v.order ? 'Bestellung ' + v.order : v.account ? 'Kundenkonto' : 'Anfrage #' + v.number} · ${v.at || ''}` : `${l}: nicht erfasst`); })}
     ${consentChip(c.marketing.email === 'SUBSCRIBED', 'Newsletter', 'Newsletter: ' + c.marketing.label)}</div>`;
 }
 let CU_PAGES = [];
@@ -84,7 +84,7 @@ async function cuList(P) {
         <td class="r num">${fNum(c.orders)}<span class="cell-sub">${fEur(c.spent)}</span></td><td class="r num">${fNum(c.requests)}</td><td>${consentChips(c)}</td></tr>`)}</tbody></table></div>
       <div class="toolbar">${q.after ? html`<button class="btn btn-sm btn-ghost" data-act="cuPrev">${icon('back')}Zurück</button>` : ''}<span class="spacer"></span>${d.next ? html`<button class="btn btn-sm" data-act="cuNext" data-after="${d.next}">Nächste 50</button>` : ''}</div>`
       : html`<div class="panel-body">${empty(filtered ? 'Keine Kunden gefunden' : 'Noch keine Kunden', filtered ? 'Passe Suche oder Filter an.' : 'Sobald sich jemand im Shop ein Konto anlegt oder bestellt, erscheint er hier.')}</div>`}</section>
-    <div class="info-box mt">${icon('shield')}<span><b>Woher die Einwilligungen kommen:</b> AGB, Widerrufsbelehrung und Datenschutz bestätigen Kunden in den Formularen Traumwagen-DEAL, Auto verkaufen und Support (mit Version und Zeitpunkt). „Digitale Inhalte“ ist die Zustimmung zum vorzeitigen Beginn im Warenkorb (Verzicht auf das Widerrufsrecht). Den Newsletter-Status liefert Shopify. Beim Anlegen eines Kontos fragt Shopify selbst keine AGB ab.</span></div>`);
+    <div class="info-box mt">${icon('shield')}<span><b>Woher die Einwilligungen kommen:</b> AGB, Widerrufsbelehrung und Datenschutz bestätigen Kunden in den Formularen Traumwagen-DEAL, Auto verkaufen und Support oder einmalig über den Hinweis für angemeldete Kunden auf der Webseite (jeweils mit Version und Zeitpunkt). „Digitale Inhalte“ ist die Zustimmung zum vorzeitigen Beginn im Warenkorb (Verzicht auf das Widerrufsrecht). Den Newsletter-Status liefert Shopify.</span></div>`);
 }
 SUBMIT.cuFilter = (d) => { CU_PAGES = []; setHashQuery({ q: d.q, state: d.state, consent: d.consent, sort: d.sort === 'neu' ? '' : d.sort, buyers: d.buyers ? 1 : '', newsletter: d.newsletter ? 1 : '' }, '#/kunden/liste'); };
 CHANGE.cuFilterChange = (el) => SUBMIT.cuFilter({ ...formData(el.form), buyers: el.form.elements.buyers.checked, newsletter: el.form.elements.newsletter.checked });
@@ -98,7 +98,7 @@ async function pageCustomer(id) {
   if (!can('customers_view')) return P.show(noAccess());
   const { customer: c, shopAdmin } = await GET('/customers/' + id); if (!P.alive()) return;
   const k = c.consents;
-  const src = (v) => v ? (v.order ? `Bestellung ${v.order}` : html`${can('req_view') ? html`<a class="link" href="#/anfragen/${v.number}">Anfrage #${v.number}</a>` : `Anfrage #${v.number}`}`) : '–';
+  const src = (v) => v ? (v.order ? `Bestellung ${v.order}` : v.account ? `${v.source || 'Kundenkonto'} (Webseite)` : html`${can('req_view') ? html`<a class="link" href="#/anfragen/${v.number}">Anfrage #${v.number}</a>` : `Anfrage #${v.number}`}`) : '–';
   const crow = (label, v, hint) => html`<tr><td><b>${label}</b>${hint ? html`<span class="cell-sub">${hint}</span>` : ''}</td><td>${v ? badge('Bestätigt', 'ok') : badge('Nicht erfasst', 'muted')}</td><td class="small">${v ? (v.value || '') : ''}</td><td class="small">${src(v)}</td><td class="small nowrap">${v ? v.at || fDT(v.created_at) : ''}</td></tr>`;
   const shopLink = shopAdmin ? `${String(shopAdmin).replace(/\/$/, '')}/customers/${c.id}` : null;
   P.show(html`${head(c.name, html`Kunde seit ${fDate(c.created_at)} · ${(CU_STATE[c.state] || [c.state])[0]}${c.verified ? ' · E-Mail bestätigt' : ''}`, shopLink ? html`<a class="btn" href="${shopLink}" target="_blank" rel="noopener">${icon('external')}In Shopify öffnen</a>` : '', ['#/kunden/liste', 'Kundendatenbank'])}

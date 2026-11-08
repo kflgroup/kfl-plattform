@@ -104,6 +104,15 @@ async function consentsFromRequests(ctx, ids) {
     if (!o.withdrawal && isYes(d[CONSENT_KEYS.agb]) && (r.type === 'deal' || r.type === 'sell')) o.withdrawal = { ...src, value: 'Widerrufsbelehrung zur Kenntnis genommen (' + d[CONSENT_KEYS.agb] + ')' };
     if (!o.partner && isYes(d[CONSENT_KEYS.partner])) o.partner = { ...src, value: d[CONSENT_KEYS.partner] };
   }
+  // Bestätigungen im Kundenkonto (Hinweis auf der Webseite) – die jeweils neueste Erklärung zählt
+  const cc = await DB.all(ctx.db, `SELECT customer_account, kind, version, text, source, created_at FROM customer_consents WHERE customer_account IN (${ids.map(() => '?').join(',')}) ORDER BY id DESC`, ...ids);
+  const KEY = { agb: 'agb', privacy: 'privacy', withdrawal: 'withdrawal' };
+  for (const c of cc) {
+    const o = out[c.customer_account] || (out[c.customer_account] = { requests: [], agb: null, privacy: null, withdrawal: null, partner: null });
+    const k = KEY[c.kind]; if (!k) continue;
+    const cur = o[k];
+    if (!cur || String(cur.created_at || '') < c.created_at) o[k] = { account: true, source: c.source || 'Kundenkonto', value: c.text, at: fmtDE(msOf(c.created_at)), created_at: c.created_at, version: c.version };
+  }
   return out;
 }
 // Zustimmung zum vorzeitigen Beginn bei digitalen Inhalten (Warenkorb-Checkbox, an der Bestellung gespeichert)

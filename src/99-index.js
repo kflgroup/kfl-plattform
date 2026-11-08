@@ -36,11 +36,33 @@ async function jobDue(db, key, period, ctx = null) {
 async function jobPause(db, key, result) { await DB.run(db, 'UPDATE jobs SET last_result = ? WHERE key = ?', JSON.stringify(result ?? null).slice(0, 2000), key); }
 async function jobDone(db, key, period, result) { await DB.run(db, 'INSERT OR REPLACE INTO jobs (key, last_run, last_result) VALUES (?, ?, ?)', key, period, JSON.stringify(result ?? null).slice(0, 2000)); }
 
+// Schlüsselwechsel (APP_SECRET neu gesetzt): verschlüsselte Einstellungen einmalig mit dem neuen Schlüssel neu verschlüsseln
+const SEALED_SETTINGS = ['_backup_pw', '_smtp_cred'];
+async function rotateServerKey(ctx, s) {
+  if (!ctx.env.APP_SECRET) return 'kein APP_SECRET';
+  const fp = (await sha256Hex('kfl-key:' + ctx.env.APP_SECRET)).slice(0, 16);
+  if (s && s._key_fp === fp) return 'aktuell';
+  const done = [], failed = [];
+  for (const key of SEALED_SETTINGS) {
+    const sealed = await rawSetting(ctx.db, key); if (!sealed) continue;
+    const r = await openSecretInfo(ctx.env, sealed);
+    if (!r.text) { failed.push(key); continue; }
+    if (r.old) { await setRawSetting(ctx.db, key, await sealSecret(ctx.env, r.text)); done.push(key); }
+  }
+  if (failed.length) {
+    await notifyStaff(ctx, { perm: 'settings_all' }, { kind: 'fehler', title: 'Schlüsselwechsel: Einstellung nicht lesbar', body: `Konnte nicht neu verschlüsselt werden: ${failed.join(', ')}. Bitte Backup-Passwort bzw. E-Mail-Zugang im Dashboard neu eingeben.`, link: '#/verwaltung/einstellungen' }).catch(() => null);
+  }
+  await setRawSetting(ctx.db, '_key_fp', fp);
+  await audit(ctx, 'schluessel_umgestellt', 'system', null, { neu_verschluesselt: done, nicht_lesbar: failed });
+  return { neu_verschluesselt: done.length, nicht_lesbar: failed.length };
+}
+
 async function runJobs(ctx, { force } = {}) {
   const s = await settingsOf(ctx);
   ctx.actor = ctx.actor || { type: 'system', id: null, name: 'System' };
   const res = {};
   const safe = async (name, fn) => { try { res[name] = await fn(); } catch (e) { res[name] = 'Fehler: ' + e.message; console.log('Job ' + name, e.stack || e.message); } };
+  await safe('schluessel', () => rotateServerKey(ctx, s));
   await safe('anfragen', () => runRequestJobs(ctx));
   await safe('archiv', async () => { const r = await ctx.db.prepare("UPDATE assignments SET archived = 1 WHERE archived = 0 AND status IN ('geschlossen','verloren','gescheitert') AND updated_at < ?").bind(isoOf(nowMs() - 24 * 3600e3)).run(); return r.meta ? r.meta.changes : 0; });
   await safe('support', () => runSupportJobs(ctx));

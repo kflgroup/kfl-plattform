@@ -58,9 +58,21 @@ async function decryptBytes(password, box) {
   return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(box.iv) }, key, unb64(box.data)));
 }
 // Geheimnisse in den Einstellungen mit dem Server-Schlüssel verschlüsseln
-async function sealSecret(env, text) { return JSON.stringify(await encryptBytes(serverKey(env), enc.encode(String(text)))); }
-async function openSecret(env, sealed) { if (!sealed) return ''; try { return dec.decode(await decryptBytes(serverKey(env), JSON.parse(sealed))); } catch (e) { return ''; } }
+// Server-Schlüssel: APP_SECRET (eigener Zufallsschlüssel). Ohne APP_SECRET wird FORM_SECRET genutzt (Altbestand).
+// Nach dem Setzen von APP_SECRET bleibt FORM_SECRET als „alter Schlüssel“ lesbar: verschlüsselte Einstellungen werden
+// automatisch neu verschlüsselt (rotateServerKey) und Links aus älteren E-Mails bleiben gültig.
 const serverKey = (env) => String(env.APP_SECRET || env.FORM_SECRET || 'kfl-dev-only');
+const serverKeys = (env) => uniq([env.APP_SECRET, env.FORM_SECRET].filter(Boolean).map(String)).concat(env.APP_SECRET || env.FORM_SECRET ? [] : ['kfl-dev-only']);
+async function sealSecret(env, text) { return JSON.stringify(await encryptBytes(serverKey(env), enc.encode(String(text)))); }
+// Entschlüsseln mit dem aktuellen, sonst mit dem alten Schlüssel; { text, old } verrät, ob neu verschlüsselt werden sollte
+async function openSecretInfo(env, sealed) {
+  if (!sealed) return { text: '', old: false };
+  let box; try { box = JSON.parse(sealed); } catch (e) { return { text: '', old: false }; }
+  const keys = serverKeys(env);
+  for (let i = 0; i < keys.length; i++) { try { return { text: dec.decode(await decryptBytes(keys[i], box)), old: i > 0 }; } catch (e) { /* nächster Schlüssel */ } }
+  return { text: '', old: false };
+}
+async function openSecret(env, sealed) { return (await openSecretInfo(env, sealed)).text; }
 
 async function gzip(bytes) {
   if (typeof CompressionStream === 'undefined') return bytes;
