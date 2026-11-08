@@ -11,7 +11,7 @@ const typeLabel = (k) => ((S.config.requestTypes || {})[k] || {}).label || k;
 const typeShort = (k) => ((S.config.requestTypes || {})[k] || {}).short || k;
 
 const NAV = [
-  { key: 'start', href: '#/', label: 'Cockpit', icon: 'home', group: 'Vertrieb' },
+  { key: 'start', href: '#/', label: 'Home', icon: 'home', group: 'Vertrieb' },
   { key: 'anfragen', href: '#/anfragen', label: 'Anfragen', icon: 'inbox', perm: ['req_view'], count: 'open', group: 'Vertrieb' },
   { key: 'partner', href: '#/partner', label: 'Geschäftspartner', icon: 'partner', perm: ['partner_view'], group: 'Vertrieb' },
   { key: 'kunden', href: '#/kunden', label: 'Kunden', icon: 'users', perm: ['customers_view', 'visitors_view'], group: 'Vertrieb' },
@@ -31,7 +31,7 @@ function shell(active) {
   if (!$('#main')) {
     render('#root', html`<div class="shell">
       <aside class="side" id="side">
-        <div class="side-brand"><a href="#/" class="logo-link" aria-label="Zum Cockpit">${LOGO}</a><span class="side-sub">Intern</span></div>
+        <div class="side-brand"><a href="#/" class="logo-link" aria-label="Zu Home">${LOGO}</a><span class="side-sub">Intern</span></div>
         <div id="scta"></div>
         <nav class="nav" id="nav" aria-label="Hauptnavigation"></nav>
         <div class="side-foot">${avatar(S.user.name, 'alt')}<div class="who"><b>${S.user.name}</b><span>${S.user.roleLabel}</span></div><div class="side-tools">
@@ -40,7 +40,7 @@ function shell(active) {
           <button class="icon-btn" data-act="logout" title="Abmelden" aria-label="Abmelden">${icon('logout')}</button></div></div>
       </aside>
       <div class="content">
-        <header class="topbar" id="stop"><button class="icon-btn tb-menu" data-act="toggleNav" aria-label="Menü">${icon('menu')}</button><a href="#/" class="tb-logo" aria-label="Zum Cockpit">${LOGO}</a>
+        <header class="topbar" id="stop"><button class="icon-btn tb-menu" data-act="toggleNav" aria-label="Menü">${icon('menu')}</button><a href="#/" class="tb-logo" aria-label="Zu Home">${LOGO}</a>
           <div class="tb-crumb" id="scrumb"></div>
           ${can('req_view') ? html`<form class="tb-search" data-submit="globalSearch" role="search"><label>${icon('search')}<input name="q" placeholder="Anfrage suchen: Nummer, Name, Marke, PLZ" aria-label="Anfragen durchsuchen" autocomplete="off"></label></form>` : html`<span class="spacer"></span>`}
           <span class="tb-chip">${icon('calendar')}${fDate(new Date())} · KW ${isoWeekOf().week}</span><span id="sbell"></span></header>
