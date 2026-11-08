@@ -162,7 +162,7 @@ async function fibuReport(ctx, period) {
   const entries = await DB.val(ctx.db, 'SELECT COUNT(*) FROM fibu_entries WHERE date >= ? AND date <= ?', from, to);
   const docs = await DB.val(ctx.db, 'SELECT COUNT(*) FROM fibu_docs WHERE date >= ? AND date <= ?', from, to);
   const openRec = await DB.one(ctx.db, "SELECT COUNT(*) AS n, COALESCE(SUM(gross + fees - paid),0) AS sum FROM invoices WHERE status IN ('offen','teilbezahlt') AND kind != 'storno' AND issue_date <= ?", to);
-  const openPay = await DB.one(ctx.db, "SELECT COUNT(*) AS n, COALESCE(SUM(gross),0) AS sum FROM purchase_invoices WHERE status != 'bezahlt' AND date <= ?", to);
+  const openPay = await DB.one(ctx.db, "SELECT COUNT(*) AS n, COALESCE(SUM(gross),0) AS sum FROM purchase_invoices WHERE status NOT IN ('bezahlt','pruefen','verworfen') AND date <= ?", to);
   return { period, kind: isYear ? 'jahr' : 'monat', from, to, created_at: nowIso(),
     accounts: rows.filter((a) => a.opening || a.debit || a.credit || a.saldo).map((a) => ({ number: a.number, name: a.name, type: a.type, opening: a.opening, debit: a.debit, credit: a.credit, saldo: a.saldo })),
     guv, income, expense, result: round2(income - expense), ytdResult, stock, entries, docs,

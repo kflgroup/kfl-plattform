@@ -11,6 +11,10 @@ keep_vars = true
 [build]
 command = "node build.mjs"
 
+# Workers AI: liest PDF-Rechnungen aus dem Rechnungs-Postfach aus (Markdown-Umwandlung und strukturierte Auswertung)
+[ai]
+binding = "AI"
+
 [observability]
 enabled = true
 

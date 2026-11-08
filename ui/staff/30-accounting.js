@@ -1,7 +1,7 @@
 /* ===== Buchhaltung ===== */
 const INV_STATUS = { entwurf: ['Entwurf', 'neutral'], offen: ['Offen', 'info'], teilbezahlt: ['Teilbezahlt', 'warn'], bezahlt: ['Bezahlt', 'ok'], storniert: ['Storniert', 'muted'] };
 const ITEM_STATUS = { offen: ['Offen', 'accent'], gesammelt: ['In der Sammelablage', 'info'], abgerechnet: ['Abgerechnet', 'ok'], storniert: ['Storniert', 'muted'] };
-const PI_STATUS = { offen: ['Offen', 'info'], zur_zahlung: ['Zur Zahlung vorgemerkt', 'accent'], in_zahlungsliste: ['In Zahlungsliste', 'warn'], freigegeben: ['Freigegeben', 'ok-light'], bezahlt: ['Bezahlt', 'ok'] };
+const PI_STATUS = { pruefen: ['Zu prüfen', 'warn'], offen: ['Offen', 'info'], zur_zahlung: ['Zur Zahlung vorgemerkt', 'accent'], in_zahlungsliste: ['In Zahlungsliste', 'warn'], freigegeben: ['Freigegeben', 'ok-light'], bezahlt: ['Bezahlt', 'ok'], verworfen: ['Verworfen', 'muted'] };
 const PR_STATUS = { offen: ['Wartet auf Freigabe', 'accent'], freigegeben: ['Freigegeben', 'ok-light'], ausgefuehrt: ['Ausgeführt', 'ok'] };
 const st = (map, k) => badge(...(map[k] || [k, 'neutral']));
 const notSent = (i) => i.kind !== 'storno' && i.status !== 'storniert' && i.mail_status && i.mail_status !== 'gesendet';
@@ -210,16 +210,58 @@ async function accPurchase(P, tab) {
       ${sel('status', Object.entries(PI_STATUS).map(([k, v]) => [k, v[0]]), q.status, { empty: 'Alle Status', attrs: 'data-change="piFilterChange" aria-label="Status"' })}
       ${sel('supplier', s.suppliers.map((x) => [x.id, x.name]), q.supplier, { empty: 'Alle Lieferanten', attrs: 'data-change="piFilterChange" aria-label="Lieferant"' })}<button class="btn btn-sm btn-dark" type="submit">Suchen</button>
       <span class="spacer"></span>${mng ? html`<button class="btn btn-sm btn-primary" type="button" data-act="piNew">${icon('plus')}Eingangsrechnung erfassen</button>` : ''}</form>
+    ${inboxBar(d.inbox, mng)}
     ${d.invoices.length ? html`<div class="table-wrap"><table class="table"><thead><tr><th>Lieferant</th><th>Nummer</th><th>Datum</th><th>Fällig</th><th class="r">Brutto</th><th>Status</th><th></th></tr></thead><tbody>${d.invoices.map((p) => html`<tr>
-      <td><b>${p.supplier_name}</b>${p.category ? html`<span class="cell-sub">${p.category}</span>` : ''}${p.entry_number ? html`<span class="cell-sub">${icon('check')} ${p.account_number} ${p.account_name} · ${p.entry_number}${p.doc_number ? ' · ' + p.doc_number : ''}</span>` : can('fibu_view') ? html`<span class="cell-sub">${badge('nicht gebucht', 'warn')}</span>` : ''}</td><td>${p.number || '–'}</td><td>${fDate(p.date)}</td><td>${fDate(p.due_date)}${p.pay_date ? html`<span class="cell-sub">Zahlung am ${fDate(p.pay_date)}</span>` : ''}</td><td class="r num">${fEur(p.gross)}<span class="cell-sub">netto ${fEur(p.net)}</span></td><td>${st(PI_STATUS, p.status)}</td>
+      <td><b>${p.supplier_name}</b>${p.source === 'postfach' ? html` <span class="tag" title="Automatisch aus dem Rechnungs-Postfach">${icon('mail')} Postfach</span>` : ''}${p.status === 'pruefen' ? html`<span class="cell-sub">${piExtractNote(p)}</span>` : ''}${p.category ? html`<span class="cell-sub">${p.category}</span>` : ''}${p.entry_number ? html`<span class="cell-sub">${icon('check')} ${p.account_number} ${p.account_name} · ${p.entry_number}${p.doc_number ? ' · ' + p.doc_number : ''}</span>` : can('fibu_view') && p.status !== 'pruefen' && p.status !== 'verworfen' ? html`<span class="cell-sub">${badge('nicht gebucht', 'warn')}</span>` : ''}</td><td>${p.number || '–'}</td><td>${fDate(p.date)}</td><td>${fDate(p.due_date)}${p.pay_date ? html`<span class="cell-sub">Zahlung am ${fDate(p.pay_date)}</span>` : ''}</td><td class="r num">${fEur(p.gross)}<span class="cell-sub">netto ${fEur(p.net)}</span></td><td>${st(PI_STATUS, p.status)}</td>
       <td class="r nowrap">${p.file_id ? html`<a class="btn btn-sm btn-ghost" target="_blank" rel="noopener" href="${fileUrl(`/acc/purchase/${p.id}/file`)}">${icon('file')}Beleg</a>` : ''}
-        ${can('fibu_book') && !p.entry_id ? html`<button class="btn btn-sm btn-primary" data-act="piBook" data-id="${p.id}" data-acc="${p.account_id || ''}">Auf Konto buchen</button>` : ''}
+        ${mng && p.status === 'pruefen' ? html`<button class="btn btn-sm btn-primary" data-act="piReview" data-id="${p.id}">Prüfen</button><button class="btn btn-sm btn-ghost" data-act="piDiscard" data-id="${p.id}">Verwerfen</button>` : ''}
+        ${can('fibu_book') && !p.entry_id && !['pruefen', 'verworfen'].includes(p.status) ? html`<button class="btn btn-sm btn-primary" data-act="piBook" data-id="${p.id}" data-acc="${p.account_id || ''}">Auf Konto buchen</button>` : ''}
         ${mng && p.status === 'offen' ? html`<button class="btn btn-sm" data-act="piSchedule" data-id="${p.id}" data-due="${p.due_date || ''}">Zur Zahlung vormerken</button>` : ''}
         ${mng && p.status === 'zur_zahlung' ? html`<button class="btn btn-sm btn-ghost" data-act="piUnschedule" data-id="${p.id}">Vormerkung lösen</button>` : ''}
         ${mng && ['offen', 'zur_zahlung'].includes(p.status) ? html`<button class="btn btn-sm btn-ghost" data-act="piPaid" data-id="${p.id}">Bezahlt</button>` : ''}</td></tr>`)}</tbody></table></div>`
       : html`<div class="panel-body">${empty('Keine Eingangsrechnungen', 'Erfasse Rechnungen deiner Lieferanten und merke sie zur Zahlung vor.')}</div>`}</section>`);
-  S.suppliers = s.suppliers;
+  S.suppliers = s.suppliers; S.purchase = d.invoices;
 }
+/* Rechnungs-Postfach: Status und Abruf */
+function inboxBar(ib, mng) {
+  if (!ib || !ib.active) return '';
+  const state = !ib.password ? html`${badge("nicht verbunden", "warn")} <span class="small muted">Passwort fehlt: in Cloudflare die geheime Variable <b>${ib.passKey}</b> anlegen.</span>`
+    : ib.ok === false ? html`${badge("Störung", "err")} <span class="small muted">${ib.error}</span>`
+    : ib.at ? html`${badge('verbunden', 'ok')} <span class="small muted">zuletzt geprüft ${fDT(ib.at)} · ${plural(ib.imported, 'Rechnung', 'Rechnungen')} übernommen${ib.pending ? ` · ${ib.pending} in Warteschlange` : ''}${ib.ai ? '' : ' · ohne KI-Auslesen (Workers AI fehlt)'}</span>` : html`<span class="small muted">noch nicht abgerufen</span>`;
+  return html`<div class="panel-body row-between bt"><div>${icon('mail')} <b>Rechnungs-Postfach ${ib.address}</b> ${state}</div>${mng && ib.password ? html`<button class="btn btn-sm" type="button" data-act="inboxRun">Jetzt abrufen</button>` : ''}</div>`;
+}
+ACT.inboxRun = async () => { const r = await POST('/acc/inbox/run'); toast(/^Fehler/.test(r.result) ? r.result : `Postfach abgerufen: ${r.result}.`, /^Fehler/.test(r.result) ? 'err' : undefined); reload(); };
+const piX = (p) => { try { return JSON.parse(p.extract || '{}') || {}; } catch (e) { return {}; } };
+function piExtractNote(p) {
+  const x = piX(p), m = { ki: 'automatisch ausgelesen (KI)', text: 'automatisch ausgelesen (Text)', keine: 'nicht lesbar – bitte von Hand ergänzen' }[x.method] || '';
+  return html`${x.subject ? `„${x.subject}“ · ` : ''}${m}${x.supplier_created ? ' · Lieferant neu angelegt' : ''}`;
+}
+ACT.piReview = async (b) => {
+  const p = (S.purchase || []).find((x) => x.id === +b.dataset.id); if (!p) return;
+  const x = piX(p), f = x.fields || {};
+  const sups = (S.suppliers || []).filter((s) => s.active || s.id === p.supplier_id);
+  const accs = await fibuExpenseAccounts(), bookable = can('fibu_book') && accs.length;
+  const gross = p.gross ? String(p.gross).replace('.', ',') : '';
+  const d = await ask({ title: 'Eingangsrechnung prüfen', wide: true, ok: 'Übernehmen', fields: html`
+    <p class="small muted">${p.file_id ? html`<a class="btn btn-sm" target="_blank" rel="noopener" href="${fileUrl(`/acc/purchase/${p.id}/file`)}">${icon('file')}Rechnung (PDF) öffnen</a> ` : ''}${x.sender ? `Von ${x.sender.name || ''} <${x.sender.email || ''}>` : ''}${x.method === 'keine' ? ' · Die PDF ließ sich nicht automatisch lesen, bitte Werte aus der PDF übernehmen.' : ' · Bitte alle Werte mit der PDF vergleichen.'}</p>
+    ${x.supplier_created ? html`<div class="info-box">${icon('alert')}<span>Der Lieferant wurde automatisch angelegt. Bitte später unter Lieferanten Anschrift und IBAN prüfen.</span></div>` : ''}
+    <div class="grid-2">${field('Lieferant *', sel('supplier_id', sups.map((s) => [s.id, s.name]), p.supplier_id, { attrs: 'required' }))}${field('Rechnungsnummer *', inp('number', p.number || '', { req: true }))}
+    ${field('Rechnungsdatum *', inp('date', p.date || '', { type: 'date', req: true }))}${field('Fällig am', inp('due_date', p.due_date || '', { type: 'date' }))}
+    ${field('Bruttobetrag *', inp('gross', gross, { req: true, ph: '0,00', attrs: 'inputmode="decimal"' }), f.net != null ? `ausgelesen: netto ${fEur(f.net)}${f.vat != null ? ', USt ' + fEur(f.vat) : ''}` : 'Rechnungsbetrag inkl. Umsatzsteuer')}
+    ${field('Umsatzsteuer', sel('vat_rate', [['19', '19 %'], ['7', '7 %'], ['0', '0 % (ohne USt / Reverse Charge)']], String(p.vat_rate ?? 19)), f.reverse_charge ? 'Reverse Charge erkannt (§ 13b UStG)' : 'Netto und Vorsteuer werden berechnet')}
+    ${bookable ? field('Konto (Aufwand)', sel('account_id', accs.map((a) => [a.id, `${a.number} · ${a.name}`]), p.account_id || '', { empty: 'Später buchen' }), 'Mit Konto wird die Rechnung direkt gebucht') : ''}${field('Buchungstext', inp('text', p.text || '', { ph: 'z. B. Software-Abo November' }))}
+    ${field('Kategorie', inp('category', p.category || '', { ph: 'z. B. Marketing, Software' }))}</div>` });
+  if (!d) return; delete d._form;
+  const acc = d.account_id; delete d.account_id;
+  await PATCH('/acc/purchase/' + p.id, { ...d, net: '', vat: '' });
+  const r = await POST(`/acc/purchase/${p.id}/confirm`, { account_id: acc || null });
+  if (r.bookingError) toast(`Übernommen, aber nicht gebucht: ${r.bookingError}`, 'err'); else toast(r.booking ? `Übernommen und gebucht (${r.booking}).` : 'Übernommen. Die Rechnung ist jetzt offen.');
+  reload();
+};
+ACT.piDiscard = async (b) => {
+  const d = await ask({ title: 'Rechnung verwerfen?', ok: 'Verwerfen', danger: true, text: 'Zum Beispiel, wenn die E-Mail keine Rechnung war oder doppelt eingegangen ist. Die PDF bleibt im System.', fields: field('Grund', inp('reason', '', { req: true, ph: 'z. B. Werbung, doppelt, Mahnung zu bekannter Rechnung' })) });
+  if (!d) return; await POST(`/acc/purchase/${b.dataset.id}/discard`, { reason: d.reason }); toast('Verworfen.'); reload();
+};
 SUBMIT.piFilter = (d) => setHashQuery(d, '#/buchhaltung/eingang');
 CHANGE.piFilterChange = (el) => SUBMIT.piFilter(formData(el.form));
 // Konten für Eingangsrechnungen (Aufwand und Aktiv, nur offene)

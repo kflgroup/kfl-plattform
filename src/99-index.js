@@ -96,6 +96,9 @@ async function runJobs(ctx, { force } = {}) {
     await safe('monatsrechnung', async () => { const r = await runMonthlyInvoices(ctx, { month: tm, max: force === 'monat' ? 50 : 1 }); pending = r.pending; count = r.count; return count; });
     if (!pending) await jobDone(ctx.db, 'monatsrechnung', tm, count); else await jobPause(ctx.db, 'monatsrechnung', `teilweise: ${count}`);
   }
+  if (force === 'erinnerungen' || (!force && !heavy)) await safe('erinnerungen', () => runCustomerReminders(ctx));
+  // Rechnungs-Postfach (alle 10 Minuten, je Lauf eine E-Mail) – nur in Läufen ohne Verteilung oder Tagesjob (Abfragegrenze je Aufruf)
+  if (force === 'postfach' || (!force && !heavy)) await safe('postfach', () => runInbox(ctx, s, { force: force === 'postfach' }));
   return res;
 }
 

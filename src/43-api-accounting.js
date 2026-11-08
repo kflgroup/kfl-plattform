@@ -12,7 +12,7 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     const open = await DB.one(db, "SELECT COUNT(*) AS n, COALESCE(SUM(gross + fees - paid),0) AS sum FROM invoices WHERE status IN ('offen','teilbezahlt') AND kind != 'storno'");
     const overdue = await DB.one(db, "SELECT COUNT(*) AS n, COALESCE(SUM(gross + fees - paid),0) AS sum FROM invoices WHERE status IN ('offen','teilbezahlt') AND kind != 'storno' AND due_date < ?", today);
     const cases = await DB.one(db, "SELECT SUM(status = 'offen') AS open, SUM(status = 'gesammelt') AS collected, SUM(status = 'storniert') AS cancelled, COALESCE(SUM(CASE WHEN status = 'gesammelt' THEN amount_net END),0) AS collected_sum FROM billing_items");
-    const pi = await DB.one(db, "SELECT SUM(status = 'offen') AS open, SUM(status = 'zur_zahlung') AS queued, SUM(status IN ('in_zahlungsliste')) AS listed, COALESCE(SUM(CASE WHEN status IN ('offen','zur_zahlung','in_zahlungsliste','freigegeben') THEN gross END),0) AS due FROM purchase_invoices");
+    const pi = await DB.one(db, "SELECT SUM(status = 'pruefen') AS review, SUM(status = 'offen') AS open, SUM(status = 'zur_zahlung') AS queued, SUM(status IN ('in_zahlungsliste')) AS listed, COALESCE(SUM(CASE WHEN status IN ('offen','zur_zahlung','in_zahlungsliste','freigegeben') THEN gross END),0) AS due FROM purchase_invoices");
     const pm = berlinParts(nowMs());
     const mFrom = `${pm.y}-${String(pm.m).padStart(2, '0')}-01`;
     const month = await DB.one(db, "SELECT COALESCE(SUM(net),0) AS net, COUNT(*) AS n FROM invoices WHERE status != 'storniert' AND kind != 'storno' AND issue_date >= ?", mFrom);
@@ -134,12 +134,14 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     if (Object.keys(o).length) await DB.update(db, 'suppliers', +m[1], o);
     await audit(ctx, 'lieferant_geaendert', 'lieferant', +m[1], Object.keys(o)); return out({ ok: true });
   }
+  if (path === '/inbox/run' && method === 'POST') { manage(); const s = await settingsOf(ctx); const result = await runInbox(ctx, s, { force: true }); await audit(ctx, 'postfach_abgerufen', 'system', null, { result }); return out({ ok: true, result, inbox: await inboxInfo(ctx, s) }); }
   if (path === '/purchase' && method === 'GET') {
     const where = ['1=1'], args = [];
+    if (!q.status) where.push("p.status != 'verworfen'");
     if (q.status) { where.push('p.status = ?'); args.push(q.status); }
     if (q.supplier) { where.push('p.supplier_id = ?'); args.push(toInt(q.supplier)); }
     if (q.q) { const like = '%' + q.q + '%'; where.push('(p.number LIKE ? OR s.name LIKE ?)'); args.push(like, like); }
-    return out({ ok: true, invoices: await DB.all(db, `SELECT p.*, s.name AS supplier_name, fa.number AS account_number, fa.name AS account_name, fe.number AS entry_number, fd.number AS doc_number FROM purchase_invoices p JOIN suppliers s ON s.id = p.supplier_id LEFT JOIN fibu_accounts fa ON fa.id = p.account_id LEFT JOIN fibu_entries fe ON fe.id = p.entry_id LEFT JOIN fibu_docs fd ON fd.id = p.doc_id WHERE ${where.join(' AND ')} ORDER BY p.id DESC LIMIT 1000`, ...args) });
+    return out({ ok: true, invoices: await DB.all(db, `SELECT p.*, s.name AS supplier_name, fa.number AS account_number, fa.name AS account_name, fe.number AS entry_number, fd.number AS doc_number FROM purchase_invoices p JOIN suppliers s ON s.id = p.supplier_id LEFT JOIN fibu_accounts fa ON fa.id = p.account_id LEFT JOIN fibu_entries fe ON fe.id = p.entry_id LEFT JOIN fibu_docs fd ON fd.id = p.doc_id WHERE ${where.join(' AND ')} ORDER BY (p.status = 'pruefen') DESC, p.id DESC LIMIT 1000`, ...args), inbox: await inboxInfo(ctx, await settingsOf(ctx)) });
   }
   if ((path === '/purchase' && method === 'POST') || ((m = path.match(/^\/purchase\/(\d+)$/)) && method === 'PATCH')) {
     manage();
@@ -173,12 +175,35 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
     if (cur.entry_id) need(!['supplier_id', 'net', 'vat', 'gross', 'account_id', 'date', 'vat_rate'].some((k) => o[k] !== undefined), 409, 'Die Eingangsrechnung ist bereits gebucht. Beträge, Konto und Datum lassen sich nur über ein Storno der Buchung ändern.');
     await DB.update(db, 'purchase_invoices', +m[1], o); await audit(ctx, 'eingangsrechnung_geaendert', 'eingangsrechnung', +m[1], Object.keys(o)); return out({ ok: true });
   }
-  if ((m = path.match(/^\/purchase\/(\d+)\/(schedule|unschedule|paid|file|book)$/))) {
+  if ((m = path.match(/^\/purchase\/(\d+)\/(schedule|unschedule|paid|file|book|confirm|discard)$/))) {
     const pi = await DB.one(db, 'SELECT * FROM purchase_invoices WHERE id = ?', +m[1]); need(pi, 404, 'Nicht gefunden.');
     if (m[2] === 'file' && method === 'GET') { need(pi.file_id, 404, 'Keine Datei.'); return fileResponse(await getFile(ctx, pi.file_id), q.download === '1'); }
     manage();
     if (m[2] === 'schedule') { need(['offen'].includes(pi.status), 409, 'Nur offene Rechnungen können zur Zahlung vorgemerkt werden.'); const sup = await DB.one(db, 'SELECT iban FROM suppliers WHERE id = ?', pi.supplier_id); need(ibanValid(sup && sup.iban), 400, 'Beim Lieferanten ist keine gültige IBAN hinterlegt.'); await DB.update(db, 'purchase_invoices', pi.id, { status: 'zur_zahlung', pay_date: /^\d{4}-\d{2}-\d{2}$/.test(body.pay_date || '') ? body.pay_date : berlinDate(nowMs()), updated_at: nowIso() }); }
     if (m[2] === 'unschedule') { need(pi.status === 'zur_zahlung', 409, 'Nicht vorgemerkt.'); await DB.update(db, 'purchase_invoices', pi.id, { status: 'offen', pay_date: null, updated_at: nowIso() }); }
+    if (['paid', 'book', 'schedule'].includes(m[2])) need(!['pruefen', 'verworfen'].includes(pi.status), 409, pi.status === 'pruefen' ? 'Bitte die Rechnung zuerst prüfen und übernehmen.' : 'Die Rechnung wurde verworfen.');
+    if (m[2] === 'confirm') {
+      need(pi.status === 'pruefen', 409, 'Die Rechnung ist bereits geprüft.');
+      need(pi.supplier_id && pi.number && pi.date && pi.gross > 0, 400, 'Bitte Lieferant, Rechnungsnummer, Datum und Bruttobetrag prüfen und ergänzen.');
+      const dup = await DB.one(db, "SELECT id FROM purchase_invoices WHERE id != ? AND supplier_id = ? AND lower(number) = lower(?) AND status != 'verworfen'", pi.id, pi.supplier_id, pi.number);
+      need(!dup || body.allow_duplicate, 409, 'Diese Rechnungsnummer gibt es beim Lieferanten schon. Bitte prüfen, ob die Rechnung doppelt eingegangen ist.');
+      await DB.update(db, 'purchase_invoices', pi.id, { status: 'offen', created_by: pi.created_by || u.id, updated_at: nowIso() });
+      await audit(ctx, 'eingangsrechnung_geprueft', 'eingangsrechnung', pi.id, { brutto: pi.gross });
+      let booking = null, bookingError = null;
+      if (body.account_id && can(u, 'fibu_book')) {
+        try {
+          const acc = await DB.one(db, "SELECT id FROM fibu_accounts WHERE id = ? AND status = 'offen'", toInt(body.account_id)); need(acc, 400, 'Bitte ein offenes Konto wählen.');
+          await DB.update(db, 'purchase_invoices', pi.id, { account_id: acc.id });
+          booking = await DB.val(db, 'SELECT number FROM fibu_entries WHERE id = ?', await fibuBookPurchase(ctx, pi.id));
+        } catch (e) { bookingError = e.message; }
+      }
+      return out({ ok: true, booking, bookingError });
+    }
+    if (m[2] === 'discard') {
+      need(pi.status === 'pruefen', 409, 'Nur ungeprüfte Rechnungen aus dem Postfach können verworfen werden.');
+      const reason = str(body.reason, 300); need(reason.length >= 3, 400, 'Bitte einen Grund angeben (z. B. keine Rechnung, doppelt).');
+      await DB.update(db, 'purchase_invoices', pi.id, { status: 'verworfen', note: [pi.note, `Verworfen von ${u.name}: ${reason}`].filter(Boolean).join('\n'), updated_at: nowIso() });
+    }
     if (m[2] === 'paid') { await DB.update(db, 'purchase_invoices', pi.id, { status: 'bezahlt', paid_at: nowIso(), updated_at: nowIso() }); await fibuBookPurchasePaid(ctx, pi.id, /^\d{4}-\d{2}-\d{2}$/.test(body.date || '') ? body.date : null); }
     if (m[2] === 'book') { requirePerm(u, 'fibu_book'); if (body.account_id) { const acc = await DB.one(db, "SELECT id FROM fibu_accounts WHERE id = ? AND status = 'offen'", toInt(body.account_id)); need(acc, 400, 'Bitte ein offenes Konto wählen.'); await DB.update(db, 'purchase_invoices', pi.id, { account_id: acc.id }); } const eid = await fibuBookPurchase(ctx, pi.id); if (pi.status === 'bezahlt') await fibuBookPurchasePaid(ctx, pi.id, berlinDate(msOf(pi.paid_at || nowIso()))); return out({ ok: true, booking: await DB.val(db, 'SELECT number FROM fibu_entries WHERE id = ?', eid) }); }
     await audit(ctx, 'eingangsrechnung_' + m[2], 'eingangsrechnung', pi.id, null);

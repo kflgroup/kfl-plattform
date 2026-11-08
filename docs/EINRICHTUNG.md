@@ -113,6 +113,12 @@ Variable (kein Secret): `PUBLIC_ORIGIN` = Adresse des Workers, z. B. `https://kf
 - Gespeichert wird in `customer_consents` (Kundennummer, Art, Version, Text, Zeitpunkt, IP nur als Hash). Die Einträge werden nie überschrieben, nur ergänzt. Sie dienen als Nachweis nach Art. 7 Abs. 1 DSGVO und erscheinen in der Kundendatenbank. Bei einer neuen Version der Rechtstexte wird erneut nachgefragt.
 - **APP_SECRET:** eigener Zufallsschlüssel für Server-Verschlüsselung und signierte Links, getrennt vom `FORM_SECRET` des Themes. Nach dem Setzen verschlüsselt der nächste Cron-Lauf (spätestens 5 Minuten) Backup-Passwort und E-Mail-Zugang automatisch neu (Protokoll „schluessel_umgestellt“). Links aus älteren E-Mails bleiben gültig. Erzeugen z. B. im Mac-Terminal mit `openssl rand -base64 48` und direkt als Geheimnis `APP_SECRET` in Cloudflare einfügen.
 
+## 5h. Lieferanten, Kunden-Erinnerungen, Gutschein und Rechnungs-Postfach (seit 08.11.2026)
+- **Geschäftspartner = Lieferant:** Neue Partner werden automatisch als Lieferant angelegt (Haken bei der Anlage abwählbar, später in der Partneransicht unter „Rechnung“). Stammdaten kommen vom Partner, IBAN/BIC/Kundennummer pflegt die Buchhaltung.
+- **Kunden-Erinnerungen:** Angebots-Erinnerung nach 24 h (an alle), Nachfrage zu Service und Partnerkontakt 5 Tage nach der Zusage (nur mit Haken „Einwilligung Feedback und Erinnerungen“ im Formular, Abmeldelink `/c/optout`). Einstellungen → Kunden-Erinnerungen.
+- **Gutschein SCHNELLSEIN:** 30 % auf die Kollektion „Ratgeber“, je Kunde einmal, in Shopify angelegt. Versand über Shopify Messaging → Automatisierung „Abgebrochenen Checkout wiederherstellen“ (Empfänger: Abonnenten). Statistik → Webshop zeigt abgebrochene Kassen, versendete Codes, Käufe mit Code. Für Status und automatische Verlängerung braucht die Shopify-App zusätzlich `read_discounts` und `write_discounts`.
+- **Rechnungs-Postfach:** Das System liest alle 10 Minuten das Postfach `rechnung@kfl-group.com` per IMAP (imap.ionos.de:993, nur lesen) und legt jede PDF-Rechnung unter Buchhaltung → Eingangsrechnungen mit Status „Zu prüfen“ an. Einrichtung: in Cloudflare die geheime Variable `SMTP_PASS_RECHNUNG` = Passwort des Postfachs anlegen. Das Auslesen nutzt Workers AI (Binding `AI` in `wrangler.toml`, im Free-Plan 10.000 Neurons/Tag). Ohne KI werden Textmuster genutzt.
+
 ## 6. Shop umstellen (Go-live)
 
 Im Theme **„KFL 2027 – Neuer Auftritt“** sind bereits enthalten (rückwärtskompatibel mit dem alten Worker):

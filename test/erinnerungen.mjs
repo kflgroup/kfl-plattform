@@ -38,30 +38,32 @@ const addReq = (email, status, extra = {}, consent = false) => {
 const mailTo = (to, re) => mails.filter((m) => m.to.some((x) => x.email === to) && re.test(m.subject));
 const linkIn = (m, path) => { const h = m.htmlContent.match(new RegExp(`https://w\\.example${path.replace('/', '\\/')}\\?[^"]+`)); return h && h[0].replace(/&amp;/g, '&'); };
 
+// Tagesjobs (Backup, Mahnungen, FiBu …) laufen zuerst; Erinnerungen laufen nur in Cron-Läufen ohne Tagesjob
+for (let i = 0; i < 6; i++) await cron(worker, env);
 console.log('Erinnerung an ein vorgestelltes Angebot (24 h ohne Reaktion)');
 const r1 = addReq('frisch@kunde.test', 'angebot_beim_kunden', { presented_at: '2026-11-08T00:00:00Z' });
 const r2 = addReq('wartet@kunde.test', 'angebot_beim_kunden', { presented_at: '2026-11-07T08:00:00Z' });
 const r3 = addReq('entschieden@kunde.test', 'angebot_akzeptiert', { presented_at: '2026-11-06T08:00:00Z', decided_at: '2026-11-06T12:00:00Z' });
-await cron(worker, env);
+await cron(worker, env); await cron(worker, env);
 check(mailTo('wartet@kunde.test', /wartet auf dich/).length === 1, 'Kunde ohne Reaktion nach 24 h erinnert (auch ohne Werbeeinwilligung)');
 const rem = mailTo('wartet@kunde.test', /wartet auf dich/)[0];
 check(rem && /Angebote ansehen/.test(rem.htmlContent) && /Support/.test(rem.htmlContent) && /meine-anfragen#anfrage-/.test(rem.htmlContent), 'Erinnerung mit Link zum Angebot und Hilfe-Angebot');
 check(!mailTo('frisch@kunde.test', /wartet/).length && !mailTo('entschieden@kunde.test', /wartet/).length, 'Keine Erinnerung vor 24 h oder nach Entscheidung');
 check(q1("SELECT COUNT(*) AS n FROM events WHERE request_id = ? AND action = 'kunde_erinnert'", r2).n === 1, 'Erinnerung im Verlauf der Anfrage');
-await cron(worker, env);
+await cron(worker, env); await cron(worker, env);
 check(mailTo('wartet@kunde.test', /wartet auf dich/).length === 1, 'Erinnerung nur einmal');
 
 console.log('Nachfrage nach 5 Tagen: Zufriedenheit und Partnerkontakt (nur mit Einwilligung)');
 const s1 = addReq('ja@kunde.test', 'kontaktdaten_versendet', { decided_at: '2026-11-02T09:00:00Z', won_assignment_id: 1 }, true);
 const s2 = addReq('nein@kunde.test', 'kontaktdaten_versendet', { decided_at: '2026-11-02T09:00:00Z', won_assignment_id: 1 }, false);
 const s3 = addReq('zufrueh@kunde.test', 'kontaktdaten_versendet', { decided_at: '2026-11-05T09:00:00Z', won_assignment_id: 1 }, true);
-await cron(worker, env);
+await cron(worker, env); await cron(worker, env);
 const sv = mailTo('ja@kunde.test', /Wie zufrieden bist du mit KFL/);
 check(sv.length === 1, 'Kunde mit Einwilligung bekommt die Nachfrage');
 check(sv[0] && /Hat sich der Partner bei dir gemeldet/.test(sv[0].htmlContent) && /Anfragetool/.test(sv[0].htmlContent) && /Hier abmelden/.test(sv[0].htmlContent), 'Fragt nach Anfragetool, Service und Partnerkontakt, mit Abmeldelink');
 check(!mailTo('nein@kunde.test', /zufrieden/).length, 'Ohne Einwilligung keine Nachfrage');
 check(!mailTo('zufrueh@kunde.test', /zufrieden/).length, 'Nicht vor Ablauf der 5 Tage');
-await cron(worker, env);
+await cron(worker, env); await cron(worker, env);
 check(mailTo('ja@kunde.test', /Wie zufrieden bist du mit KFL/).length === 1, 'Nachfrage nur einmal');
 
 console.log('Antworten aus der Mail');
@@ -76,7 +78,7 @@ console.log('Abmelden von Umfragen');
 const s4 = addReq('ja@kunde.test', 'kontaktdaten_versendet', { decided_at: '2026-11-02T10:00:00Z', won_assignment_id: 1 }, true);
 r = await c.get(linkIn(sv[0], '/c/optout').replace('https://w.example', ''), { who: 'kunde' });
 check(r.status === 200 && q1('SELECT feedback_optout FROM requests WHERE id = ?', s4).feedback_optout === 1, 'Abmeldung gilt für alle Anfragen dieser E-Mail-Adresse');
-await cron(worker, env);
+await cron(worker, env); await cron(worker, env);
 check(mailTo('ja@kunde.test', /Wie zufrieden bist du mit KFL/).length === 1, 'Nach der Abmeldung keine weitere Umfrage');
 r = await c.get('/c/optout?r=' + (s1 + 1000) + '&t=' + 'x'.repeat(40), { who: 'kunde' });
 check(r.status !== 500 && /ungültig/.test(r._text || ''), 'Gefälschter Abmeldelink abgelehnt');

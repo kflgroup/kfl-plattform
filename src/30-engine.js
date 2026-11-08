@@ -662,8 +662,12 @@ async function runRequestJobs(ctx) {
       body: `<p>Hallo ${esc(jparse(req.data, {}).Vorname || '')},</p><p>wie zufrieden warst du mit dem Partner zu deiner Anfrage <strong>#${toNumber(req.id)}</strong>? 1 = gar nicht, 5 = sehr zufrieden.</p><p style="margin:20px 0">${await surveyStars(ctx, sv.id)}</p>${await optoutNote(ctx, req)}` });
     await DB.update(ctx.db, 'surveys', sv.id, { sent_at: t }); res.surveys++;
   }
+  return res;
+}
+/* Kunden-Erinnerungen und Nachfragen – laufen nur in Cron-Läufen ohne großen Tagesjob (Abfragegrenze je Aufruf) */
+async function runCustomerReminders(ctx) {
   // 6) Kunde hat auf das vorgestellte Angebot nicht reagiert → einmalige Erinnerung (gehört zur angefragten Leistung, daher ohne Werbeeinwilligung)
-  res.offer_reminders = 0;
+  const res = { offer_reminders: 0, service_surveys: 0 }, t = nowIso(), s = await settingsOf(ctx);
   if (+s.offer_reminder_hours > 0) {
     const due = isoOf(nowMs() - s.offer_reminder_hours * 3600e3);
     for (const req of await DB.all(ctx.db, "SELECT * FROM requests WHERE deleted = 0 AND status = 'angebot_beim_kunden' AND decided_at IS NULL AND offer_reminded_at IS NULL AND presented_at IS NOT NULL AND presented_at < ? ORDER BY presented_at LIMIT 2", due)) {
@@ -672,7 +676,6 @@ async function runRequestJobs(ctx) {
     }
   }
   // 7) Nachfrage nach der Zusage: Zufriedenheit mit Anfragetool und Service + hat sich der Partner gemeldet? (nur mit Einwilligung)
-  res.service_surveys = 0;
   if (+s.service_survey_days > 0) {
     const due = isoOf(nowMs() - s.service_survey_days * 86400e3);
     for (const req of await DB.all(ctx.db, `SELECT * FROM requests WHERE deleted = 0 AND won_assignment_id IS NOT NULL AND decided_at IS NOT NULL AND decided_at < ? AND decided_at > ? AND feedback_optout = 0

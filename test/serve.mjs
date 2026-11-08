@@ -70,6 +70,8 @@ if (!process.env.EMPTY) {
   // Buchhaltung
   const sup = await c.post('/api/acc/suppliers', { name: 'Werbeagentur Nord', iban: 'DE89 3704 0044 0532 0130 00', email: 'buchhaltung@werbeagentur-nord.de', city: 'Hamburg', zip: '20095' }, { who: 'bh' });
   await c.post('/api/acc/purchase', { supplier_id: sup.id, number: 'WA-2026-77', date: '2026-10-20', net: '1000', due_date: '2026-11-03', category: 'Marketing' }, { who: 'bh' });
+  env.DB._sq.prepare("INSERT INTO purchase_invoices (supplier_id, number, date, due_date, net, vat, gross, vat_rate, status, source, note, text, extract, created_at, updated_at) VALUES (?, 'WN-2026-118', '2026-11-03', '2026-11-17', 500, 95, 595, 19, 'pruefen', 'postfach', 'Aus dem Rechnungs-Postfach', 'Kampagne Oktober', ?, datetime('now'), datetime('now'))")
+    .run(sup.id, JSON.stringify({ method: 'ki', subject: 'Ihre Rechnung Oktober', sender: { name: 'Werbeagentur Nord', email: 'buchhaltung@werbeagentur-nord.de' }, fields: { net: 500, vat: 95 } }));
   await c.post('/api/acc/invoices', { org_id: org.B, lines: [{ description: 'Einrichtung Partnerkonto', qty: 1, unit: 99 }], send: true }, { who: 'bh' });
   // Abrechnungsfälle (Beispiel) für Buchhaltung und Storno
   const bi = (o, rid, d, a) => env.DB._sq.prepare("INSERT INTO billing_items (org_id, request_id, description, amount_net, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'offen', datetime('now'), datetime('now'))").run(o, rid, d, a);

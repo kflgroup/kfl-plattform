@@ -217,6 +217,10 @@ const DEFAULT_SETTINGS = {
   cart_code: 'SCHNELLSEIN',   // Gutscheincode der Warenkorb-Erinnerung (Shopify)
   cart_code_renew: true,      // Gutschein vor Ablauf automatisch um cart_code_days verlängern
   cart_code_days: 30,
+  // Rechnungs-Postfach: E-Mails mit PDF-Rechnung werden als Eingangsrechnung „zu prüfen“ angelegt (Passwort als Cloudflare-Geheimnis SMTP_PASS_<NAME>)
+  invoice_inbox: 'rechnung@kfl-group.com',
+  invoice_inbox_active: true,
+  invoice_inbox_days: 14,
   // Buchhaltung
   lead_price_deal: 0,
   lead_price_sell: 0,
