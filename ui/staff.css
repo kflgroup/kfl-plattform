@@ -312,3 +312,4 @@ fieldset.fieldset-plain{border:0;padding:0;margin:0;min-width:0}
 .cell-sub.is-hot{color:var(--orange-ink);font-weight:700}
 .who-cell{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;font-size:13.5px}
 .who-cell .avatar{width:26px;height:26px;font-size:10.5px}
+.panel-body.bt{border-top:1px solid var(--line-2)}

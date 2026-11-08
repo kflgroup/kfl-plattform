@@ -32,7 +32,7 @@ function orgPayload(d) {
   const contacts = (d.c_name || []).map((n, i) => ({ name: n, role: d.c_role[i], email: d.c_email[i], phone: d.c_phone[i] })).filter((c) => c.name || c.email);
   const o = { name: d.name, kind: d.kind, street: d.street, zip: d.zip, city: d.city, phone: d.phone, email: d.email, website: d.website,
     billing_name: d.billing_name, billing_street: d.billing_street, billing_zip: d.billing_zip, billing_city: d.billing_city, billing_email: d.billing_email, vat_id: d.vat_id, tax_no: d.tax_no,
-    brands, accepts: d.accepts || [], max_radius_km: d.max_radius_km, opening, contacts, active: d.active };
+    brands, accepts: d.accepts || [], max_radius_km: d.max_radius_km, opening, contacts, active: d.active, supplier: d.supplier };
   if (can('partner_terms') && d.billing_mode !== undefined) Object.assign(o, { billing_mode: d.billing_mode, lead_price: d.lead_price, ...Object.fromEntries(ORG_TERM_KEYS.filter((k) => d[k] !== undefined).map((k) => [k, d[k]])) });
   return o;
 }
@@ -56,6 +56,7 @@ ACT.orgNew = async () => {
       ${can('partner_terms') ? field('Abrechnung', sel('billing_mode', [['einzel', 'Jeder Fall einzeln'], ['monatlich', 'Monatliche Sammelrechnung']], 'einzel')) : ''}</div>
     <fieldset><legend>Marken</legend>${brandPicker([])}</fieldset>
     <div class="checks">${chk('accepts[]', true, 'Traumwagen-DEAL (Kauf, Leasing, Finanzierung)', 'deal')}${chk('accepts[]', true, 'Fahrzeugankauf', 'sell')}</div>
+    <div class="stack-s">${chk('supplier', true, 'Auch als Lieferant anlegen')}<p class="small muted">Der Partner erscheint dann automatisch unter Buchhaltung → Lieferanten, damit du seine Rechnungen erfassen und bezahlen kannst. Name und Anschrift werden laufend übernommen, die Bankverbindung ergänzt die Buchhaltung.</p></div>
     <fieldset><legend>Zugang zum Partner-Dashboard</legend><p class="small muted">Optional: Lege gleich das erste Konto an. Die Person bekommt den Einladungslink per E-Mail und legt ihr Passwort selbst fest. Weitere Konten (bei Organisationen) legst du danach beim Partner an.</p>
       <div class="grid-2 mt">${field('Name der Person', inp('u_name', '', { ph: 'z. B. Max Händler' }))}${field('E-Mail für den Zugang', inp('u_email', '', { type: 'email', ph: 'leer = kein Konto anlegen' }))}
       ${field('Rolle', sel('u_role', Object.entries(S.config.partnerRoles).map(([k, r]) => [k, r.label]), 'gf'))}${field('Telefon', inp('u_phone'))}</div>
@@ -64,7 +65,7 @@ ACT.orgNew = async () => {
 };
 SUBMIT.orgCreate = async (d) => {
   const brands = d.brand_all ? ['*'] : [...(d.brands || []), ...String(d.brands_extra || '').split(',').map((x) => x.trim()).filter(Boolean)];
-  const r = await POST('/orgs', { name: d.name, kind: d.kind, email: d.email, street: d.street, zip: d.zip, city: d.city, phone: d.phone, billing_email: d.billing_email, vat_id: d.vat_id, brands, accepts: d.accepts, ...(can('partner_terms') ? { billing_mode: d.billing_mode } : {}) });
+  const r = await POST('/orgs', { name: d.name, kind: d.kind, email: d.email, street: d.street, zip: d.zip, city: d.city, phone: d.phone, billing_email: d.billing_email, vat_id: d.vat_id, brands, accepts: d.accepts, supplier: !!d.supplier, ...(can('partner_terms') ? { billing_mode: d.billing_mode } : {}) });
   closeModal();
   if (d.u_email) {
     const pu = await POST(`/orgs/${r.id}/users`, { name: d.u_name || d.u_email.split('@')[0], email: d.u_email, role: d.u_role, phone: d.u_phone });
@@ -99,7 +100,9 @@ async function pagePartner(id) {
       <section class="panel"><div class="panel-head"><h2>Rechnung</h2></div><div class="panel-body grid-2">
         ${field('Rechnungsempfänger', inp('billing_name', o.billing_name, { ph: o.name, attrs: dis }))}${field('Rechnungs-E-Mail', inp('billing_email', o.billing_email, { type: 'email', ph: o.email, attrs: dis }))}
         ${field('Straße', inp('billing_street', o.billing_street, { ph: o.street, attrs: dis }))}<div class="grid-2">${field('PLZ', inp('billing_zip', o.billing_zip, { ph: o.zip, attrs: dis }))}${field('Ort', inp('billing_city', o.billing_city, { ph: o.city, attrs: dis }))}</div>
-        ${field('USt-IdNr.', inp('vat_id', o.vat_id, { attrs: dis }))}${field('Steuernummer', inp('tax_no', o.tax_no, { attrs: dis }))}</div></section>
+        ${field('USt-IdNr.', inp('vat_id', o.vat_id, { attrs: dis }))}${field('Steuernummer', inp('tax_no', o.tax_no, { attrs: dis }))}</div>
+        <div class="panel-body stack-s bt">${mng ? chk('supplier', o.supplier !== 0, 'Auch als Lieferant führen') : html`<b>Lieferant:</b> ${o.supplier !== 0 ? 'ja' : 'nein'}`}
+          <p class="small muted">${supplierHint(d.supplier, o.supplier !== 0)}</p></div></section>
       <section class="panel"><div class="panel-head"><h2>Konditionen</h2>${terms ? '' : html`<span class="small muted">${icon('lock')} nur Geschäftsführung und Admin</span>`}</div><div class="panel-body grid-2">
         ${field('Abrechnung', sel('billing_mode', [['einzel', 'Jeder Fall einzeln'], ['monatlich', 'Monatliche Sammelrechnung']], o.billing_mode, { attrs: terms ? '' : 'disabled' }))}
         ${field('Preis je Vermittlung (netto)', inp('lead_price', o.lead_price ?? '', { ph: 'Standard laut Einstellungen', attrs: terms ? '' : 'disabled' }))}
@@ -125,6 +128,12 @@ async function pagePartner(id) {
         <ul class="timeline">${d.notes.map((n) => html`<li><div><div class="tl-meta">${n.author || 'System'} · ${fDT(n.created_at)}</div><div class="pre">${n.text}</div></div></li>`)}</ul></div></section>` : ''}
       ${can('partner_delete') ? html`<section class="panel"><div class="panel-body row-between"><span class="small muted">Organisation mit allen Konten löschen.</span><button class="btn btn-sm btn-danger" data-act="orgDelete">${icon('trash')}Löschen</button></div></section>` : ''}
     </div></div>`);
+}
+function supplierHint(sp, on) {
+  if (!on) return sp ? `Als Lieferant inaktiv. ${sp.invoices ? plural(sp.invoices, 'Eingangsrechnung bleibt', 'Eingangsrechnungen bleiben') + ' erhalten.' : ''}` : 'Wird nicht als Lieferant geführt.';
+  if (!sp) return 'Wird beim Speichern unter Buchhaltung → Lieferanten angelegt.';
+  const link = can('acc_view') ? html` <a href="#/buchhaltung/lieferanten">Zu den Lieferanten</a>` : '';
+  return html`Steht unter Buchhaltung → Lieferanten. Rechnungsanschrift und USt-IdNr. werden automatisch übernommen. ${sp.iban ? 'IBAN hinterlegt.' : html`<span class="badge t-warn">IBAN fehlt</span>`}${link}`;
 }
 const st2 = (i) => { const live = ['offen', 'teilbezahlt'].includes(i.status); return html`${st(INV_STATUS, i.status)}${live && i.due_date < todayISO() ? html` ${badge('überfällig', 'err')}` : ''}`; };
 const contactRow = (c = {}) => html`<tr><td><input name="c_role[]" value="${c.role || ''}" placeholder="z. B. Buchhaltung"></td><td><input name="c_name[]" value="${c.name || ''}"></td><td><input name="c_email[]" value="${c.email || ''}" type="email"></td><td><input name="c_phone[]" value="${c.phone || ''}"></td></tr>`;

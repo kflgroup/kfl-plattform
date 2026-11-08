@@ -117,15 +117,22 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
   if (path === '/monthly-run' && method === 'POST') { manage(); const r = await runMonthlyInvoices(ctx, { max: 1 }); if (r.count) await audit(ctx, 'sammelrechnungen_manuell', 'buchhaltung', null, { anzahl: r.count }); return out({ ok: true, count: r.count, pending: r.pending }); }
 
   /* ---------- Lieferanten & Eingangsrechnungen ---------- */
-  if (path === '/suppliers' && method === 'GET') return out({ ok: true, suppliers: await DB.all(db, 'SELECT s.*, (SELECT COUNT(*) FROM purchase_invoices p WHERE p.supplier_id = s.id) AS invoices FROM suppliers s ORDER BY s.active DESC, s.name') });
+  if (path === '/suppliers' && method === 'GET') return out({ ok: true, suppliers: await DB.all(db, 'SELECT s.*, o.name AS org_name, (SELECT COUNT(*) FROM purchase_invoices p WHERE p.supplier_id = s.id) AS invoices FROM suppliers s LEFT JOIN orgs o ON o.id = s.org_id ORDER BY s.active DESC, s.name') });
   if ((path === '/suppliers' && method === 'POST') || ((m = path.match(/^\/suppliers\/(\d+)$/)) && method === 'PATCH')) {
     manage();
     const o = {};
     for (const k of ['name', 'street', 'zip', 'city', 'country', 'email', 'phone', 'bic', 'vat_id', 'customer_no', 'note']) if (body[k] !== undefined) o[k] = str(body[k], k === 'note' ? 1000 : 160);
     if (body.iban !== undefined) { const ib = ibanClean(body.iban); need(!ib || ibanValid(ib), 400, 'Die IBAN ist ungültig.'); o.iban = ib; }
     if (body.active !== undefined) o.active = body.active ? 1 : 0;
+    // Mit einem Geschäftspartner verknüpft: Name und Anschrift kommen vom Partner, aktiv/inaktiv = Lieferantenstatus des Partners
+    const linked = method === 'PATCH' ? await DB.one(db, 'SELECT s.org_id, o.deleted FROM suppliers s JOIN orgs o ON o.id = s.org_id WHERE s.id = ?', +m[1]) : null;
+    if (linked) {
+      for (const k of ORG_SUPPLIER_FIELDS) delete o[k];
+      if (o.active !== undefined) { need(!o.active || !linked.deleted, 409, 'Der Geschäftspartner ist gelöscht.'); await DB.run(db, 'UPDATE orgs SET supplier = ?, updated_at = ? WHERE id = ?', o.active, nowIso(), linked.org_id); }
+    }
     if (method === 'POST') { need(o.name, 400, 'Bitte einen Namen angeben.'); const id = await DB.insert(db, 'suppliers', { ...o, active: 1, created_at: nowIso() }); await audit(ctx, 'lieferant_angelegt', 'lieferant', id, { name: o.name }); return out({ ok: true, id }); }
-    await DB.update(db, 'suppliers', +m[1], o); await audit(ctx, 'lieferant_geaendert', 'lieferant', +m[1], Object.keys(o)); return out({ ok: true });
+    if (Object.keys(o).length) await DB.update(db, 'suppliers', +m[1], o);
+    await audit(ctx, 'lieferant_geaendert', 'lieferant', +m[1], Object.keys(o)); return out({ ok: true });
   }
   if (path === '/purchase' && method === 'GET') {
     const where = ['1=1'], args = [];

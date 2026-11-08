@@ -132,6 +132,7 @@ const SCHEMA = [
 ];
 
 const INDEXES = [
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_sup_org ON suppliers(org_id) WHERE org_id IS NOT NULL`,
   `CREATE INDEX IF NOT EXISTS idx_req_type ON requests(type, created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_req_status ON requests(status)`,
   `CREATE INDEX IF NOT EXISTS idx_req_account ON requests(customer_account)`,
@@ -171,8 +172,9 @@ const EXTRA_COLUMNS = {
   sessions: { area_until: 'TEXT' },
   mail_outbox: { server_reply: 'TEXT' },
   offers: { score_detail: 'TEXT' },
+  suppliers: { org_id: 'INTEGER' },
   purchase_invoices: { account_id: 'INTEGER', vat_rate: 'REAL', doc_id: 'INTEGER', entry_id: 'INTEGER', pay_entry_id: 'INTEGER', text: 'TEXT' },
-  orgs: { reminder_due_days: 'INTEGER', dunning_fee_1: 'REAL', dunning_fee_2: 'REAL', dunning_due_days: 'INTEGER', dunning_due_days_2: 'INTEGER' },
+  orgs: { supplier: 'INTEGER NOT NULL DEFAULT 1', reminder_due_days: 'INTEGER', dunning_fee_1: 'REAL', dunning_fee_2: 'REAL', dunning_due_days: 'INTEGER', dunning_due_days_2: 'INTEGER' },
   invoices: { mail_status: 'TEXT', mail_error: 'TEXT', intro: 'TEXT' },
   billing_items: { cancel_reason: 'TEXT', cancelled_at: 'TEXT', cancelled_by: 'TEXT', prev_status: 'TEXT' }
 };
@@ -237,6 +239,15 @@ async function migrate(db) {
   if (!flags.has('_acc_notes_v1')) ops.push(
     db.prepare("INSERT INTO acc_notes (item_id, text, author_name, created_at) SELECT id, note, 'Buchhaltung', updated_at FROM billing_items WHERE note IS NOT NULL AND trim(note) != ''"),
     setFlagStmt(db, '_acc_notes_v1'));
+  // Einmalig: jeder Geschäftspartner ist auch Lieferant (gleichnamige Lieferanten werden verknüpft statt doppelt angelegt)
+  if (!flags.has('_org_suppliers_v1')) ops.push(
+    db.prepare(`UPDATE suppliers SET org_id = (SELECT MIN(o.id) FROM orgs o WHERE o.deleted = 0 AND lower(trim(o.name)) = lower(trim(suppliers.name)))
+      WHERE org_id IS NULL AND id = (SELECT MIN(s2.id) FROM suppliers s2 WHERE s2.org_id IS NULL AND lower(trim(s2.name)) = lower(trim(suppliers.name)))`),
+    db.prepare(`INSERT INTO suppliers (name, street, zip, city, country, email, phone, vat_id, org_id, active, created_at)
+      SELECT COALESCE(NULLIF(trim(billing_name), ''), name), COALESCE(NULLIF(trim(billing_street), ''), street), COALESCE(NULLIF(trim(billing_zip), ''), zip),
+        COALESCE(NULLIF(trim(billing_city), ''), city), COALESCE(country, 'Deutschland'), COALESCE(NULLIF(trim(billing_email), ''), email), phone, vat_id, id, 1, ?
+      FROM orgs o WHERE o.deleted = 0 AND NOT EXISTS (SELECT 1 FROM suppliers s WHERE s.org_id = o.id)`).bind(nowIso()),
+    setFlagStmt(db, '_org_suppliers_v1'));
   // Kontenrahmen anlegen (fehlende Standardkonten ergänzen)
   for (const [number, name, type, sys] of FIBU_DEFAULT_ACCOUNTS) ops.push(db.prepare('INSERT OR IGNORE INTO fibu_accounts (number, name, type, sys, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(number, name, type, sys, 'System', nowIso()));
   // Beginn der Finanzbuchhaltung merken (ab diesem Monat gibt es automatische Abschlüsse)

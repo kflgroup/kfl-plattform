@@ -436,9 +436,10 @@ async function handleStaffApi(ctx, url) {
   if (path === '/orgs' && method === 'POST') {
     requirePerm(u, 'partner_manage');
     const o = await orgFromBody(ctx, u, body, null);
-    const id = await DB.insert(db, 'orgs', { ...o, created_at: nowIso(), updated_at: nowIso() });
+    const id = await DB.insert(db, 'orgs', { ...o, supplier: body.supplier === false || body.supplier === 0 ? 0 : 1, created_at: nowIso(), updated_at: nowIso() });
     await audit(ctx, 'partner_angelegt', 'partner', id, { name: o.name });
-    return out({ ok: true, id });
+    const supplierId = await syncOrgSupplier(ctx, id);
+    return out({ ok: true, id, supplier_id: supplierId });
   }
   if ((m = path.match(/^\/orgs\/(\d+)(?:\/(.+))?$/))) {
     requirePerm(u, 'partner_view');
@@ -451,7 +452,9 @@ async function handleStaffApi(ctx, url) {
       const stats = can(u, 'partner_stats') ? (await partnerPerformance(ctx, { from: addDaysDate(berlinDate(nowMs()), -364) }, oid))[0] : null;
       const invoices = can(u, 'acc_view') ? await DB.all(db, 'SELECT id, number, issue_date, due_date, gross, paid, fees, status, dunning_level FROM invoices WHERE org_id = ? ORDER BY id DESC LIMIT 50', oid) : [];
       const asg = await DB.all(db, 'SELECT a.id, a.request_id, a.status, a.created_at, r.vehicle FROM assignments a JOIN requests r ON r.id = a.request_id WHERE a.org_id = ? ORDER BY a.id DESC LIMIT 30', oid);
-      return out({ ok: true, org: { ...org, brands: jparse(org.brands, []), accepts: jparse(org.accepts, []), opening: jparse(org.opening, DEFAULT_OPENING), contacts: jparse(org.contacts, []) }, users, notes, stats, invoices, assignments: asg.map((a) => ({ ...a, number: toNumber(a.request_id) })) });
+      const supplier = await DB.one(db, 'SELECT s.id, s.active, s.iban, (SELECT COUNT(*) FROM purchase_invoices p WHERE p.supplier_id = s.id) AS invoices FROM suppliers s WHERE s.org_id = ?', oid);
+      return out({ ok: true, org: { ...org, brands: jparse(org.brands, []), accepts: jparse(org.accepts, []), opening: jparse(org.opening, DEFAULT_OPENING), contacts: jparse(org.contacts, []) }, users, notes, stats, invoices, assignments: asg.map((a) => ({ ...a, number: toNumber(a.request_id) })),
+        supplier: supplier ? { id: supplier.id, active: !!supplier.active, iban: !!supplier.iban, invoices: supplier.invoices } : null });
     }
     if (!sub && method === 'PATCH') {
       requirePerm(u, 'partner_manage');
@@ -461,6 +464,8 @@ async function handleStaffApi(ctx, url) {
       const TL = { payment_terms_days: 'Zahlungsziel (Tage)', reminder_due_days: 'Frist Zahlungserinnerung (Tage)', dunning_fee_1: 'Mahngebühr 1. Mahnung', dunning_fee_2: 'Mahngebühr 2. Mahnung', dunning_due_days: 'Frist 1. Mahnung (Tage)', dunning_due_days_2: 'Frist 2. Mahnung (Tage)', lead_price: 'Lead-Preis' };
       for (const k of Object.keys(TL)) if (o[k] !== undefined && o[k] !== org[k]) await DB.insert(db, 'org_notes', { org_id: oid, user_id: u.id, text: `${TL[k]} geändert: ${org[k] ?? 'Standard'} → ${o[k] ?? 'Standard'} (${u.name})`, created_at: nowIso() });
       await audit(ctx, 'partner_geaendert', 'partner', oid, Object.keys(o));
+      if (o.supplier !== undefined && o.supplier !== org.supplier) await DB.insert(db, 'org_notes', { org_id: oid, user_id: u.id, text: `Lieferantenstatus ${o.supplier ? 'aktiviert' : 'deaktiviert'} (${u.name})`, created_at: nowIso() });
+      await syncOrgSupplier(ctx, oid);
       return out({ ok: true });
     }
     if (!sub && method === 'DELETE') {
@@ -469,6 +474,7 @@ async function handleStaffApi(ctx, url) {
       await DB.run(db, "UPDATE partner_users SET active = 0 WHERE org_id = ?", oid);
       await DB.run(db, "DELETE FROM partner_sessions WHERE user_id IN (SELECT id FROM partner_users WHERE org_id = ?)", oid);
       await audit(ctx, 'partner_geloescht', 'partner', oid, { name: org.name });
+      await syncOrgSupplier(ctx, oid);
       return out({ ok: true });
     }
     if (sub === 'notes' && method === 'POST') { need(u.role === 'admin', 403, 'Nur für Admins.'); await DB.insert(db, 'org_notes', { org_id: oid, user_id: u.id, text: str(body.text, 2000), created_at: nowIso() }); return out({ ok: true }); }
@@ -878,6 +884,32 @@ async function staffInviteMail(ctx, user, token, url, reset = false) {
   return { link, status: r.status };
 }
 
+/* Geschäftspartner = Lieferant: Stammdaten kommen immer vom Partner (Rechnungsanschrift vor Hauptanschrift),
+   Bankverbindung, Kundennummer und Notiz pflegt die Buchhaltung beim Lieferanten. */
+const ORG_SUPPLIER_FIELDS = ['name', 'street', 'zip', 'city', 'country', 'email', 'phone', 'vat_id'];
+function orgSupplierData(o) {
+  const t = (v) => (v === null || v === undefined ? '' : String(v).trim());
+  return { name: t(o.billing_name) || o.name, street: t(o.billing_street) || o.street || null, zip: t(o.billing_zip) || o.zip || null, city: t(o.billing_city) || o.city || null,
+    country: o.country || 'Deutschland', email: t(o.billing_email) || o.email || null, phone: o.phone || null, vat_id: o.vat_id || null };
+}
+async function syncOrgSupplier(ctx, orgId) {
+  const db = ctx.db;
+  const o = await DB.one(db, 'SELECT * FROM orgs WHERE id = ?', orgId); if (!o) return null;
+  const want = o.supplier !== 0 && !o.deleted, data = orgSupplierData(o);
+  let s = await DB.one(db, 'SELECT id, active FROM suppliers WHERE org_id = ?', orgId);
+  if (!s && want) {
+    // Gibt es den Lieferanten schon (gleicher Name, noch keinem Partner zugeordnet)? Dann verknüpfen statt doppelt anlegen.
+    s = await DB.one(db, 'SELECT id, active FROM suppliers WHERE org_id IS NULL AND lower(trim(name)) IN (lower(trim(?)), lower(trim(?))) ORDER BY id LIMIT 1', o.name, data.name);
+    if (!s) {
+      const id = await DB.insert(db, 'suppliers', { ...data, org_id: orgId, active: 1, created_at: nowIso() });
+      await audit(ctx, 'lieferant_angelegt', 'lieferant', id, { name: data.name, partner: orgId, automatisch: true });
+      return id;
+    }
+  }
+  if (!s) return null;
+  await DB.update(db, 'suppliers', s.id, { ...data, org_id: orgId, active: want ? 1 : 0 });
+  return s.id;
+}
 async function orgFromBody(ctx, u, b, existing) {
   const o = {};
   const set = (k, v) => { if (v !== undefined) o[k] = v; };
@@ -892,6 +924,7 @@ async function orgFromBody(ctx, u, b, existing) {
   if (b.opening !== undefined) { const op = {}; for (const d of WEEKDAYS) { const v = b.opening[d]; op[d] = v && v[0] && v[1] ? [str(v[0], 5), str(v[1], 5)] : null; } set('opening', JSON.stringify(op)); }
   if (b.contacts !== undefined) set('contacts', JSON.stringify((b.contacts || []).slice(0, 20).map((c) => ({ role: str(c.role, 60), name: str(c.name, 80), email: str(c.email, 200), phone: str(c.phone, 40) }))));
   if (b.active !== undefined) set('active', b.active ? 1 : 0);
+  if (b.supplier !== undefined && existing) set('supplier', b.supplier ? 1 : 0);
   const terms = ['billing_mode', 'lead_price', ...Object.keys(ORG_TERMS)].filter((k) => b[k] !== undefined && (!existing || String(b[k] ?? '') !== String(existing[k] ?? '')));
   if (terms.length) {
     need(can(u, 'partner_terms'), 403, 'Konditionen (Abrechnungsart, Zahlungsziel, Gebühren) dürfen nur Geschäftsführung und Admin ändern.');

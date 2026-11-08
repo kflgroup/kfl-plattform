@@ -253,16 +253,19 @@ async function accSuppliers(P, tab) {
   const d = await GET('/acc/suppliers'); if (!P.alive()) return;
   P.show(html`${accHead(tab)}<section class="panel mt"><div class="toolbar"><span class="small muted">Lieferantenkonten mit Bankverbindung für den SEPA-Zahlungslauf.</span><span class="spacer"></span>${can('acc_manage') ? html`<button class="btn btn-sm btn-primary" data-act="supEdit">${icon('plus')}Lieferant anlegen</button>` : ''}</div>
     ${d.suppliers.length ? html`<div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Kontakt</th><th>IBAN</th><th>Kundennr.</th><th class="r">Rechnungen</th><th></th></tr></thead><tbody>${d.suppliers.map((x) => html`<tr class="${x.active ? '' : 'muted'}">
-      <td><b>${x.name}</b><span class="cell-sub">${[x.street, x.zip, x.city].filter(Boolean).join(' ')}</span></td><td>${x.email || '–'}<span class="cell-sub">${x.phone || ''}</span></td><td class="num">${x.iban ? x.iban.replace(/(.{4})/g, '$1 ').trim() : html`<span class="badge t-warn">fehlt</span>`}</td><td>${x.customer_no || '–'}</td><td class="r">${x.invoices}</td>
+      <td><b>${x.name}</b>${x.org_id ? html` <span class="tag" title="Geschäftspartner: ${x.org_name || ''}">Partner</span>` : ''}<span class="cell-sub">${[x.street, x.zip, x.city].filter(Boolean).join(' ')}</span></td><td>${x.email || '–'}<span class="cell-sub">${x.phone || ''}</span></td><td class="num">${x.iban ? x.iban.replace(/(.{4})/g, '$1 ').trim() : html`<span class="badge t-warn">fehlt</span>`}</td><td>${x.customer_no || '–'}</td><td class="r">${x.invoices}</td>
       <td class="r">${can('acc_manage') ? html`<button class="btn btn-sm btn-ghost" data-act="supEdit" data-id="${x.id}">Bearbeiten</button>` : ''}</td></tr>`)}</tbody></table></div>` : html`<div class="panel-body">${empty('Noch keine Lieferanten')}</div>`}</section>`);
   S.suppliers = d.suppliers;
 }
 ACT.supEdit = async (b) => {
   const x = (S.suppliers || []).find((s) => s.id === +b.dataset.id) || {};
-  const d = await ask({ title: x.id ? 'Lieferant bearbeiten' : 'Lieferant anlegen', wide: true, ok: 'Speichern', fields: html`<div class="grid-2">${field('Name', inp('name', x.name, { req: true }))}${field('E-Mail', inp('email', x.email, { type: 'email' }))}
-    ${field('Straße', inp('street', x.street))}<div class="grid-2">${field('PLZ', inp('zip', x.zip))}${field('Ort', inp('city', x.city))}</div>${field('Telefon', inp('phone', x.phone))}${field('Unsere Kundennummer', inp('customer_no', x.customer_no))}
-    ${field('IBAN', inp('iban', x.iban))}${field('BIC', inp('bic', x.bic))}${field('USt-IdNr.', inp('vat_id', x.vat_id))}</div>${field('Notiz', area('note', x.note, { rows: 2 }))}${x.id ? chk('active', x.active, 'Aktiv') : ''}` });
+  const lk = x.org_id ? 'disabled' : '';
+  const d = await ask({ title: x.id ? 'Lieferant bearbeiten' : 'Lieferant anlegen', wide: true, ok: 'Speichern', fields: html`${x.org_id ? html`<p class="small muted">${icon('lock')} Verknüpft mit dem Geschäftspartner <a href="#/partner/${x.org_id}" data-close>${x.org_name || ''}</a>: Name, Anschrift, E-Mail, Telefon und USt-IdNr. änderst du dort. Bankverbindung, Kundennummer und Notiz pflegst du hier.</p>` : ''}
+    <div class="grid-2">${field('Name', inp('name', x.name, { req: true, attrs: lk }))}${field('E-Mail', inp('email', x.email, { type: 'email', attrs: lk }))}
+    ${field('Straße', inp('street', x.street, { attrs: lk }))}<div class="grid-2">${field('PLZ', inp('zip', x.zip, { attrs: lk }))}${field('Ort', inp('city', x.city, { attrs: lk }))}</div>${field('Telefon', inp('phone', x.phone, { attrs: lk }))}${field('Unsere Kundennummer', inp('customer_no', x.customer_no))}
+    ${field('IBAN', inp('iban', x.iban))}${field('BIC', inp('bic', x.bic))}${field('USt-IdNr.', inp('vat_id', x.vat_id, { attrs: lk }))}</div>${field('Notiz', area('note', x.note, { rows: 2 }))}${x.id ? chk('active', x.active, x.org_id ? 'Aktiv (= Lieferantenstatus beim Geschäftspartner)' : 'Aktiv') : ''}` });
   if (!d) return; delete d._form;
+  if (x.org_id) for (const k of ['name', 'email', 'street', 'zip', 'city', 'phone', 'vat_id']) delete d[k];
   if (x.id) await PATCH('/acc/suppliers/' + x.id, d); else await POST('/acc/suppliers', d);
   toast('Gespeichert.'); reload();
 };
