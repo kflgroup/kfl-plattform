@@ -1,0 +1,295 @@
+{%- comment -%}
+KFL Partnerbereich (/pages/partner)
+- Nicht angemeldet: Partner-Login + "Partner werden"
+- Angemeldet ohne Freischaltung: Partner-Antrag
+- Angemeldet mit Kunden-Tag "partner" (vergibt KFL im Shopify-Admin): Partner-Dashboard
+- Button "Zum Partner-Dashboard": Login-Seite des KFL Partner-Dashboards (Adresse aus den Einstellungen, sonst Formular-Dienst + /partner)
+{%- endcomment -%}
+{%- capture endpoint -%}{% render 'kfl-config', key: 'endpoint' %}{%- endcapture -%}{%- assign endpoint = endpoint | strip -%}
+{%- liquid
+assign is_partner = false
+if customer
+for t in customer.tags
+assign tl = t | downcase | strip
+if tl == 'partner'
+assign is_partner = true
+endif
+endfor
+endif
+assign login = '/customer_authentication/login?return_to=' | append: request.path
+assign dash_url = section.settings.dashboard_url | strip
+if dash_url == blank and endpoint != blank
+assign ep = endpoint | split: '/'
+assign dash_url = ep[0] | append: '//' | append: ep[2] | append: '/partner'
+endif
+assign dash_label = section.settings.dashboard_label | default: 'Zum Partner-Dashboard'
+-%}
+
+<section class="k-section k-partner" style="padding-top:clamp(40px,6vw,88px)">
+<div class="k-wrap">
+
+{%- if is_partner -%}
+{%- comment -%} ===== Partner-Dashboard ===== {%- endcomment -%}
+<div class="k-partner__hero">
+<div>
+<span class="k-verified k-verified--partner">{% render 'kfl-icon', name: 'shield' %}Verifizierter Partner</span>
+<h1 class="k-h1" style="margin-top:1.6rem">Willkommen{% if customer.first_name != blank %}, {{ customer.first_name }}{% endif %}.</h1>
+<p class="k-lead k-muted" style="margin-top:1.6rem">{{ section.settings.dash_lead }}</p>
+{%- if dash_url != blank -%}
+<div class="k-partner__dash">
+<div class="k-actions">
+<a class="k-btn k-btn--primary k-partner__dash-btn" href="{{ dash_url | escape }}" target="_blank" rel="noopener">{{ dash_label | escape }}<span aria-hidden="true">{% render 'kfl-icon', name: 'arrow' %}</span></a>
+<a class="k-btn k-btn--ghost" href="#partner-anfrage">Nachricht an KFL</a>
+</div>
+<p class="k-small k-muted" style="margin:0">{{ section.settings.dashboard_hint }}</p>
+</div>
+{%- endif -%}
+</div>
+<div class="k-partner__contact">
+<p class="k-small k-muted" style="margin:0">Dein Ansprechpartner</p>
+<p style="margin:.4rem 0 0;font-weight:700;font-size:2rem">{{ section.settings.contact_name }}</p>
+<a class="k-link" href="mailto:{{ section.settings.contact_email }}">{{ section.settings.contact_email }}</a>
+{%- if section.settings.contact_phone != blank -%}<p style="margin:.8rem 0 0"><a class="k-link" href="tel:{{ section.settings.contact_phone | remove: ' ' }}">{{ section.settings.contact_phone }}</a></p>{%- endif -%}
+</div>
+</div>
+
+{%- if section.blocks.size > 0 -%}
+<div class="k-topics">
+{%- for block in section.blocks -%}
+<a class="k-topic" href="{{ block.settings.link | default: '#' }}" {{ block.shopify_attributes }}>
+<h2 class="k-h3" style="font-size:2.2rem;margin:0">{{ block.settings.title }}</h2>
+<p>{{ block.settings.text }}</p>
+<span class="k-topic__meta"><span>{{ block.settings.link_label | default: 'Öffnen' }}</span>{% render 'kfl-icon', name: 'arrow' %}</span>
+</a>
+{%- endfor -%}
+</div>
+{%- endif -%}
+
+<div class="k-form-shell" style="margin-top:clamp(56px,7vw,96px)" id="partner-anfrage">
+<aside class="k-form-aside">
+<p class="k-kicker">Partner-Anfrage</p>
+<h2 class="k-h2">Angebot einreichen oder Rückfrage stellen.</h2>
+<p class="k-muted" style="margin-top:1.6rem">Deine Nachricht geht direkt an unser Vermittlungsteam. Wir melden uns innerhalb von 24 Stunden an Werktagen.</p>
+</aside>
+<div class="k-panel">
+{%- form 'contact', id: 'k-partnerdesk-form', novalidate: 'novalidate', data-k-form: 'partnerdesk', data-success: '#k-partnerdesk-success', data-fallback-mail: 'vermittlung@kfl-group.com' -%}
+{%- if form.posted_successfully? -%}
+<div class="k-success" role="status">
+<span class="k-success__icon" aria-hidden="true">{% render 'kfl-icon', name: 'check' %}</span>
+<h2 class="k-h2">Danke, ist bei uns angekommen.</h2>
+<p class="k-lead k-muted">Wir melden uns innerhalb von 24 Stunden an Werktagen.</p>
+</div>
+{%- else -%}
+{%- if endpoint != blank -%}<script>document.currentScript.closest('form').dataset.endpoint = {{ endpoint | json }};</script>{%- endif -%}
+{% render 'kfl-form-auth', form_type: 'partnerdesk' %}
+<input type="hidden" name="contact[Formular]" value="PARTNER-ANFRAGE (verifizierter Partner) → vermittlung@kfl-group.com">
+<input type="hidden" name="contact[Partner-Konto]" value="{{ customer.email | escape }} (Kunden-ID {{ customer.id }})">
+<input type="hidden" name="contact[Einwilligung Zeitpunkt]" value="">
+<input type="text" name="contact[Firma2]" class="k-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+{%- if form.errors -%}<div class="k-note k-note--err" role="alert">{{ form.errors | default_errors }}</div>{%- endif -%}
+<div style="display:grid;gap:2.4rem">
+<div class="k-grid-2">
+<div class="k-field">
+<label for="pd-name">Dein Name</label>
+<input class="k-input" id="pd-name" name="contact[name]" value="{{ customer.name | escape }}" autocomplete="name" required>
+<span class="k-error-text" hidden>Bitte gib deinen Namen ein.</span>
+</div>
+<div class="k-field">
+<label for="pd-mail">E-Mail-Adresse</label>
+<input class="k-input" id="pd-mail" type="email" name="contact[email]" value="{{ customer.email | escape }}" autocomplete="email" required>
+<span class="k-error-text" hidden>Bitte gib eine gültige E-Mail-Adresse ein.</span>
+</div>
+<div class="k-field">
+<label for="pd-topic">Worum geht es?</label>
+<select class="k-select" id="pd-topic" name="contact[Thema]">
+<option>Fahrzeugangebot zu einer Kundenanfrage</option>
+<option>Finanzierungs- oder Leasingangebot</option>
+<option>Ankaufangebot</option>
+<option>Rückfrage zu einer Anfrage</option>
+<option>Kooperation oder Aktion</option>
+<option>Sonstiges</option>
+</select>
+</div>
+<div class="k-field">
+<label for="pd-ref">Referenz <span class="k-muted" style="font-weight:400">(optional)</span></label>
+<input class="k-input" id="pd-ref" name="contact[Referenz]" placeholder="z. B. Anfrage-Datum oder Fahrzeug">
+</div>
+<div class="k-field k-span-2">
+<label for="pd-msg">Nachricht</label>
+<textarea class="k-textarea" id="pd-msg" name="contact[body]" rows="6" required minlength="10" placeholder="Angebot, Konditionen, Link zum Fahrzeug …"></textarea>
+<span class="k-error-text" hidden>Bitte schreib uns ein paar Worte (mindestens 10 Zeichen).</span>
+</div>
+</div>
+<p class="k-small k-muted" style="margin:0">Bitte übermittle Kundendaten nur, soweit sie für das Angebot erforderlich sind. Es gelten die <a href="{{ shop.terms_of_service.url | default: '/policies/terms-of-service' }}" target="_blank">AGB</a> und unsere <a href="{{ shop.privacy_policy.url | default: '/policies/privacy-policy' }}" target="_blank">Datenschutzerklärung</a>.</p>
+<div class="k-note k-note--err" data-form-error hidden role="alert"></div>
+<div><button type="submit" class="k-btn k-btn--primary">Anfrage senden</button></div>
+</div>
+{%- endif -%}
+{%- endform -%}
+<div class="k-success" id="k-partnerdesk-success" hidden>
+<span class="k-success__icon" aria-hidden="true">{% render 'kfl-icon', name: 'check' %}</span>
+<h2 class="k-h2" tabindex="-1">Danke, ist bei uns angekommen.</h2>
+<p class="k-lead k-muted">Wir melden uns innerhalb von 24 Stunden an Werktagen.</p>
+</div>
+</div>
+</div>
+
+{%- else -%}
+{%- comment -%} ===== Login / Partner werden ===== {%- endcomment -%}
+<div class="k-form-shell">
+<aside class="k-form-aside">
+<p class="k-kicker">Partnerbereich</p>
+<h1 class="k-h1">{% if customer %}Partner werden.{% else %}Partner-Login{% endif %}</h1>
+<p class="k-lead k-muted" style="margin-top:1.6rem">{{ section.settings.lead }}</p>
+<ul class="k-ticks" style="margin-top:3.2rem">
+<li>{% render 'kfl-icon', name: 'check' %}<span>Qualifizierte Anfragen zu Kauf, Finanzierung, Leasing und Ankauf.</span></li>
+<li>{% render 'kfl-icon', name: 'check' %}<span>Eigener Partnerbereich mit direktem Draht zu unserem Team.</span></li>
+<li>{% render 'kfl-icon', name: 'check' %}<span>Sichtbar als „Verifizierter Partner“ im KFL Network.</span></li>
+</ul>
+<ol class="k-progress" aria-label="So wirst du Partner">
+<li{% unless customer %} aria-current="step"{% endunless %}{% if customer %} class="is-done"{% endif %}>Anmelden oder Konto erstellen</li>
+<li{% if customer %} aria-current="step"{% endif %}>Partner-Antrag senden</li>
+<li>Freischaltung durch KFL</li>
+</ol>
+{%- if dash_url != blank -%}
+<div class="k-partner__dash-note">
+<p class="k-small" style="margin:0;font-weight:700">Du hast schon Zugangsdaten für das Partner-Dashboard?</p>
+<a class="k-btn k-btn--ghost" href="{{ dash_url | escape }}" target="_blank" rel="noopener">{{ dash_label | escape }}<span aria-hidden="true">{% render 'kfl-icon', name: 'arrow' %}</span></a>
+</div>
+{%- endif -%}
+</aside>
+
+<div class="k-panel">
+{%- unless customer -%}
+<div class="k-gate">
+<span class="k-success__icon" aria-hidden="true">{% render 'kfl-icon', name: 'lock' %}</span>
+<h2 class="k-h3">Anmelden im Partnerbereich</h2>
+<p class="k-muted" style="margin:0;max-width:52ch">Melde dich mit deiner geschäftlichen E-Mail-Adresse an. Du bekommst einen Code per E-Mail, ein Passwort ist nicht nötig. Bist du neu, wird dein Konto dabei automatisch angelegt.</p>
+<div class="k-actions">
+<a class="k-btn k-btn--primary" href="{{ login }}" rel="nofollow">Als Partner anmelden</a>
+<a class="k-btn k-btn--ghost" href="{{ login }}" rel="nofollow">Partnerkonto erstellen</a>
+</div>
+<p class="k-small k-muted" style="margin:0">Du bist Kundin oder Kunde? Dann nutze einfach <a href="{{ routes.account_url }}" class="k-link">Mein Konto</a>.</p>
+</div>
+{%- else -%}
+{%- form 'contact', id: 'k-partner-form', novalidate: 'novalidate', data-k-form: 'partner', data-success: '#k-partner-success', data-fallback-mail: 'info@kfl-group.com' -%}
+{%- if form.posted_successfully? -%}
+<div class="k-success" role="status">
+<span class="k-success__icon" aria-hidden="true">{% render 'kfl-icon', name: 'check' %}</span>
+<h2 class="k-h2">Danke für deinen Antrag.</h2>
+<p class="k-lead k-muted">Wir prüfen deine Angaben und melden uns innerhalb von 24 Stunden an Werktagen. Nach der Freischaltung siehst du hier deinen Partnerbereich.</p>
+</div>
+{%- else -%}
+{%- if endpoint != blank -%}<script>document.currentScript.closest('form').dataset.endpoint = {{ endpoint | json }};</script>{%- endif -%}
+{% render 'kfl-form-auth', form_type: 'partner' %}
+<input type="hidden" name="contact[Formular]" value="PARTNER-ANTRAG → info@kfl-group.com (nach Prüfung Kunden-Tag „partner“ vergeben)">
+<input type="hidden" name="contact[Konto]" value="{{ customer.email | escape }} (Kunden-ID {{ customer.id }})">
+<input type="text" name="contact[Firma2]" class="k-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+{%- if form.errors -%}<div class="k-note k-note--err" role="alert">{{ form.errors | default_errors }}</div>{%- endif -%}
+<div style="display:grid;gap:2.4rem">
+<h2 class="k-step-title">Dein Partner-Antrag</h2>
+<fieldset class="k-choices">
+<legend>Art der Partnerschaft</legend>
+<label class="k-choice"><input type="radio" name="contact[Partnerart]" value="Autohaus / Händler" required checked><span>Autohaus<small>Händler, Neu- und Gebrauchtwagen</small></span></label>
+<label class="k-choice"><input type="radio" name="contact[Partnerart]" value="Bank / Finanzierung"><span>Bank<small>Finanzierung</small></span></label>
+<label class="k-choice"><input type="radio" name="contact[Partnerart]" value="Leasinggesellschaft"><span>Leasing<small>Leasinggesellschaft</small></span></label>
+<label class="k-choice"><input type="radio" name="contact[Partnerart]" value="Ankauf / Gutachter"><span>Ankauf<small>Ankauf, Gutachter</small></span></label>
+<label class="k-choice"><input type="radio" name="contact[Partnerart]" value="Sonstiges"><span>Sonstiges</span></label>
+</fieldset>
+<div class="k-grid-2">
+<div class="k-field">
+<label for="pa-company">Unternehmen</label>
+<input class="k-input" id="pa-company" name="contact[Unternehmen]" value="{{ customer.default_address.company | escape }}" autocomplete="organization" required>
+<span class="k-error-text" hidden>Bitte gib dein Unternehmen an.</span>
+</div>
+<div class="k-field">
+<label for="pa-web">Website <span class="k-muted" style="font-weight:400">(optional)</span></label>
+<input class="k-input" id="pa-web" name="contact[Website]" type="url" placeholder="https://">
+</div>
+<div class="k-field">
+<label for="pa-name">Ansprechpartner</label>
+<input class="k-input" id="pa-name" name="contact[name]" value="{{ customer.name | escape }}" autocomplete="name" required>
+<span class="k-error-text" hidden>Bitte gib deinen Namen ein.</span>
+</div>
+<div class="k-field">
+<label for="pa-role">Position <span class="k-muted" style="font-weight:400">(optional)</span></label>
+<input class="k-input" id="pa-role" name="contact[Position]" autocomplete="organization-title">
+</div>
+<div class="k-field">
+<label for="pa-mail">Geschäftliche E-Mail</label>
+<input class="k-input" id="pa-mail" type="email" name="contact[email]" value="{{ customer.email | escape }}" autocomplete="email" required>
+<span class="k-error-text" hidden>Bitte gib eine gültige E-Mail-Adresse ein.</span>
+</div>
+<div class="k-field">
+<label for="pa-phone">Telefon</label>
+<input class="k-input" id="pa-phone" type="tel" name="contact[phone]" value="{{ customer.phone | escape }}" autocomplete="tel" required>
+<span class="k-error-text" hidden>Bitte gib eine Telefonnummer an.</span>
+</div>
+<div class="k-field k-span-2">
+<label for="pa-addr">Anschrift (Straße, PLZ, Ort)</label>
+<input class="k-input" id="pa-addr" name="contact[Anschrift]" autocomplete="street-address" required>
+<span class="k-error-text" hidden>Bitte gib eure Anschrift an.</span>
+</div>
+<div class="k-field k-span-2">
+<label for="pa-msg">Was möchtet ihr mit KFL erreichen? <span class="k-muted" style="font-weight:400">(optional)</span></label>
+<textarea class="k-textarea" id="pa-msg" name="contact[body]" rows="4" placeholder="z. B. Marken, Region, Konditionen, Ankaufvolumen …"></textarea>
+</div>
+</div>
+{% render 'kfl-consents', type: 'support' %}
+<div class="k-note k-note--err" data-form-error hidden role="alert"></div>
+<div><button type="submit" class="k-btn k-btn--primary">Partner-Antrag senden</button></div>
+</div>
+{%- endif -%}
+{%- endform -%}
+<div class="k-success" id="k-partner-success" hidden>
+<span class="k-success__icon" aria-hidden="true">{% render 'kfl-icon', name: 'check' %}</span>
+<h2 class="k-h2" tabindex="-1">Danke für deinen Antrag.</h2>
+<p class="k-lead k-muted">Wir prüfen deine Angaben und melden uns innerhalb von 24 Stunden an Werktagen. Nach der Freischaltung siehst du hier deinen Partnerbereich.</p>
+</div>
+{%- endunless -%}
+</div>
+</div>
+{%- endif -%}
+
+</div>
+</section>
+
+{% stylesheet %}
+.k-verified--partner { background: #fff1e6; color: var(--k-orange-deep); }
+.k-partner__hero { display: grid; grid-template-columns: 1fr 340px; gap: clamp(32px, 5vw, 80px); align-items: end; }
+.k-partner__contact { padding: 2.8rem; border-radius: var(--k-radius-l); background: var(--k-silver); }
+.k-partner__dash { display: grid; gap: 1.2rem; margin-top: 3.2rem; }
+.k-partner__dash .k-actions { margin: 0; }
+.k-partner__dash-btn span, .k-partner__dash-note .k-btn span { display: inline-flex; margin-left: .8rem; }
+.k-partner__dash-btn span svg, .k-partner__dash-note .k-btn span svg { width: 1.8rem; height: 1.8rem; }
+.k-partner__dash-note { display: grid; gap: 1.2rem; justify-items: start; margin-top: 3.2rem; padding-top: 2.4rem; border-top: 1px solid rgba(0, 0, 0, .08); }
+@media (max-width: 960px) { .k-partner__hero { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .k-partner__dash .k-btn { width: 100%; justify-content: center; } }
+{% endstylesheet %}
+
+{% schema %}
+{
+"name": "KFL Partnerbereich",
+"settings": [
+{ "type": "textarea", "id": "lead", "label": "Text (Login)", "default": "Für Autohäuser, Banken, Leasinggesellschaften und Ankaufpartner: Hier meldest du dich an und erreichst deinen persönlichen Partnerbereich." },
+{ "type": "header", "content": "Partner-Dashboard" },
+{ "type": "paragraph", "content": "Sichtbar für Kundenkonten mit dem Tag „partner“ (Shopify → Kunden → Kunde öffnen → Tags)." },
+{ "type": "textarea", "id": "dash_lead", "label": "Begrüßungstext", "default": "Schön, dass du da bist. Hier findest du alles für die Zusammenarbeit mit KFL." },
+{ "type": "text", "id": "dashboard_url", "label": "Adresse Partner-Dashboard (Login)", "info": "Leer = automatisch die aktuelle Adresse des KFL Partner-Dashboards. Nach dem Umzug auf die eigene Adresse hier https://partner.kfl-group.com eintragen." },
+{ "type": "text", "id": "dashboard_label", "label": "Button-Text", "default": "Zum Partner-Dashboard" },
+{ "type": "textarea", "id": "dashboard_hint", "label": "Hinweis unter dem Button", "default": "Kundenanfragen bearbeiten, Angebote abgeben und Abrechnungen einsehen. Die Anmeldung erfolgt mit deinen Zugangsdaten für das Partner-Dashboard." },
+{ "type": "text", "id": "contact_name", "label": "Ansprechpartner", "default": "KFL Vermittlungsteam" },
+{ "type": "text", "id": "contact_email", "label": "E-Mail", "default": "vermittlung@kfl-group.com" },
+{ "type": "text", "id": "contact_phone", "label": "Telefon (optional)" }
+],
+"blocks": [
+{ "type": "tile", "name": "Kachel", "settings": [
+{ "type": "text", "id": "title", "label": "Titel", "default": "Titel" },
+{ "type": "textarea", "id": "text", "label": "Text" },
+{ "type": "url", "id": "link", "label": "Link" },
+{ "type": "text", "id": "link_label", "label": "Link-Text", "default": "Öffnen" }
+] }
+],
+"presets": [{ "name": "KFL Partnerbereich" }]
+}
+{% endschema %}
