@@ -57,7 +57,7 @@ const worker = (await import('./wk.mjs')).default;
 const env = { DB: makeD1(), FILES: makeR2(), FORM_SECRET: SECRET, SETUP_TOKEN: 'setup-123', BREVO_API_KEY: 'test-brevo', AI: ai };
 const sq = env.DB._sq, c = client(worker, env), q1 = (sql, ...a) => sq.prepare(sql).get(...a), qa = (sql, ...a) => sq.prepare(sql).all(...a);
 await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123' }, { who: 'admin' });
-for (const [key, role, name] of [['bh', 'buchhaltung', 'Berta BH'], ['vt', 'vertrieb', 'Vera VT']]) {
+for (const [key, role, name] of [['bh', 'buchhaltung', 'Berta BH'], ['vt', 'vertrieb', 'Vera VT'], ['gf', 'gf', 'Greta GF']]) {
   const r = await c.post('/api/users', { email: key + '@kfl.de', name, role_key: role }, { who: 'admin' });
   await c.post('/api/invite/accept', { token: r.invite.split('/').pop(), password: 'Passwort1234' }, { who: key });
 }
@@ -82,7 +82,9 @@ check(a && a.status === 'pruefen' && a.source === 'postfach' && a.number === 'WN
 check(q1('SELECT name FROM suppliers WHERE id = ?', a.supplier_id).name === 'Werbeagentur Nord GmbH' && qa('SELECT id FROM suppliers').length === 2, 'Lieferant über die Absenderadresse erkannt (Groß-/Kleinschreibung egal), nicht doppelt angelegt');
 check(a.file_id && q1('SELECT name, mime FROM files WHERE id = ?', a.file_id).name === 'Rechnung Oktober.pdf' && /Übersicht/.test(a.note) && a.text === 'Social-Media-Kampagne Oktober', 'PDF mit Dateinamen gespeichert, Betreff (codiert) und Buchungstext übernommen');
 check(JSON.parse(a.extract).method === 'ki' && AI.model === '@cf/meta/llama-3.3-70b-instruct-fp8-fast', 'Auslesen mit Workers AI');
-check(q1("SELECT COUNT(*) AS n FROM notifications WHERE title = 'Neue Eingangsrechnung zu prüfen'").n >= 1, 'Buchhaltung wird benachrichtigt');
+const newsTo = (title) => qa("SELECT u.role_key AS r FROM notifications n JOIN users u ON u.id = n.recipient_id WHERE n.recipient_type = 'staff' AND n.title = ?", title).map((x) => x.r).sort().join(',');
+check(newsTo('Neue Eingangsrechnung zu prüfen') === 'admin,buchhaltung,gf', 'News an Buchhaltung, Geschäftsführung und Admin, nicht an den Vertrieb', newsTo('Neue Eingangsrechnung zu prüfen'));
+r = await c.get('/api/news', { who: 'bh' }); check(r.notifications.some((x) => x.title === 'Neue Eingangsrechnung zu prüfen' && x.link === '#/buchhaltung/eingang?status=pruefen'), 'Erscheint unter News der Buchhaltung mit Link zu den zu prüfenden Rechnungen');
 check(QMAX.n <= 50, 'Innerhalb der Abfragegrenze je Aufruf', QMAX);
 
 console.log('Weitergeleitete E-Mail, Auslesen per Textmuster');
@@ -126,9 +128,14 @@ check(!r.invoices.some((x) => x.id === n.id) && r.invoices[0].status === 'pruefe
 r = await c.get('/api/acc/purchase?status=verworfen', { who: 'bh' }); check(r.invoices.length === 1, 'Verworfene über den Filter sichtbar');
 r = await c.post(`/api/acc/purchase/${a.id}/discard`, { reason: 'test' }, { who: 'bh' }); check(r.status === 409, 'Geprüfte Rechnung kann nicht verworfen werden');
 
+console.log('News werden nach der Prüfung als gelesen markiert');
+check(q1("SELECT COUNT(*) AS n FROM notifications WHERE link = '#/buchhaltung/eingang?status=pruefen' AND read_at IS NULL").n > 0, 'Solange Rechnungen offen sind, bleiben die News ungelesen');
+r = await c.post(`/api/acc/purchase/${b.id}/confirm`, {}, { who: 'bh' });
+check(r.ok && q1("SELECT COUNT(*) AS n FROM notifications WHERE link = '#/buchhaltung/eingang?status=pruefen' AND read_at IS NULL").n === 0, 'Letzte Rechnung geprüft → News für alle gelesen');
+
 console.log('Störung');
 IMAP.pass = 'neu'; setNow('2026-11-08T19:00:00Z');
 r = await c.post('/api/acc/inbox/run', {}, { who: 'bh' });
 check(/^Fehler: Anmeldung am Rechnungs-Postfach fehlgeschlagen/.test(r.result) && r.inbox.ok === false, 'Falsches Passwort wird verständlich gemeldet', r.result);
-check(q1("SELECT COUNT(*) AS n FROM notifications WHERE title = 'Rechnungs-Postfach nicht erreichbar'").n >= 1, 'Buchhaltung bekommt eine Störungsmeldung');
+check(newsTo('Rechnungs-Postfach nicht erreichbar') === 'admin,buchhaltung,gf', 'Störungsmeldung an Buchhaltung, Geschäftsführung und Admin');
 r = await c.patch('/api/settings', { invoice_inbox: 'kein-mail' }, { who: 'admin' }); check(r.status === 400, 'Ungültige Postfach-Adresse abgelehnt');

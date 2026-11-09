@@ -172,12 +172,13 @@ async function notify(ctx, recipientType, recipientId, { kind, title, body, link
   await DB.insert(ctx.db, 'notifications', { recipient_type: recipientType, recipient_id: recipientId, kind: kind || 'info', title: str(title, 200), body: body ? String(body).slice(0, 2000) : null, link: link || null, read_at: null, created_at: nowIso() });
 }
 // an alle aktiven Mitarbeiter mit einem bestimmten Recht (oder bestimmte Nutzer)
-async function notifyStaff(ctx, { perm, roles, userIds, except }, msg) {
+async function notifyStaff(ctx, { perm, roles, orRoles, userIds, except }, msg) {
   let ids = [];
   if (userIds) ids = userIds;
   else {
     const users = await DB.all(ctx.db, 'SELECT u.id, u.role_key, u.extra_perms, u.revoked_perms, r.perms FROM users u LEFT JOIN roles r ON r.key = u.role_key WHERE u.active = 1');
     ids = users.filter((u) => {
+      if (orRoles && orRoles.includes(u.role_key)) return true; // diese Rollen immer (z. B. Buchhaltung und übergeordnete Rollen)
       if (roles && !roles.includes(u.role_key)) return false;
       if (!perm) return true;
       const p = new Set([...jparse(u.perms, []), ...jparse(u.extra_perms, [])]); for (const x of jparse(u.revoked_perms, [])) p.delete(x);

@@ -189,6 +189,7 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
       need(!dup || body.allow_duplicate, 409, 'Diese Rechnungsnummer gibt es beim Lieferanten schon. Bitte prüfen, ob die Rechnung doppelt eingegangen ist.');
       await DB.update(db, 'purchase_invoices', pi.id, { status: 'offen', created_by: pi.created_by || u.id, updated_at: nowIso() });
       await audit(ctx, 'eingangsrechnung_geprueft', 'eingangsrechnung', pi.id, { brutto: pi.gross });
+      await inboxNewsDone(ctx);
       let booking = null, bookingError = null;
       if (body.account_id && can(u, 'fibu_book')) {
         try {
@@ -203,6 +204,7 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
       need(pi.status === 'pruefen', 409, 'Nur ungeprüfte Rechnungen aus dem Postfach können verworfen werden.');
       const reason = str(body.reason, 300); need(reason.length >= 3, 400, 'Bitte einen Grund angeben (z. B. keine Rechnung, doppelt).');
       await DB.update(db, 'purchase_invoices', pi.id, { status: 'verworfen', note: [pi.note, `Verworfen von ${u.name}: ${reason}`].filter(Boolean).join('\n'), updated_at: nowIso() });
+      await inboxNewsDone(ctx);
     }
     if (m[2] === 'paid') { await DB.update(db, 'purchase_invoices', pi.id, { status: 'bezahlt', paid_at: nowIso(), updated_at: nowIso() }); await fibuBookPurchasePaid(ctx, pi.id, /^\d{4}-\d{2}-\d{2}$/.test(body.date || '') ? body.date : null); }
     if (m[2] === 'book') { requirePerm(u, 'fibu_book'); if (body.account_id) { const acc = await DB.one(db, "SELECT id FROM fibu_accounts WHERE id = ? AND status = 'offen'", toInt(body.account_id)); need(acc, 400, 'Bitte ein offenes Konto wählen.'); await DB.update(db, 'purchase_invoices', pi.id, { account_id: acc.id }); } const eid = await fibuBookPurchase(ctx, pi.id); if (pi.status === 'bezahlt') await fibuBookPurchasePaid(ctx, pi.id, berlinDate(msOf(pi.paid_at || nowIso()))); return out({ ok: true, booking: await DB.val(db, 'SELECT number FROM fibu_entries WHERE id = ?', eid) }); }

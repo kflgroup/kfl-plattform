@@ -1059,12 +1059,13 @@ async function notify(ctx, recipientType, recipientId, { kind, title, body, link
   await DB.insert(ctx.db, 'notifications', { recipient_type: recipientType, recipient_id: recipientId, kind: kind || 'info', title: str(title, 200), body: body ? String(body).slice(0, 2000) : null, link: link || null, read_at: null, created_at: nowIso() });
 }
 // an alle aktiven Mitarbeiter mit einem bestimmten Recht (oder bestimmte Nutzer)
-async function notifyStaff(ctx, { perm, roles, userIds, except }, msg) {
+async function notifyStaff(ctx, { perm, roles, orRoles, userIds, except }, msg) {
   let ids = [];
   if (userIds) ids = userIds;
   else {
     const users = await DB.all(ctx.db, 'SELECT u.id, u.role_key, u.extra_perms, u.revoked_perms, r.perms FROM users u LEFT JOIN roles r ON r.key = u.role_key WHERE u.active = 1');
     ids = users.filter((u) => {
+      if (orRoles && orRoles.includes(u.role_key)) return true; // diese Rollen immer (z. B. Buchhaltung und \u00fcbergeordnete Rollen)
       if (roles && !roles.includes(u.role_key)) return false;
       if (!perm) return true;
       const p = new Set([...jparse(u.perms, []), ...jparse(u.extra_perms, [])]); for (const x of jparse(u.revoked_perms, [])) p.delete(x);
@@ -3825,6 +3826,14 @@ async function cartCodeWarn(ctx, e) {
 /* ===== Rechnungs-Postfach: E-Mails mit PDF-Rechnung (IMAP) \u2192 Eingangsrechnungen \u201ezu pr\u00fcfen\u201c =====
    Abruf per IMAP (TLS 993, Standard IONOS). Das Postfach wird nur gelesen (BODY.PEEK), nichts wird verschoben oder gel\u00f6scht.
    Auslesen: Workers AI (Markdown-Umwandlung der PDF + strukturierte Auswertung), sonst Textmuster. Jede Rechnung wird von einem Menschen gepr\u00fcft. */
+// News an die Buchhaltung und die \u00fcbergeordneten Rollen (Gesch\u00e4ftsf\u00fchrung, Admin) sowie alle mit dem Recht \u201eBuchhaltung verwalten\u201c
+const INBOX_NOTIFY = { perm: 'acc_manage', orRoles: ['buchhaltung', 'gf', 'admin'] };
+const INBOX_LINK = '#/buchhaltung/eingang?status=pruefen';
+// Sind alle Rechnungen aus dem Postfach gepr\u00fcft, gelten die News dazu f\u00fcr alle als gelesen
+async function inboxNewsDone(ctx) {
+  if (await DB.val(ctx.db, "SELECT COUNT(*) FROM purchase_invoices WHERE status = 'pruefen'")) return;
+  await DB.run(ctx.db, "UPDATE notifications SET read_at = ? WHERE recipient_type = 'staff' AND read_at IS NULL AND link = ?", nowIso(), INBOX_LINK);
+}
 const INBOX_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const INBOX_MAX_BYTES = 15 * 1024 * 1024;
 function inboxCred(env, s) {
@@ -4042,7 +4051,7 @@ async function runInbox(ctx, s, { max = 1, force = false } = {}) {
   await inboxSaveState(ctx, st);
   if (!st.ok) {
     // St\u00f6rung h\u00f6chstens einmal t\u00e4glich melden
-    if (!st.warned || nowMs() - msOf(st.warned) > 86400e3) { st.warned = nowIso(); await inboxSaveState(ctx, st); await notifyStaff(ctx, { perm: 'acc_manage' }, { kind: 'fehler', title: 'Rechnungs-Postfach nicht erreichbar', body: st.error, link: '#/buchhaltung/eingang' }); }
+    if (!st.warned || nowMs() - msOf(st.warned) > 86400e3) { st.warned = nowIso(); await inboxSaveState(ctx, st); await notifyStaff(ctx, INBOX_NOTIFY, { kind: 'fehler', title: 'Rechnungs-Postfach nicht erreichbar', body: st.error, link: '#/buchhaltung/eingang' }); }
     return 'Fehler: ' + st.error;
   }
   return `${imported} importiert${skipped ? `, ${skipped} \u00fcbersprungen` : ''}${st.pending ? `, ${st.pending} wartend` : ''}`;
@@ -4073,7 +4082,7 @@ async function importInvoiceMail(ctx, s, rawBytes, ref) {
     await audit(ctx, 'eingangsrechnung_postfach', 'eingangsrechnung', id, { lieferant: f.supplier_name || sender.email, brutto: gross, verfahren: ex.method });
     imported++;
   }
-  if (imported) await notifyStaff(ctx, { perm: 'acc_manage' }, { kind: 'info', title: imported > 1 ? `${imported} neue Eingangsrechnungen zu pr\u00fcfen` : 'Neue Eingangsrechnung zu pr\u00fcfen', body: `Von ${sender.name || sender.email || 'unbekannt'}: ${subject}`.slice(0, 200), link: '#/buchhaltung/eingang?status=pruefen' });
+  if (imported) await notifyStaff(ctx, INBOX_NOTIFY, { kind: 'info', title: imported > 1 ? `${imported} neue Eingangsrechnungen zu pr\u00fcfen` : 'Neue Eingangsrechnung zu pr\u00fcfen', body: `Von ${sender.name || sender.email || 'unbekannt'}: ${subject}`.slice(0, 200), link: INBOX_LINK });
   return { imported, skipped };
 }
 async function inboxInfo(ctx, s) {
@@ -5810,6 +5819,7 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
       need(!dup || body.allow_duplicate, 409, 'Diese Rechnungsnummer gibt es beim Lieferanten schon. Bitte pr\u00fcfen, ob die Rechnung doppelt eingegangen ist.');
       await DB.update(db, 'purchase_invoices', pi.id, { status: 'offen', created_by: pi.created_by || u.id, updated_at: nowIso() });
       await audit(ctx, 'eingangsrechnung_geprueft', 'eingangsrechnung', pi.id, { brutto: pi.gross });
+      await inboxNewsDone(ctx);
       let booking = null, bookingError = null;
       if (body.account_id && can(u, 'fibu_book')) {
         try {
@@ -5824,6 +5834,7 @@ async function handleAccounting(ctx, u, path, method, body, q, url) {
       need(pi.status === 'pruefen', 409, 'Nur ungepr\u00fcfte Rechnungen aus dem Postfach k\u00f6nnen verworfen werden.');
       const reason = str(body.reason, 300); need(reason.length >= 3, 400, 'Bitte einen Grund angeben (z. B. keine Rechnung, doppelt).');
       await DB.update(db, 'purchase_invoices', pi.id, { status: 'verworfen', note: [pi.note, `Verworfen von ${u.name}: ${reason}`].filter(Boolean).join('\n'), updated_at: nowIso() });
+      await inboxNewsDone(ctx);
     }
     if (m[2] === 'paid') { await DB.update(db, 'purchase_invoices', pi.id, { status: 'bezahlt', paid_at: nowIso(), updated_at: nowIso() }); await fibuBookPurchasePaid(ctx, pi.id, /^\d{4}-\d{2}-\d{2}$/.test(body.date || '') ? body.date : null); }
     if (m[2] === 'book') { requirePerm(u, 'fibu_book'); if (body.account_id) { const acc = await DB.one(db, "SELECT id FROM fibu_accounts WHERE id = ? AND status = 'offen'", toInt(body.account_id)); need(acc, 400, 'Bitte ein offenes Konto w\u00e4hlen.'); await DB.update(db, 'purchase_invoices', pi.id, { account_id: acc.id }); } const eid = await fibuBookPurchase(ctx, pi.id); if (pi.status === 'bezahlt') await fibuBookPurchasePaid(ctx, pi.id, berlinDate(msOf(pi.paid_at || nowIso()))); return out({ ok: true, booking: await DB.val(db, 'SELECT number FROM fibu_entries WHERE id = ?', eid) }); }

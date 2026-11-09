@@ -1,6 +1,14 @@
 /* ===== Rechnungs-Postfach: E-Mails mit PDF-Rechnung (IMAP) → Eingangsrechnungen „zu prüfen“ =====
    Abruf per IMAP (TLS 993, Standard IONOS). Das Postfach wird nur gelesen (BODY.PEEK), nichts wird verschoben oder gelöscht.
    Auslesen: Workers AI (Markdown-Umwandlung der PDF + strukturierte Auswertung), sonst Textmuster. Jede Rechnung wird von einem Menschen geprüft. */
+// News an die Buchhaltung und die übergeordneten Rollen (Geschäftsführung, Admin) sowie alle mit dem Recht „Buchhaltung verwalten“
+const INBOX_NOTIFY = { perm: 'acc_manage', orRoles: ['buchhaltung', 'gf', 'admin'] };
+const INBOX_LINK = '#/buchhaltung/eingang?status=pruefen';
+// Sind alle Rechnungen aus dem Postfach geprüft, gelten die News dazu für alle als gelesen
+async function inboxNewsDone(ctx) {
+  if (await DB.val(ctx.db, "SELECT COUNT(*) FROM purchase_invoices WHERE status = 'pruefen'")) return;
+  await DB.run(ctx.db, "UPDATE notifications SET read_at = ? WHERE recipient_type = 'staff' AND read_at IS NULL AND link = ?", nowIso(), INBOX_LINK);
+}
 const INBOX_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const INBOX_MAX_BYTES = 15 * 1024 * 1024;
 function inboxCred(env, s) {
@@ -218,7 +226,7 @@ async function runInbox(ctx, s, { max = 1, force = false } = {}) {
   await inboxSaveState(ctx, st);
   if (!st.ok) {
     // Störung höchstens einmal täglich melden
-    if (!st.warned || nowMs() - msOf(st.warned) > 86400e3) { st.warned = nowIso(); await inboxSaveState(ctx, st); await notifyStaff(ctx, { perm: 'acc_manage' }, { kind: 'fehler', title: 'Rechnungs-Postfach nicht erreichbar', body: st.error, link: '#/buchhaltung/eingang' }); }
+    if (!st.warned || nowMs() - msOf(st.warned) > 86400e3) { st.warned = nowIso(); await inboxSaveState(ctx, st); await notifyStaff(ctx, INBOX_NOTIFY, { kind: 'fehler', title: 'Rechnungs-Postfach nicht erreichbar', body: st.error, link: '#/buchhaltung/eingang' }); }
     return 'Fehler: ' + st.error;
   }
   return `${imported} importiert${skipped ? `, ${skipped} übersprungen` : ''}${st.pending ? `, ${st.pending} wartend` : ''}`;
@@ -249,7 +257,7 @@ async function importInvoiceMail(ctx, s, rawBytes, ref) {
     await audit(ctx, 'eingangsrechnung_postfach', 'eingangsrechnung', id, { lieferant: f.supplier_name || sender.email, brutto: gross, verfahren: ex.method });
     imported++;
   }
-  if (imported) await notifyStaff(ctx, { perm: 'acc_manage' }, { kind: 'info', title: imported > 1 ? `${imported} neue Eingangsrechnungen zu prüfen` : 'Neue Eingangsrechnung zu prüfen', body: `Von ${sender.name || sender.email || 'unbekannt'}: ${subject}`.slice(0, 200), link: '#/buchhaltung/eingang?status=pruefen' });
+  if (imported) await notifyStaff(ctx, INBOX_NOTIFY, { kind: 'info', title: imported > 1 ? `${imported} neue Eingangsrechnungen zu prüfen` : 'Neue Eingangsrechnung zu prüfen', body: `Von ${sender.name || sender.email || 'unbekannt'}: ${subject}`.slice(0, 200), link: INBOX_LINK });
   return { imported, skipped };
 }
 async function inboxInfo(ctx, s) {
