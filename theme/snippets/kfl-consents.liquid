@@ -23,18 +23,21 @@
   {%- if type == 'deal' or type == 'sell' -%}
     <label class="k-consent k-field">
       <input type="checkbox" name="contact[Weitergabe an Partner und Kontaktaufnahme]" value="Ja" required>
-      <span>
-        {%- if type == 'deal' -%}
-          Mir ist bekannt, dass KFL meine Angaben im erforderlichen Umfang an ausgewählte Partner (Autohäuser, Banken, Leasinggesellschaften und, wenn ich ein Servicepaket wähle, Service- und Versicherungspartner) weitergibt, um Angebote für mich einzuholen, und dass KFL und diese Partner mich dazu per E-Mail oder Telefon kontaktieren. Gebe ich mein jetziges Auto in Zahlung, gehen dessen Fahrzeugdaten zusätzlich an ausgewählte Ankaufpartner, um ein Angebot für mein Fahrzeug einzuholen. Ohne diese Weitergabe kann KFL den Service nicht erbringen.
-        {%- else -%}
-          Mir ist bekannt, dass KFL meine Fahrzeug- und Kontaktdaten im erforderlichen Umfang an ausgewählte Ankaufpartner weitergibt, um ein Angebot für mein Fahrzeug einzuholen, und dass KFL und diese Partner mich dazu per E-Mail oder Telefon kontaktieren. Ohne diese Weitergabe kann KFL den Service nicht erbringen.
-        {%- endif %}
-        <span class="k-error-text" hidden>Bitte bestätigen.</span>
-      </span>
+      <span>Mir ist bekannt, dass KFL meine Angaben an ausgewählte Partner weitergibt, um {% if type == 'deal' %}Angebote für mich{% else %}ein Ankaufangebot für mein Fahrzeug{% endif %} einzuholen, und dass diese mich dazu kontaktieren. <span class="k-error-text" hidden>Bitte bestätigen.</span></span>
     </label>
+    <details class="k-consent-more" style="margin:-.6rem 0 0 3.4rem;font-size:1.3rem;color:var(--k-muted,#6b6b70)">
+      <summary style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;width:max-content">Mehr erfahren</summary>
+      <p style="margin:.8rem 0 0;line-height:1.5">
+        {%- if type == 'deal' -%}
+          KFL gibt deine Angaben nur im erforderlichen Umfang an ausgewählte Partner weiter: Autohäuser, Banken, Leasinggesellschaften und, wenn du ein Servicepaket wählst, Service- und Versicherungspartner. KFL und diese Partner kontaktieren dich dazu per E-Mail oder Telefon. Gibst du dein jetziges Auto in Zahlung, gehen dessen Fahrzeugdaten zusätzlich an ausgewählte Ankaufpartner. Ohne diese Weitergabe kann KFL den Service nicht erbringen (Art. 6 Abs. 1 lit. b DSGVO). Details in der <a href="{{ privacy }}" target="_blank" rel="noopener">Datenschutzerklärung</a>.
+        {%- else -%}
+          KFL gibt deine Fahrzeug- und Kontaktdaten nur im erforderlichen Umfang an ausgewählte Ankaufpartner weiter. KFL und diese Partner kontaktieren dich dazu per E-Mail oder Telefon. Ohne diese Weitergabe kann KFL den Service nicht erbringen (Art. 6 Abs. 1 lit. b DSGVO). Details in der <a href="{{ privacy }}" target="_blank" rel="noopener">Datenschutzerklärung</a>.
+        {%- endif -%}
+      </p>
+    </details>
     <label class="k-consent k-field">
       <input type="checkbox" name="contact[Einwilligung Feedback und Erinnerungen]" value="Ja (Version {{ legal_v }})">
-      <span><span class="k-muted">Optional:</span> KFL darf mich per E-Mail fragen, wie zufrieden ich mit dem Service und dem Partner war. Diese Einwilligung kann ich jederzeit über den Abmeldelink in jeder E-Mail widerrufen.</span>
+      <span><span class="k-muted">Optional:</span> KFL darf mich per E-Mail nach meiner Zufriedenheit fragen. Jederzeit per Link in der E-Mail widerrufbar.</span>
     </label>
   {%- endif -%}
   <input type="hidden" name="contact[Einwilligung Zeitpunkt]" value="">
