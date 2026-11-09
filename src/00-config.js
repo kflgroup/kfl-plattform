@@ -188,7 +188,7 @@ const DEFAULT_SETTINGS = {
   mail_from_partner: 'vermittlung@kfl-group.com',
   mail_from_support: 'support@kfl-group.com',
   mail_from_customer: 'vermittlung@kfl-group.com',
-  mail_sender_name: 'KFL – Kaufen Finanzieren Leasen',
+  mail_sender_name: 'KFL',
   mail_internal_inbox: 'vermittlung@kfl-group.com',
   mail_support_inbox: 'support@kfl-group.com',
   // Anfragen
@@ -249,7 +249,7 @@ const DEFAULT_SETTINGS = {
   support_archive_days: 10,
   syslist_retention_days: 365,
   support_ack_subject: 'Wir haben deine Anfrage erhalten',
-  support_ack_text: 'vielen Dank für deine Nachricht an den Support der KFL GbR. Deine Anfrage ist bei uns eingegangen und wir kümmern uns schnellstmöglich darum. Du bekommst unsere Antwort per E-Mail und – falls du ein Konto bei uns hast – zusätzlich in deinem Dashboard.',
+  support_ack_text: 'vielen Dank für deine Nachricht an den KFL-Support. Deine Anfrage ist bei uns eingegangen und wir kümmern uns schnellstmöglich darum. Du bekommst unsere Antwort per E-Mail und – falls du ein Konto bei uns hast – zusätzlich in deinem Dashboard.',
   // System
   audit_retention_days: 30,
   backup_keep: 30,

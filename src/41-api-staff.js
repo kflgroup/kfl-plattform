@@ -375,7 +375,7 @@ async function handleStaffApi(ctx, url) {
         requirePerm(u, 'req_contact');
         const d = jparse(r.data, {});
         const res = await sendMail(ctx, { category: 'customer', to: r.email, toName: d.Vorname, subject: `Deine Anfrage #${m[1]} bei KFL`, title: `Nachricht zu deiner Anfrage #${m[1]}`, replyTo: s.mail_internal_inbox,
-          body: `<p>Hallo ${esc(d.Vorname || '')},</p><p style="white-space:pre-wrap">${esc(text)}</p><p>Viele Grüße<br>${esc(u.name)}<br>${esc(s.company_name)}</p>` });
+          body: `<p>Hallo ${esc(d.Vorname || '')},</p><p style="white-space:pre-wrap">${esc(text)}</p><p>Viele Grüße<br>${esc(u.name)}<br>${esc(mailBrand(s))}</p>` });
         await reqEvent(ctx, rid, 'nachricht_kunde', text.slice(0, 300));
         await audit(ctx, 'nachricht_kunde', 'anfrage', reqNo, { status: res.status });
         return out({ ok: true, mail: res.status });

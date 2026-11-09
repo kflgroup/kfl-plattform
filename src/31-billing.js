@@ -78,7 +78,7 @@ async function sendInvoiceMail(ctx, id, sendTo, { pdf: freshPdf = null } = {}) {
   const isStorno = inv.kind === 'storno';
   const r = await sendMail(ctx, { category: 'invoice', to, toName: rc.name, subject: `${isStorno ? 'Stornorechnung' : 'Rechnung'} ${inv.number} der ${s.company_name}`, title: `${isStorno ? 'Stornorechnung' : 'Ihre Rechnung'} ${inv.number}`,
     body: `<p>Sehr geehrte Damen und Herren,</p><p>anbei erhalten Sie ${isStorno ? 'die Stornorechnung' : 'unsere Rechnung'} <strong>${esc(inv.number)}</strong> vom ${esc(fmtDateDE(inv.issue_date))} über <strong>${esc(money(inv.gross))}</strong>${isStorno ? '' : `, zahlbar bis ${esc(fmtDateDE(inv.due_date))}`}.</p>${mailTable(jparse(inv.lines, []).map((l) => [l.description, money(l.total)]))}<p>Mit freundlichen Grüßen<br>${esc(s.company_name)} – Buchhaltung</p>`,
-    replyTo: { email: s.company_email, name: `${s.company_name} Buchhaltung` },
+    replyTo: { email: s.company_email, name: `${mailBrand(s)} Buchhaltung` },
     attachments: f ? [{ name: `${inv.number}.pdf`, base64: b64(f.bytes) }] : [] });
   // Nur bei erfolgreichem Versand als „versendet“ markieren
   const err = r.ok ? null : r.status === 'nicht_konfiguriert' ? 'E-Mail-Versand ist nicht eingerichtet (Postfach-Zugang fehlt)' : (r.error || 'Versand fehlgeschlagen');
@@ -227,7 +227,7 @@ async function sendDunning(ctx, id, { auto = false } = {}) {
   const dunId = await DB.insert(ctx.db, 'dunnings', { invoice_id: id, level, fee, due_date: due, file_id: fileId, sent_at: t, sent_to: rc.email || null, created_by: ctx._staff ? ctx._staff.id : null, created_at: t });
   if (fee) await fibuBookDunningFee(ctx, id, fee, dunId); // Forderung an sonstige Erträge
   await DB.update(ctx.db, 'invoices', id, { dunning_level: level, last_dunning_at: t, fees, updated_at: t });
-  if (emailOk(rc.email)) await sendMail(ctx, { category: 'invoice', to: rc.email, toName: rc.name, replyTo: { email: s.company_email, name: `${s.company_name} Buchhaltung` }, subject: `${DUNNING_LEVELS[level]} zur Rechnung ${inv.number}`, title: `${DUNNING_LEVELS[level]} zur Rechnung ${inv.number}`,
+  if (emailOk(rc.email)) await sendMail(ctx, { category: 'invoice', to: rc.email, toName: rc.name, replyTo: { email: s.company_email, name: `${mailBrand(s)} Buchhaltung` }, subject: `${DUNNING_LEVELS[level]} zur Rechnung ${inv.number}`, title: `${DUNNING_LEVELS[level]} zur Rechnung ${inv.number}`,
     body: `<p>Sehr geehrte Damen und Herren,</p><p>${level === 1 ? 'zu unserer Rechnung' : 'trotz unserer Erinnerung ist die Rechnung'} <strong>${esc(inv.number)}</strong> vom ${esc(fmtDateDE(inv.issue_date))} ${level === 1 ? 'konnten wir noch keinen vollständigen Zahlungseingang feststellen' : 'weiterhin offen'}. Bitte überweisen Sie den offenen Betrag von <strong>${esc(money(open))}</strong>${fee ? ` (inkl. Mahngebühr ${esc(money(fee))})` : ''} bis zum <strong>${esc(fmtDateDE(due))}</strong>.</p><p>Sollten Sie bereits gezahlt haben, betrachten Sie dieses Schreiben bitte als gegenstandslos.</p><p>Mit freundlichen Grüßen<br>${esc(s.company_name)} – Buchhaltung</p>`,
     attachments: [{ name: `${inv.number}-${DUNNING_LEVELS[level]}.pdf`, base64: b64(pdf) }] });
   if (org) await notifyPartner(ctx, { orgId: org.id, roles: ['gf'] }, { kind: 'buchhaltung', title: `${DUNNING_LEVELS[level]}: Rechnung ${inv.number}`, body: `Offener Betrag ${money(open)}, bitte bis ${fmtDateDE(due)} begleichen.`, link: '#/einstellungen/rechnungen' });

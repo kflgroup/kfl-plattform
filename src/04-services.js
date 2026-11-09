@@ -45,21 +45,44 @@ async function partnerEvent(ctx, { assignmentId, requestId, orgId, action, text,
 }
 
 /* ---------- E-Mail (Brevo) mit Absender je Kategorie ---------- */
-function mailWrap(s, title, body) {
-  return `<!doctype html><html><body style="margin:0;background:#f4f4f4;padding:24px 0">
-<div style="max-width:620px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;font:16px/1.55 Helvetica,Arial,sans-serif;color:#1a1a1a">
-<div style="background:#000;padding:22px 28px"><span style="display:inline-block;background:#ff6c01;color:#fff;font:italic 700 20px Helvetica,Arial;padding:8px 10px;border-radius:4px">KFL</span></div>
-<div style="padding:28px"><h1 style="font-size:23px;line-height:1.25;margin:0 0 16px">${esc(title)}</h1>${body}</div>
-<div style="padding:18px 28px;background:#f4f4f4;color:#6b6b70;font-size:12.5px;line-height:1.5">${esc(s.company_name)} · ${esc(s.company_street)} · ${esc(s.company_zip)} ${esc(s.company_city)} · ${esc(s.company_email)}</div>
-</div></body></html>`;
+/* ---------- E-Mail-Design (hell, modern, für Kunden und Partner) ----------
+   Tabellenlayout mit Inline-Styles (Outlook, Gmail, Apple Mail), Absender und Marke immer „KFL“. */
+const MAIL_F = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+const MAIL_C = { ink: '#16171a', text: '#3a3d42', grey: '#7a7e85', line: '#eceef1', soft: '#f6f7f9', bg: '#f2f3f5', orange: '#ff6c01', orangeText: '#c04f00' };
+const mailBrand = (s) => String((s && s.mail_sender_name) || 'KFL').trim() || 'KFL';
+const mailLogo = () => `<div style="font:italic 900 27px/1 ${MAIL_F};color:${MAIL_C.ink};letter-spacing:-.8px;white-space:nowrap">KFL<span style="display:inline-block;width:17px;height:4px;background:${MAIL_C.orange};border-radius:2px;margin-left:5px;vertical-align:middle"></span></div>
+  <div style="font:700 8.5px/1 ${MAIL_F};color:${MAIL_C.grey};letter-spacing:1.6px;padding-top:7px;white-space:nowrap">KAUFEN · FINANZIEREN · LEASEN</div>`;
+// Rahmen: Logo, optionaler Hinweis oben rechts (z. B. „Partner-Dashboard“), Überschrift, Inhalt, Fußzeile
+function mailShell(s, { title, preheader, label = '', kicker = '', content }) {
+  const C = MAIL_C, brand = mailBrand(s);
+  const contact = [s.company_email ? `<a href="mailto:${esc(s.company_email)}" style="color:${C.grey};text-decoration:underline">${esc(s.company_email)}</a>` : '', s.company_phone ? esc(s.company_phone) : '', s.company_web ? `<a href="${esc(/^https?:/.test(s.company_web) ? s.company_web : 'https://' + s.company_web)}" style="color:${C.grey};text-decoration:underline">${esc(String(s.company_web).replace(/^https?:\/\//, ''))}</a>` : ''].filter(Boolean).join(' · ');
+  return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light only">
+<title>${esc(title)}</title><style>:root{color-scheme:light only;supported-color-schemes:light only}p{margin:0 0 14px}a{color:${C.orangeText}}@media (max-width:520px){.k-pad{padding-left:22px!important;padding-right:22px!important}.k-h1{font-size:23px!important}.k-label{display:none!important}}</style></head>
+<body style="margin:0;padding:0;background:${C.bg};-webkit-text-size-adjust:100%">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${esc(preheader || title)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${C.bg}" style="background:${C.bg}"><tr><td align="center" style="padding:32px 12px 8px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="max-width:600px;background:#ffffff;border:1px solid ${C.line};border-radius:20px;overflow:hidden">
+  <tr><td style="height:4px;line-height:4px;font-size:0;background:${C.orange};background-image:linear-gradient(90deg,${C.orange},#ffa25c)">&nbsp;</td></tr>
+  <tr><td class="k-pad" style="padding:26px 36px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td valign="top">${mailLogo()}</td>
+    ${label ? `<td align="right" valign="top"><span class="k-label" style="display:inline-block;white-space:nowrap;font:600 12px/1 ${MAIL_F};color:${C.grey};background:${C.soft};border:1px solid ${C.line};border-radius:999px;padding:7px 12px">${esc(label)}</span></td>` : ''}</tr></table></td></tr>
+  <tr><td class="k-pad" style="padding:30px 36px 0">${kicker ? `<div style="font:700 12px/1 ${MAIL_F};letter-spacing:1.4px;color:${C.orangeText};text-transform:uppercase;margin-bottom:10px">${esc(kicker)}</div>` : ''}
+    <h1 class="k-h1" style="margin:0;font:800 27px/1.22 ${MAIL_F};color:${C.ink};letter-spacing:-.5px">${esc(title)}</h1></td></tr>
+  <tr><td class="k-pad" style="padding:20px 36px 30px;font:16px/1.65 ${MAIL_F};color:${C.text}">${content}</td></tr>
+</table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px"><tr><td class="k-pad" align="center" style="padding:22px 36px 30px;font:12px/1.7 ${MAIL_F};color:${C.grey}">
+  <b style="color:${C.ink};font-style:italic">${esc(brand)}</b> · Kaufen · Finanzieren · Leasen<br>
+  ${[s.company_street, [s.company_zip, s.company_city].filter(Boolean).join(' ')].filter(Boolean).map(esc).join(' · ')}${contact ? '<br>' + contact : ''}<br>
+  <span style="color:#a3a7ad">Anbieter: ${esc(s.company_name || brand)} · Diese E-Mail wurde automatisch versendet.</span></td></tr></table>
+</td></tr></table></body></html>`;
 }
-const mailBtn = (href, label) => `<p style="margin:22px 0"><a href="${esc(href)}" style="display:inline-block;background:#ff6c01;color:#000;font-weight:700;padding:12px 22px;border-radius:999px;text-decoration:none">${esc(label)}</a></p>`;
-const mailTable = (rows) => `<table style="border-collapse:collapse;width:100%;font:14.5px/1.5 Helvetica,Arial,sans-serif">${rows.filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '').map(([k, v]) => `<tr><td style="padding:7px 10px;border-bottom:1px solid #eee;color:#6b6b70;vertical-align:top;white-space:nowrap">${esc(k)}</td><td style="padding:7px 10px;border-bottom:1px solid #eee">${esc(v).replace(/\n/g, '<br>')}</td></tr>`).join('')}</table>`;
+function mailWrap(s, title, body, opts = {}) { return mailShell(s, { title, content: body, ...opts }); }
+const mailBtn = (href, label) => `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 22px"><tr><td bgcolor="${MAIL_C.orange}" style="border-radius:999px;background:${MAIL_C.orange};box-shadow:0 6px 16px rgba(255,108,1,.25)"><a href="${esc(href)}" target="_blank" style="display:inline-block;padding:14px 28px;font:700 15px/1.3 ${MAIL_F};color:#ffffff;text-decoration:none;border-radius:999px">${esc(label)} &rarr;</a></td></tr></table>`;
+const mailTable = (rows) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;background:${MAIL_C.soft};border-radius:14px;margin:6px 0 18px">${rows.filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '').map(([k, v], i, a) => `<tr><td style="padding:11px 16px;${i < a.length - 1 ? `border-bottom:1px solid ${MAIL_C.line};` : ''}font:13px/1.5 ${MAIL_F};color:${MAIL_C.grey};vertical-align:top;white-space:nowrap;width:38%">${esc(k)}</td><td style="padding:11px 16px;${i < a.length - 1 ? `border-bottom:1px solid ${MAIL_C.line};` : ''}font:600 14.5px/1.5 ${MAIL_F};color:${MAIL_C.ink}">${esc(v).replace(/\n/g, '<br>')}</td></tr>`).join('')}</table>`;
 
 async function sendMail(ctx, { category = 'system', to, toName, subject, title, html, body, replyTo, attachments }) {
   const s = await settingsOf(ctx);
   const from = s[(MAIL_CATEGORIES[category] || MAIL_CATEGORIES.system).setting] || s.mail_from_system;
-  const content = html || mailWrap(s, title || subject, body || '');
+  const content = html || mailWrap(s, title || subject, body || '', { label: { partner: 'Partner-Dashboard', invoice: 'Buchhaltung', support: 'Support' }[category] || '' });
   const recipient = Array.isArray(to) ? to.join(', ') : to;
   if (!recipient || !emailOk(String(recipient).split(',')[0].trim())) return { ok: false, error: 'Keine gültige Empfängeradresse' };
   let status = 'nicht_konfiguriert', error = null, reply = null;

@@ -250,6 +250,11 @@ async function migrate(db) {
         COALESCE(NULLIF(trim(billing_city), ''), city), COALESCE(country, 'Deutschland'), COALESCE(NULLIF(trim(billing_email), ''), email), phone, vat_id, id, 1, ?
       FROM orgs o WHERE o.deleted = 0 AND NOT EXISTS (SELECT 1 FROM suppliers s WHERE s.org_id = o.id)`).bind(nowIso()),
     setFlagStmt(db, '_org_suppliers_v1'));
+  // Einmalig: Absendername der E-Mails ist „KFL“ (statt „KFL – Kaufen Finanzieren Leasen“ bzw. „KFL GbR“ im Text)
+  if (!flags.has('_mail_brand_v1')) ops.push(
+    db.prepare("UPDATE settings SET value = ? WHERE key = 'mail_sender_name' AND value IN (?, ?)").bind(JSON.stringify('KFL'), JSON.stringify('KFL – Kaufen Finanzieren Leasen'), JSON.stringify('KFL GbR')),
+    db.prepare("UPDATE settings SET value = replace(value, 'den Support der KFL GbR', 'den KFL-Support') WHERE key = 'support_ack_text'"),
+    setFlagStmt(db, '_mail_brand_v1'));
   // Kontenrahmen anlegen (fehlende Standardkonten ergänzen)
   for (const [number, name, type, sys] of FIBU_DEFAULT_ACCOUNTS) ops.push(db.prepare('INSERT OR IGNORE INTO fibu_accounts (number, name, type, sys, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(number, name, type, sys, 'System', nowIso()));
   // Beginn der Finanzbuchhaltung merken (ab diesem Monat gibt es automatische Abschlüsse)

@@ -563,8 +563,8 @@ async function customerFollowUp(ctx, a, intro) {
   await DB.update(ctx.db, 'requests', req.id, { feedback_state: 'gefragt', updated_at: nowIso() });
   await sendMail(ctx, { category: 'system', to: req.email, toName: d.Vorname, subject: `Kurze Frage zu deiner Anfrage #${toNumber(req.id)}`, title: 'Hat sich unser Partner bei dir gemeldet?',
     body: `<p>Hallo ${esc(d.Vorname || '')},</p><p>${esc(intro)} Hat sich unser Partner zu deiner Anfrage <strong>#${toNumber(req.id)}</strong> schon bei dir gemeldet?</p>
-      <p style="margin:22px 0"><a href="${esc(base + '&a=ja')}" style="display:inline-block;background:#0a7d3b;color:#fff;font-weight:700;padding:12px 26px;border-radius:999px;text-decoration:none;margin-right:10px">Ja</a>
-      <a href="${esc(base + '&a=nein')}" style="display:inline-block;background:#1a1a1a;color:#fff;font-weight:700;padding:12px 26px;border-radius:999px;text-decoration:none">Nein</a></p>` });
+      <p style="margin:22px 0"><a href="${esc(base + '&a=ja')}" style="display:inline-block;background:#16a34a;color:#fff;font-weight:700;padding:12px 28px;border-radius:999px;text-decoration:none;margin-right:10px">Ja</a>
+      <a href="${esc(base + '&a=nein')}" style="display:inline-block;background:#ffffff;color:#16171a;border:1.5px solid #d6d9de;font-weight:700;padding:11px 28px;border-radius:999px;text-decoration:none">Nein</a></p>` });
   await reqEvent(ctx, req.id, 'kunde_nachgefragt', 'Kunde per Mail gefragt, ob der Partner sich gemeldet hat');
 }
 async function customerFeedback(ctx, rid, answer) {
@@ -718,7 +718,7 @@ async function serviceSurvey(ctx, req, svId) {
   const asked = ['ja', 'nein'].includes(req.feedback_state);
   const fb = (ctx.origin || '') + `/c/feedback?r=${n}&t=${await linkToken(ctx.env, 'fb', req.id)}`;
   const contact = asked ? '' : `<p style="margin-top:24px"><strong>Hat sich der Partner bei dir gemeldet?</strong></p>
-    <p style="margin:12px 0 22px"><a href="${esc(fb + '&a=ja')}" style="display:inline-block;background:#0a7d3b;color:#fff;font-weight:700;padding:10px 24px;border-radius:999px;text-decoration:none;margin-right:10px">Ja</a><a href="${esc(fb + '&a=nein')}" style="display:inline-block;background:#1a1a1a;color:#fff;font-weight:700;padding:10px 24px;border-radius:999px;text-decoration:none">Nein</a></p>`;
+    <p style="margin:12px 0 22px"><a href="${esc(fb + '&a=ja')}" style="display:inline-block;background:#16a34a;color:#fff;font-weight:700;padding:11px 26px;border-radius:999px;text-decoration:none;margin-right:10px">Ja</a><a href="${esc(fb + '&a=nein')}" style="display:inline-block;background:#ffffff;color:#16171a;border:1.5px solid #d6d9de;font-weight:700;padding:10px 26px;border-radius:999px;text-decoration:none">Nein</a></p>`;
   await sendMail(ctx, { category: 'system', to: req.email, toName: d.Vorname, subject: `Wie zufrieden bist du mit KFL? (Anfrage #${n})`, title: 'Wie war es mit KFL?',
     body: `<p>Hallo ${esc(d.Vorname || '')},</p><p>vor ein paar Tagen hast du dich für ein Angebot zu deiner Anfrage <strong>#${n}</strong> entschieden. Wie zufrieden bist du mit unserem Anfragetool und unserem Service? 1 = gar nicht, 5 = sehr zufrieden.</p>
       <p style="margin:20px 0">${await surveyStars(ctx, svId)}</p>${contact}<p>Fehlt dir etwas oder hakt es irgendwo? Antworte einfach auf diese E-Mail, wir kümmern uns.</p>${await optoutNote(ctx, req)}` });

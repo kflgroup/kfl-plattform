@@ -192,7 +192,7 @@ const DEFAULT_SETTINGS = {
   mail_from_partner: 'vermittlung@kfl-group.com',
   mail_from_support: 'support@kfl-group.com',
   mail_from_customer: 'vermittlung@kfl-group.com',
-  mail_sender_name: 'KFL \u2013 Kaufen Finanzieren Leasen',
+  mail_sender_name: 'KFL',
   mail_internal_inbox: 'vermittlung@kfl-group.com',
   mail_support_inbox: 'support@kfl-group.com',
   // Anfragen
@@ -253,7 +253,7 @@ const DEFAULT_SETTINGS = {
   support_archive_days: 10,
   syslist_retention_days: 365,
   support_ack_subject: 'Wir haben deine Anfrage erhalten',
-  support_ack_text: 'vielen Dank f\u00fcr deine Nachricht an den Support der KFL GbR. Deine Anfrage ist bei uns eingegangen und wir k\u00fcmmern uns schnellstm\u00f6glich darum. Du bekommst unsere Antwort per E-Mail und \u2013 falls du ein Konto bei uns hast \u2013 zus\u00e4tzlich in deinem Dashboard.',
+  support_ack_text: 'vielen Dank f\u00fcr deine Nachricht an den KFL-Support. Deine Anfrage ist bei uns eingegangen und wir k\u00fcmmern uns schnellstm\u00f6glich darum. Du bekommst unsere Antwort per E-Mail und \u2013 falls du ein Konto bei uns hast \u2013 zus\u00e4tzlich in deinem Dashboard.',
   // System
   audit_retention_days: 30,
   backup_keep: 30,
@@ -843,6 +843,11 @@ async function migrate(db) {
         COALESCE(NULLIF(trim(billing_city), ''), city), COALESCE(country, 'Deutschland'), COALESCE(NULLIF(trim(billing_email), ''), email), phone, vat_id, id, 1, ?
       FROM orgs o WHERE o.deleted = 0 AND NOT EXISTS (SELECT 1 FROM suppliers s WHERE s.org_id = o.id)`).bind(nowIso()),
     setFlagStmt(db, '_org_suppliers_v1'));
+  // Einmalig: Absendername der E-Mails ist \u201eKFL\u201c (statt \u201eKFL \u2013 Kaufen Finanzieren Leasen\u201c bzw. \u201eKFL GbR\u201c im Text)
+  if (!flags.has('_mail_brand_v1')) ops.push(
+    db.prepare("UPDATE settings SET value = ? WHERE key = 'mail_sender_name' AND value IN (?, ?)").bind(JSON.stringify('KFL'), JSON.stringify('KFL \u2013 Kaufen Finanzieren Leasen'), JSON.stringify('KFL GbR')),
+    db.prepare("UPDATE settings SET value = replace(value, 'den Support der KFL GbR', 'den KFL-Support') WHERE key = 'support_ack_text'"),
+    setFlagStmt(db, '_mail_brand_v1'));
   // Kontenrahmen anlegen (fehlende Standardkonten erg\u00e4nzen)
   for (const [number, name, type, sys] of FIBU_DEFAULT_ACCOUNTS) ops.push(db.prepare('INSERT OR IGNORE INTO fibu_accounts (number, name, type, sys, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(number, name, type, sys, 'System', nowIso()));
   // Beginn der Finanzbuchhaltung merken (ab diesem Monat gibt es automatische Abschl\u00fcsse)
@@ -945,21 +950,44 @@ async function partnerEvent(ctx, { assignmentId, requestId, orgId, action, text,
 }
 
 /* ---------- E-Mail (Brevo) mit Absender je Kategorie ---------- */
-function mailWrap(s, title, body) {
-  return `<!doctype html><html><body style="margin:0;background:#f4f4f4;padding:24px 0">
-<div style="max-width:620px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;font:16px/1.55 Helvetica,Arial,sans-serif;color:#1a1a1a">
-<div style="background:#000;padding:22px 28px"><span style="display:inline-block;background:#ff6c01;color:#fff;font:italic 700 20px Helvetica,Arial;padding:8px 10px;border-radius:4px">KFL</span></div>
-<div style="padding:28px"><h1 style="font-size:23px;line-height:1.25;margin:0 0 16px">${esc(title)}</h1>${body}</div>
-<div style="padding:18px 28px;background:#f4f4f4;color:#6b6b70;font-size:12.5px;line-height:1.5">${esc(s.company_name)} \u00b7 ${esc(s.company_street)} \u00b7 ${esc(s.company_zip)} ${esc(s.company_city)} \u00b7 ${esc(s.company_email)}</div>
-</div></body></html>`;
+/* ---------- E-Mail-Design (hell, modern, f\u00fcr Kunden und Partner) ----------
+   Tabellenlayout mit Inline-Styles (Outlook, Gmail, Apple Mail), Absender und Marke immer \u201eKFL\u201c. */
+const MAIL_F = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+const MAIL_C = { ink: '#16171a', text: '#3a3d42', grey: '#7a7e85', line: '#eceef1', soft: '#f6f7f9', bg: '#f2f3f5', orange: '#ff6c01', orangeText: '#c04f00' };
+const mailBrand = (s) => String((s && s.mail_sender_name) || 'KFL').trim() || 'KFL';
+const mailLogo = () => `<div style="font:italic 900 27px/1 ${MAIL_F};color:${MAIL_C.ink};letter-spacing:-.8px;white-space:nowrap">KFL<span style="display:inline-block;width:17px;height:4px;background:${MAIL_C.orange};border-radius:2px;margin-left:5px;vertical-align:middle"></span></div>
+  <div style="font:700 8.5px/1 ${MAIL_F};color:${MAIL_C.grey};letter-spacing:1.6px;padding-top:7px;white-space:nowrap">KAUFEN \u00b7 FINANZIEREN \u00b7 LEASEN</div>`;
+// Rahmen: Logo, optionaler Hinweis oben rechts (z. B. \u201ePartner-Dashboard\u201c), \u00dcberschrift, Inhalt, Fu\u00dfzeile
+function mailShell(s, { title, preheader, label = '', kicker = '', content }) {
+  const C = MAIL_C, brand = mailBrand(s);
+  const contact = [s.company_email ? `<a href="mailto:${esc(s.company_email)}" style="color:${C.grey};text-decoration:underline">${esc(s.company_email)}</a>` : '', s.company_phone ? esc(s.company_phone) : '', s.company_web ? `<a href="${esc(/^https?:/.test(s.company_web) ? s.company_web : 'https://' + s.company_web)}" style="color:${C.grey};text-decoration:underline">${esc(String(s.company_web).replace(/^https?:\/\//, ''))}</a>` : ''].filter(Boolean).join(' \u00b7 ');
+  return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light only">
+<title>${esc(title)}</title><style>:root{color-scheme:light only;supported-color-schemes:light only}p{margin:0 0 14px}a{color:${C.orangeText}}@media (max-width:520px){.k-pad{padding-left:22px!important;padding-right:22px!important}.k-h1{font-size:23px!important}.k-label{display:none!important}}</style></head>
+<body style="margin:0;padding:0;background:${C.bg};-webkit-text-size-adjust:100%">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${esc(preheader || title)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${C.bg}" style="background:${C.bg}"><tr><td align="center" style="padding:32px 12px 8px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="max-width:600px;background:#ffffff;border:1px solid ${C.line};border-radius:20px;overflow:hidden">
+  <tr><td style="height:4px;line-height:4px;font-size:0;background:${C.orange};background-image:linear-gradient(90deg,${C.orange},#ffa25c)">&nbsp;</td></tr>
+  <tr><td class="k-pad" style="padding:26px 36px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td valign="top">${mailLogo()}</td>
+    ${label ? `<td align="right" valign="top"><span class="k-label" style="display:inline-block;white-space:nowrap;font:600 12px/1 ${MAIL_F};color:${C.grey};background:${C.soft};border:1px solid ${C.line};border-radius:999px;padding:7px 12px">${esc(label)}</span></td>` : ''}</tr></table></td></tr>
+  <tr><td class="k-pad" style="padding:30px 36px 0">${kicker ? `<div style="font:700 12px/1 ${MAIL_F};letter-spacing:1.4px;color:${C.orangeText};text-transform:uppercase;margin-bottom:10px">${esc(kicker)}</div>` : ''}
+    <h1 class="k-h1" style="margin:0;font:800 27px/1.22 ${MAIL_F};color:${C.ink};letter-spacing:-.5px">${esc(title)}</h1></td></tr>
+  <tr><td class="k-pad" style="padding:20px 36px 30px;font:16px/1.65 ${MAIL_F};color:${C.text}">${content}</td></tr>
+</table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px"><tr><td class="k-pad" align="center" style="padding:22px 36px 30px;font:12px/1.7 ${MAIL_F};color:${C.grey}">
+  <b style="color:${C.ink};font-style:italic">${esc(brand)}</b> \u00b7 Kaufen \u00b7 Finanzieren \u00b7 Leasen<br>
+  ${[s.company_street, [s.company_zip, s.company_city].filter(Boolean).join(' ')].filter(Boolean).map(esc).join(' \u00b7 ')}${contact ? '<br>' + contact : ''}<br>
+  <span style="color:#a3a7ad">Anbieter: ${esc(s.company_name || brand)} \u00b7 Diese E-Mail wurde automatisch versendet.</span></td></tr></table>
+</td></tr></table></body></html>`;
 }
-const mailBtn = (href, label) => `<p style="margin:22px 0"><a href="${esc(href)}" style="display:inline-block;background:#ff6c01;color:#000;font-weight:700;padding:12px 22px;border-radius:999px;text-decoration:none">${esc(label)}</a></p>`;
-const mailTable = (rows) => `<table style="border-collapse:collapse;width:100%;font:14.5px/1.5 Helvetica,Arial,sans-serif">${rows.filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '').map(([k, v]) => `<tr><td style="padding:7px 10px;border-bottom:1px solid #eee;color:#6b6b70;vertical-align:top;white-space:nowrap">${esc(k)}</td><td style="padding:7px 10px;border-bottom:1px solid #eee">${esc(v).replace(/\n/g, '<br>')}</td></tr>`).join('')}</table>`;
+function mailWrap(s, title, body, opts = {}) { return mailShell(s, { title, content: body, ...opts }); }
+const mailBtn = (href, label) => `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 22px"><tr><td bgcolor="${MAIL_C.orange}" style="border-radius:999px;background:${MAIL_C.orange};box-shadow:0 6px 16px rgba(255,108,1,.25)"><a href="${esc(href)}" target="_blank" style="display:inline-block;padding:14px 28px;font:700 15px/1.3 ${MAIL_F};color:#ffffff;text-decoration:none;border-radius:999px">${esc(label)} &rarr;</a></td></tr></table>`;
+const mailTable = (rows) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;background:${MAIL_C.soft};border-radius:14px;margin:6px 0 18px">${rows.filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '').map(([k, v], i, a) => `<tr><td style="padding:11px 16px;${i < a.length - 1 ? `border-bottom:1px solid ${MAIL_C.line};` : ''}font:13px/1.5 ${MAIL_F};color:${MAIL_C.grey};vertical-align:top;white-space:nowrap;width:38%">${esc(k)}</td><td style="padding:11px 16px;${i < a.length - 1 ? `border-bottom:1px solid ${MAIL_C.line};` : ''}font:600 14.5px/1.5 ${MAIL_F};color:${MAIL_C.ink}">${esc(v).replace(/\n/g, '<br>')}</td></tr>`).join('')}</table>`;
 
 async function sendMail(ctx, { category = 'system', to, toName, subject, title, html, body, replyTo, attachments }) {
   const s = await settingsOf(ctx);
   const from = s[(MAIL_CATEGORIES[category] || MAIL_CATEGORIES.system).setting] || s.mail_from_system;
-  const content = html || mailWrap(s, title || subject, body || '');
+  const content = html || mailWrap(s, title || subject, body || '', { label: { partner: 'Partner-Dashboard', invoice: 'Buchhaltung', support: 'Support' }[category] || '' });
   const recipient = Array.isArray(to) ? to.join(', ') : to;
   if (!recipient || !emailOk(String(recipient).split(',')[0].trim())) return { ok: false, error: 'Keine g\u00fcltige Empf\u00e4ngeradresse' };
   let status = 'nicht_konfiguriert', error = null, reply = null;
@@ -2280,8 +2308,8 @@ async function customerFollowUp(ctx, a, intro) {
   await DB.update(ctx.db, 'requests', req.id, { feedback_state: 'gefragt', updated_at: nowIso() });
   await sendMail(ctx, { category: 'system', to: req.email, toName: d.Vorname, subject: `Kurze Frage zu deiner Anfrage #${toNumber(req.id)}`, title: 'Hat sich unser Partner bei dir gemeldet?',
     body: `<p>Hallo ${esc(d.Vorname || '')},</p><p>${esc(intro)} Hat sich unser Partner zu deiner Anfrage <strong>#${toNumber(req.id)}</strong> schon bei dir gemeldet?</p>
-      <p style="margin:22px 0"><a href="${esc(base + '&a=ja')}" style="display:inline-block;background:#0a7d3b;color:#fff;font-weight:700;padding:12px 26px;border-radius:999px;text-decoration:none;margin-right:10px">Ja</a>
-      <a href="${esc(base + '&a=nein')}" style="display:inline-block;background:#1a1a1a;color:#fff;font-weight:700;padding:12px 26px;border-radius:999px;text-decoration:none">Nein</a></p>` });
+      <p style="margin:22px 0"><a href="${esc(base + '&a=ja')}" style="display:inline-block;background:#16a34a;color:#fff;font-weight:700;padding:12px 28px;border-radius:999px;text-decoration:none;margin-right:10px">Ja</a>
+      <a href="${esc(base + '&a=nein')}" style="display:inline-block;background:#ffffff;color:#16171a;border:1.5px solid #d6d9de;font-weight:700;padding:11px 28px;border-radius:999px;text-decoration:none">Nein</a></p>` });
   await reqEvent(ctx, req.id, 'kunde_nachgefragt', 'Kunde per Mail gefragt, ob der Partner sich gemeldet hat');
 }
 async function customerFeedback(ctx, rid, answer) {
@@ -2435,7 +2463,7 @@ async function serviceSurvey(ctx, req, svId) {
   const asked = ['ja', 'nein'].includes(req.feedback_state);
   const fb = (ctx.origin || '') + `/c/feedback?r=${n}&t=${await linkToken(ctx.env, 'fb', req.id)}`;
   const contact = asked ? '' : `<p style="margin-top:24px"><strong>Hat sich der Partner bei dir gemeldet?</strong></p>
-    <p style="margin:12px 0 22px"><a href="${esc(fb + '&a=ja')}" style="display:inline-block;background:#0a7d3b;color:#fff;font-weight:700;padding:10px 24px;border-radius:999px;text-decoration:none;margin-right:10px">Ja</a><a href="${esc(fb + '&a=nein')}" style="display:inline-block;background:#1a1a1a;color:#fff;font-weight:700;padding:10px 24px;border-radius:999px;text-decoration:none">Nein</a></p>`;
+    <p style="margin:12px 0 22px"><a href="${esc(fb + '&a=ja')}" style="display:inline-block;background:#16a34a;color:#fff;font-weight:700;padding:11px 26px;border-radius:999px;text-decoration:none;margin-right:10px">Ja</a><a href="${esc(fb + '&a=nein')}" style="display:inline-block;background:#ffffff;color:#16171a;border:1.5px solid #d6d9de;font-weight:700;padding:10px 26px;border-radius:999px;text-decoration:none">Nein</a></p>`;
   await sendMail(ctx, { category: 'system', to: req.email, toName: d.Vorname, subject: `Wie zufrieden bist du mit KFL? (Anfrage #${n})`, title: 'Wie war es mit KFL?',
     body: `<p>Hallo ${esc(d.Vorname || '')},</p><p>vor ein paar Tagen hast du dich f\u00fcr ein Angebot zu deiner Anfrage <strong>#${n}</strong> entschieden. Wie zufrieden bist du mit unserem Anfragetool und unserem Service? 1 = gar nicht, 5 = sehr zufrieden.</p>
       <p style="margin:20px 0">${await surveyStars(ctx, svId)}</p>${contact}<p>Fehlt dir etwas oder hakt es irgendwo? Antworte einfach auf diese E-Mail, wir k\u00fcmmern uns.</p>${await optoutNote(ctx, req)}` });
@@ -2524,7 +2552,7 @@ async function sendInvoiceMail(ctx, id, sendTo, { pdf: freshPdf = null } = {}) {
   const isStorno = inv.kind === 'storno';
   const r = await sendMail(ctx, { category: 'invoice', to, toName: rc.name, subject: `${isStorno ? 'Stornorechnung' : 'Rechnung'} ${inv.number} der ${s.company_name}`, title: `${isStorno ? 'Stornorechnung' : 'Ihre Rechnung'} ${inv.number}`,
     body: `<p>Sehr geehrte Damen und Herren,</p><p>anbei erhalten Sie ${isStorno ? 'die Stornorechnung' : 'unsere Rechnung'} <strong>${esc(inv.number)}</strong> vom ${esc(fmtDateDE(inv.issue_date))} \u00fcber <strong>${esc(money(inv.gross))}</strong>${isStorno ? '' : `, zahlbar bis ${esc(fmtDateDE(inv.due_date))}`}.</p>${mailTable(jparse(inv.lines, []).map((l) => [l.description, money(l.total)]))}<p>Mit freundlichen Gr\u00fc\u00dfen<br>${esc(s.company_name)} \u2013 Buchhaltung</p>`,
-    replyTo: { email: s.company_email, name: `${s.company_name} Buchhaltung` },
+    replyTo: { email: s.company_email, name: `${mailBrand(s)} Buchhaltung` },
     attachments: f ? [{ name: `${inv.number}.pdf`, base64: b64(f.bytes) }] : [] });
   // Nur bei erfolgreichem Versand als \u201eversendet\u201c markieren
   const err = r.ok ? null : r.status === 'nicht_konfiguriert' ? 'E-Mail-Versand ist nicht eingerichtet (Postfach-Zugang fehlt)' : (r.error || 'Versand fehlgeschlagen');
@@ -2673,7 +2701,7 @@ async function sendDunning(ctx, id, { auto = false } = {}) {
   const dunId = await DB.insert(ctx.db, 'dunnings', { invoice_id: id, level, fee, due_date: due, file_id: fileId, sent_at: t, sent_to: rc.email || null, created_by: ctx._staff ? ctx._staff.id : null, created_at: t });
   if (fee) await fibuBookDunningFee(ctx, id, fee, dunId); // Forderung an sonstige Ertr\u00e4ge
   await DB.update(ctx.db, 'invoices', id, { dunning_level: level, last_dunning_at: t, fees, updated_at: t });
-  if (emailOk(rc.email)) await sendMail(ctx, { category: 'invoice', to: rc.email, toName: rc.name, replyTo: { email: s.company_email, name: `${s.company_name} Buchhaltung` }, subject: `${DUNNING_LEVELS[level]} zur Rechnung ${inv.number}`, title: `${DUNNING_LEVELS[level]} zur Rechnung ${inv.number}`,
+  if (emailOk(rc.email)) await sendMail(ctx, { category: 'invoice', to: rc.email, toName: rc.name, replyTo: { email: s.company_email, name: `${mailBrand(s)} Buchhaltung` }, subject: `${DUNNING_LEVELS[level]} zur Rechnung ${inv.number}`, title: `${DUNNING_LEVELS[level]} zur Rechnung ${inv.number}`,
     body: `<p>Sehr geehrte Damen und Herren,</p><p>${level === 1 ? 'zu unserer Rechnung' : 'trotz unserer Erinnerung ist die Rechnung'} <strong>${esc(inv.number)}</strong> vom ${esc(fmtDateDE(inv.issue_date))} ${level === 1 ? 'konnten wir noch keinen vollst\u00e4ndigen Zahlungseingang feststellen' : 'weiterhin offen'}. Bitte \u00fcberweisen Sie den offenen Betrag von <strong>${esc(money(open))}</strong>${fee ? ` (inkl. Mahngeb\u00fchr ${esc(money(fee))})` : ''} bis zum <strong>${esc(fmtDateDE(due))}</strong>.</p><p>Sollten Sie bereits gezahlt haben, betrachten Sie dieses Schreiben bitte als gegenstandslos.</p><p>Mit freundlichen Gr\u00fc\u00dfen<br>${esc(s.company_name)} \u2013 Buchhaltung</p>`,
     attachments: [{ name: `${inv.number}-${DUNNING_LEVELS[level]}.pdf`, base64: b64(pdf) }] });
   if (org) await notifyPartner(ctx, { orgId: org.id, roles: ['gf'] }, { kind: 'buchhaltung', title: `${DUNNING_LEVELS[level]}: Rechnung ${inv.number}`, body: `Offener Betrag ${money(open)}, bitte bis ${fmtDateDE(due)} begleichen.`, link: '#/einstellungen/rechnungen' });
@@ -2743,7 +2771,7 @@ async function createTicket(ctx, { tag, kind = 'ticket', category, subject, prio
   await notifyStaff(ctx, notifyAdmin ? { roles: ['admin'] } : { perm: 'support_manage' }, { kind: 'support', title: `Support #${id} \u00b7 ${tag}${priority !== 'normal' ? ' \u00b7 ' + statusLabel(TICKET_PRIORITIES, priority) : ''}`, body: subject, link: `#/support/${id}` });
   if (ack && emailOk(requester.email)) {
     await sendMail(ctx, { category: 'system', to: requester.email, toName: requester.name, subject: `${s.support_ack_subject} (Ticket #${id})`, title: s.support_ack_subject,
-      body: `<p>Hallo ${esc(requester.name || '')},</p><p>${esc(s.support_ack_text).replace(/\n/g, '<br>')}</p>${mailTable([['Ticketnummer', '#' + id], ['Betreff', subject], ['Eingang', fmtDE(t)]])}<p>Viele Gr\u00fc\u00dfe<br>Dein Support-Team der ${esc(s.company_name)}</p>` });
+      body: `<p>Hallo ${esc(requester.name || '')},</p><p>${esc(s.support_ack_text).replace(/\n/g, '<br>')}</p>${mailTable([['Ticketnummer', '#' + id], ['Betreff', subject], ['Eingang', fmtDE(t)]])}<p>Viele Gr\u00fc\u00dfe<br>Dein ${esc(mailBrand(s))}-Support</p>` });
   }
   return id;
 }
@@ -2765,7 +2793,7 @@ async function ticketReply(ctx, ticketId, { authorType, authorId, authorName, te
     if (tk.requester_type === 'staff' && tk.requester_id) await notify(ctx, 'staff', tk.requester_id, { kind: 'support', title: `Antwort vom Support zu #${ticketId}`, body: String(text).slice(0, 300), link: `#/support/${ticketId}` });
     if (tk.requester_type === 'partner' && tk.requester_id) await notify(ctx, 'partner', tk.requester_id, { kind: 'support', title: `Antwort vom KFL-Support zu #${ticketId}`, body: String(text).slice(0, 300), link: `#/support/${ticketId}` });
     if (emailOk(tk.requester_email)) await sendMail(ctx, { category: 'support', to: tk.requester_email, toName: tk.requester_name, subject: `Re: ${tk.subject} (Ticket #${ticketId})`, title: 'Antwort vom KFL-Support',
-      body: `<p>Hallo ${esc(tk.requester_name || '')},</p><p style="white-space:pre-wrap">${esc(text)}</p><p>Viele Gr\u00fc\u00dfe<br>Dein Support-Team der ${esc(s.company_name)}</p><p style="color:#6b6b70;font-size:12.5px">Ticket #${ticketId} \u00b7 ${esc(tk.subject)}</p>` });
+      body: `<p>Hallo ${esc(tk.requester_name || '')},</p><p style="white-space:pre-wrap">${esc(text)}</p><p>Viele Gr\u00fc\u00dfe<br>Dein ${esc(mailBrand(s))}-Support</p><p style="color:#6b6b70;font-size:12.5px">Ticket #${ticketId} \u00b7 ${esc(tk.subject)}</p>` });
   } else if (authorType !== 'staff') {
     await notifyStaff(ctx, tk.assignee_id ? { userIds: [tk.assignee_id] } : { perm: 'support_manage' }, { kind: 'support', title: `Neue Nachricht zu Support #${ticketId}`, body: String(text).slice(0, 200), link: `#/support/${ticketId}` });
   }
@@ -2802,38 +2830,19 @@ async function partnerAudit(ctx, orgId, text) { await DB.insert(ctx.db, 'org_not
 
 /* ---------- Einladungs-E-Mail an Gesch\u00e4ftspartner (tabellenbasiert, f\u00fcr alle Mailprogramme) ---------- */
 function partnerMailHtml(s, { preheader, kicker, headline, intro, cta, link, facts = [], steps = [], perks = [], note }) {
-  const F = 'Helvetica,Arial,sans-serif', ink = '#16171a', grey = '#6b6e74', orange = '#ff6c01';
-  const btn = (href, label) => `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 8px"><tr><td bgcolor="${orange}" style="border-radius:999px;mso-padding-alt:15px 30px"><a href="${esc(href)}" target="_blank" style="display:inline-block;padding:15px 30px;font:700 16px ${F};color:#ffffff;text-decoration:none;border-radius:999px">${esc(label)} &rarr;</a></td></tr></table>`;
-  const logo = `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="${orange}" style="border-radius:8px;padding:9px 12px 8px;line-height:1">
-      <div style="font:italic 900 24px/1 ${F};color:#fff;letter-spacing:-.5px">KFL<span style="display:inline-block;width:14px;height:3px;background:#fff;margin-left:3px;vertical-align:4px;transform:skewX(-24deg)"></span></div>
-      <div style="font:700 8px/1.25 ${F};color:#fff;letter-spacing:1.2px;margin-top:5px">KAUFEN<br><span style="color:#ffd9bd;font-size:6.5px">FINANZIEREN</span><br>LEASEN</div></td></tr></table>`;
-  const factRows = facts.filter(([, v]) => v).map(([k, v]) => `<tr><td style="padding:9px 0;border-bottom:1px solid #ececee;font:13px ${F};color:${grey};width:42%">${esc(k)}</td><td style="padding:9px 0;border-bottom:1px solid #ececee;font:600 14px ${F};color:${ink}">${esc(v)}</td></tr>`).join('');
-  const stepRows = steps.map((t, i) => `<tr><td valign="top" style="padding:0 14px 14px 0;width:34px"><div style="width:30px;height:30px;border-radius:50%;background:${i === 0 ? orange : ink};color:#fff;text-align:center;font:700 14px/30px ${F}">${i + 1}</div></td><td valign="top" style="padding:5px 0 14px;font:15px/1.5 ${F};color:${ink}">${t}</td></tr>`).join('');
-  const perkCells = perks.map(([t, d]) => `<tr><td style="padding:0 6px 8px"><div style="background:#f6f7f8;border-radius:12px;padding:13px 16px;border-left:3px solid ${orange}"><div style="font:700 14px ${F};color:${ink}">${esc(t)}</div><div style="font:13.5px/1.45 ${F};color:${grey};margin-top:2px">${esc(d)}</div></div></td></tr>`).join('');
-  return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>${esc(headline)}</title></head>
-<body style="margin:0;padding:0;background:#eef0f2">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${esc(preheader)}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#eef0f2"><tr><td align="center" style="padding:28px 12px">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:620px;background:#ffffff;border-radius:18px;overflow:hidden">
-  <tr><td bgcolor="#141518" style="padding:26px 32px 24px;background:#141518;background-image:linear-gradient(135deg,#141518 55%,#5a2a08)">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td>${logo}</td><td align="right" style="font:600 12px ${F};color:#a9acb2">Partner-Dashboard</td></tr></table>
-    <div style="font:700 12px ${F};letter-spacing:1.5px;color:#ffb27a;text-transform:uppercase;margin-top:28px">${esc(kicker)}</div>
-    <div style="font:italic 900 30px/1.15 ${F};color:#ffffff;letter-spacing:-.5px;margin-top:8px">${esc(headline)}</div></td></tr>
-  <tr><td style="padding:30px 32px 8px">
-    <div style="font:16px/1.6 ${F};color:${ink}">${intro}</div>
-    ${btn(link, cta)}
-    <div style="font:12.5px/1.5 ${F};color:${grey}">Der Button funktioniert nicht? Kopiere diesen Link in deinen Browser:<br><a href="${esc(link)}" style="color:#b84d00;word-break:break-all">${esc(link)}</a></div>
-  </td></tr>
-  ${factRows ? `<tr><td style="padding:22px 32px 4px"><div style="font:700 12px ${F};letter-spacing:1.2px;color:${grey};text-transform:uppercase;margin-bottom:4px">Dein Zugang</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${factRows}</table></td></tr>` : ''}
-  ${stepRows ? `<tr><td style="padding:26px 32px 4px"><div style="font:700 12px ${F};letter-spacing:1.2px;color:${grey};text-transform:uppercase;margin-bottom:14px">So startest du</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${stepRows}</table></td></tr>` : ''}
-  ${perkCells ? `<tr><td style="padding:14px 26px 6px"><div style="font:700 12px ${F};letter-spacing:1.2px;color:${grey};text-transform:uppercase;margin:0 6px 12px">Was dich erwartet</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${perkCells}</table></td></tr>` : ''}
-  <tr><td style="padding:22px 32px 30px"><div style="font:15px/1.6 ${F};color:${ink}">Wir freuen uns auf die Zusammenarbeit!<br>Dein <b style="color:${orange};font-style:italic">KFL</b> Team</div>
-    ${note ? `<div style="font:12.5px/1.5 ${F};color:${grey};margin-top:18px;padding-top:16px;border-top:1px solid #ececee">${note}</div>` : ''}</td></tr>
-  <tr><td bgcolor="#f6f7f8" style="padding:20px 32px;font:12px/1.6 ${F};color:${grey}">
-    <b style="color:${ink}">${esc(s.company_name)}</b> \u00b7 ${esc(s.company_street)} \u00b7 ${esc(s.company_zip)} ${esc(s.company_city)}<br>
-    ${esc(s.company_email)}${s.company_phone ? ' \u00b7 ' + esc(s.company_phone) : ''} \u00b7 ${esc(s.company_web || '')}<br>
-    <span style="color:#9a9da3">Diese E-Mail wurde automatisch versendet. Bitte antworte nicht direkt \u2013 schreib uns bei Fragen an ${esc(s.company_email)}.</span></td></tr>
-</table></td></tr></table></body></html>`;
+  const C = MAIL_C, F = MAIL_F;
+  const sec = (t) => `<div style="font:700 12px/1 ${F};letter-spacing:1.3px;color:${C.grey};text-transform:uppercase;margin:30px 0 12px">${esc(t)}</div>`;
+  const stepRows = steps.map((t, i) => `<tr><td valign="top" style="padding:0 14px 14px 0;width:34px"><div style="width:30px;height:30px;border-radius:50%;background:${i === 0 ? C.orange : '#fff1e6'};color:${i === 0 ? '#fff' : C.orangeText};text-align:center;font:700 14px/30px ${F}">${i + 1}</div></td><td valign="top" style="padding:5px 0 14px;font:15px/1.55 ${F};color:${C.text}">${t}</td></tr>`).join('');
+  const perkRows = perks.map(([t, d]) => `<tr><td style="padding:0 0 10px"><div style="background:${C.soft};border-radius:14px;padding:14px 18px;border-left:3px solid ${C.orange}"><div style="font:700 14.5px/1.4 ${F};color:${C.ink}">${esc(t)}</div><div style="font:13.5px/1.5 ${F};color:${C.grey};margin-top:2px">${esc(d)}</div></div></td></tr>`).join('');
+  const content = `${intro}
+    ${mailBtn(link, cta)}
+    <div style="font:12.5px/1.5 ${F};color:${C.grey}">Der Button funktioniert nicht? Kopiere diesen Link in deinen Browser:<br><a href="${esc(link)}" style="color:${C.orangeText};word-break:break-all">${esc(link)}</a></div>
+    ${facts.filter(([, v]) => v).length ? sec('Dein Zugang') + mailTable(facts) : ''}
+    ${stepRows ? sec('So startest du') + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${stepRows}</table>` : ''}
+    ${perkRows ? sec('Was dich erwartet') + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${perkRows}</table>` : ''}
+    <div style="font:15px/1.6 ${F};color:${C.text};margin-top:26px">Wir freuen uns auf die Zusammenarbeit!<br>Dein <b style="color:${C.ink};font-style:italic">${esc(mailBrand(s))}</b>-Team</div>
+    ${note ? `<div style="font:12.5px/1.55 ${F};color:${C.grey};margin-top:20px;padding-top:16px;border-top:1px solid ${C.line}">${note}</div>` : ''}`;
+  return mailShell(s, { title: headline, preheader, kicker, label: 'Partner-Dashboard', content });
 }
 
 async function sendPartnerInvite(ctx, uid, token, { reset = false, tempPassword = null, forgot = false } = {}) {
@@ -2843,7 +2852,7 @@ async function sendPartnerInvite(ctx, uid, token, { reset = false, tempPassword 
   const link = token ? `${base.replace(/\/$/, '')}#/einladung/${token}` : base;
   const first = esc(String(u.name || '').split(/\s+/)[0] || '');
   const validUntil = fmtDE(nowMs() + INVITE_DAYS * 86400e3);
-  const replyTo = { email: s.company_email, name: s.company_name };
+  const replyTo = { email: s.company_email, name: mailBrand(s) };
   if (tempPassword && forgot) {
     const html = partnerMailHtml(s, { preheader: 'Dein neues Passwort f\u00fcr das KFL-Partner-Dashboard', kicker: 'Passwort vergessen', headline: 'Dein neues Passwort', link: base, cta: 'Jetzt anmelden',
       intro: `<p style="margin:0 0 14px">Hallo ${first},</p><p style="margin:0 0 14px">du hast im Partner-Dashboard \u201ePasswort vergessen\u201c angeklickt. Dein neues, vorl\u00e4ufiges Passwort lautet:</p><p style="margin:0;font:700 20px monospace;background:#f6f7f8;border-radius:10px;padding:12px 16px;display:inline-block">${esc(tempPassword)}</p><p style="margin:14px 0 0">Es ist <b>24 Stunden</b> g\u00fcltig. Nach der Anmeldung vergibst du direkt ein eigenes Passwort (mindestens 10 Zeichen mit Zahl, Gro\u00dfbuchstabe und Sonderzeichen).</p>`,
@@ -4248,12 +4257,13 @@ async function handleForm(ctx) {
   const link = s.link_my_requests;
   await sendMail(ctx, { category: 'system', to: email, toName: data.Vorname, subject: `Deine Anfrage #${toNumber(id)} ist bei KFL eingegangen${form === 'deal' ? ' \u2013 plus 50 % auf unsere Ratgeber' : ''}`, title: form === 'deal' ? 'Danke, deine Anfrage ist bei uns.' : 'Danke, wir bewerten dein Auto.',
     body: `<p>Hallo ${esc(data.Vorname || '')},</p><p>wir haben deine Anfrage <strong>#${toNumber(id)}</strong> erhalten und an unsere passenden Partner weitergegeben.${sellId ? ` F\u00fcr dein jetziges Auto haben wir zus\u00e4tzlich die Ankauf-Anfrage <strong>#${toNumber(sellId)}</strong> angelegt \u2013 so bekommst du auch daf\u00fcr Angebote. Autoh\u00e4user, die beides \u00fcbernehmen, k\u00f6nnen dir ein Komplettpaket machen.` : ''} Innerhalb von 24 Stunden an Werktagen sammeln wir die Angebote und stellen dir das beste vor \u2013 <strong>deine Kontaktdaten bleiben bis zu deiner Zusage bei uns</strong>.</p>
-      ${form === 'deal' ? `<p style="background:#000;color:#fff;border-radius:12px;padding:18px 20px">Dein Dankesch\u00f6n: <strong style="color:#ff6c01;font-size:20px;letter-spacing:1px">TRAUMDEAL50</strong><br><span style="color:#c7c7cc">50 % Rabatt auf die KFL Ratgeber. <a href="https://kfl-group.com/discount/TRAUMDEAL50?redirect=/collections/ratgeber" style="color:#ff6c01">Jetzt einl\u00f6sen</a></span></p>` : ''}
-      <p>Unter <a href="${esc(link)}" style="color:#ff6c01">Meine Anfragen</a> siehst du den Stand, kannst deine Anfrage \u00e4ndern und uns Notizen schicken.</p>${mailTable(Object.entries(data).filter(([k, v]) => !HIDDEN_KEY.test(k) && String(v).trim()))}` });
+      ${form === 'deal' ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:6px 0 20px"><tr><td style="background:#fff4ec;border:1px dashed #ffb27a;border-radius:16px;padding:18px 20px"><div style="font:700 12px/1 ${MAIL_F};letter-spacing:1.3px;color:#c04f00;text-transform:uppercase">Dein Dankesch\u00f6n</div><div style="font:800 24px/1.2 ${MAIL_F};color:#16171a;letter-spacing:1.5px;margin:8px 0 4px">TRAUMDEAL50</div><div style="font:14.5px/1.5 ${MAIL_F};color:#3a3d42">50 % Rabatt auf die KFL-Ratgeber. <a href="https://kfl-group.com/discount/TRAUMDEAL50?redirect=/collections/ratgeber" style="color:#c04f00;font-weight:700">Jetzt einl\u00f6sen &rarr;</a></div></td></tr></table>` : ''}
+      <p>Unter <a href="${esc(link)}" style="color:#c04f00;font-weight:600">Meine Anfragen</a> siehst du den Stand, kannst deine Anfrage \u00e4ndern und uns Notizen schicken.</p><div style="font:700 12px/1 ${MAIL_F};letter-spacing:1.3px;color:#7a7e85;text-transform:uppercase;margin:24px 0 10px">Deine Angaben</div>${mailTable(Object.entries(data).filter(([k, v]) => !HIDDEN_KEY.test(k) && !/^Kundenkonto-ID$|^Kundennummer$/.test(k) && String(v).trim()).map(([k, v]) => [MAIL_LABELS[k] || k, v]))}` });
   return cjson({ ok: true, number: toNumber(id), sellNumber: sellId ? toNumber(sellId) : null, receivedAt: data['Eingang (Server)'] }, 200, origin);
 }
 
 /* ---------- Kundenbereich \u201eMeine Anfragen\u201c ---------- */
+const MAIL_LABELS = { name: 'Nachname', email: 'E-Mail', phone: 'Telefon', Vorname: 'Vorname' };
 const MY_HIDDEN = /^(_|form$|form_type$|utf8$|Firma2$|Formular$|Kundennummer$|Eingang \(Server\)$|Kundenkonto-ID$|Ge\u00e4ndert \(Server\)$|Einwilligung|AGB akzeptiert|Datenschutz akzeptiert|Weitergabe an Partner)/;
 const MY_STATUS = {
   eingang: ['Eingegangen', 'open'], in_bearbeitung: ['In Bearbeitung', 'progress'], versendet: ['Angebote werden eingeholt', 'progress'], angebot_liegt_vor: ['Angebote werden eingeholt', 'progress'],
@@ -4783,7 +4793,7 @@ async function handleStaffApi(ctx, url) {
         requirePerm(u, 'req_contact');
         const d = jparse(r.data, {});
         const res = await sendMail(ctx, { category: 'customer', to: r.email, toName: d.Vorname, subject: `Deine Anfrage #${m[1]} bei KFL`, title: `Nachricht zu deiner Anfrage #${m[1]}`, replyTo: s.mail_internal_inbox,
-          body: `<p>Hallo ${esc(d.Vorname || '')},</p><p style="white-space:pre-wrap">${esc(text)}</p><p>Viele Gr\u00fc\u00dfe<br>${esc(u.name)}<br>${esc(s.company_name)}</p>` });
+          body: `<p>Hallo ${esc(d.Vorname || '')},</p><p style="white-space:pre-wrap">${esc(text)}</p><p>Viele Gr\u00fc\u00dfe<br>${esc(u.name)}<br>${esc(mailBrand(s))}</p>` });
         await reqEvent(ctx, rid, 'nachricht_kunde', text.slice(0, 300));
         await audit(ctx, 'nachricht_kunde', 'anfrage', reqNo, { status: res.status });
         return out({ ok: true, mail: res.status });
