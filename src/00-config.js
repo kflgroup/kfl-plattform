@@ -247,6 +247,7 @@ const DEFAULT_SETTINGS = {
   // Support
   support_escalate_hours: 24,
   support_archive_days: 10,
+  partner_ticket_archive_days: 30,
   syslist_retention_days: 365,
   support_ack_subject: 'Wir haben deine Anfrage erhalten',
   support_ack_text: 'vielen Dank für deine Nachricht an den KFL-Support. Deine Anfrage ist bei uns eingegangen und wir kümmern uns schnellstmöglich darum. Du bekommst unsere Antwort per E-Mail und – falls du ein Konto bei uns hast – zusätzlich in deinem Dashboard.',

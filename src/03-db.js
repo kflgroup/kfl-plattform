@@ -173,6 +173,7 @@ const EXTRA_COLUMNS = {
   sessions: { area_until: 'TEXT' },
   partner_users: { temp_pw_hash: 'TEXT', temp_pw_salt: 'TEXT', temp_pw_expires: 'TEXT', temp_pw_at: 'TEXT' },
   mail_outbox: { server_reply: 'TEXT' },
+  tickets: { partner_hidden_at: 'TEXT' },
   offers: { score_detail: 'TEXT' },
   suppliers: { org_id: 'INTEGER' },
   purchase_invoices: { account_id: 'INTEGER', vat_rate: 'REAL', doc_id: 'INTEGER', entry_id: 'INTEGER', pay_entry_id: 'INTEGER', text: 'TEXT', source: 'TEXT', mail_ref: 'TEXT', pdf_sha: 'TEXT', extract: 'TEXT' },

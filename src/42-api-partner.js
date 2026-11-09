@@ -389,8 +389,9 @@ async function handlePartnerApi(ctx, url) {
 
   /* ---------- Support ---------- */
   if (path === '/tickets' && method === 'GET') {
-    const rows = await DB.all(db, `SELECT t.id, t.subject, t.category, t.status, t.priority, t.created_at, t.updated_at, t.kind, (SELECT COUNT(*) FROM ticket_messages m WHERE m.ticket_id = t.id AND m.internal = 0) AS messages FROM tickets t WHERE (t.requester_type = 'partner' AND t.requester_id = ?) ${p.role === 'gf' ? 'OR t.org_id = ?' : ''} ORDER BY t.id DESC LIMIT 200`, p.id, ...(p.role === 'gf' ? [p.orgId] : []));
-    return out({ ok: true, tickets: rows });
+    const st = await settingsOf(ctx), days = partnerArchiveDays(st);
+    const rows = (await DB.all(db, `SELECT t.id, t.subject, t.category, t.status, t.priority, t.created_at, t.updated_at, t.done_at, t.partner_hidden_at, t.kind, (SELECT COUNT(*) FROM ticket_messages m WHERE m.ticket_id = t.id AND m.internal = 0) AS messages FROM tickets t WHERE ((t.requester_type = 'partner' AND t.requester_id = ?) ${p.role === 'gf' ? 'OR t.org_id = ?' : ''}) AND t.partner_hidden_at IS NULL ORDER BY t.id DESC LIMIT 200`, p.id, ...(p.role === 'gf' ? [p.orgId] : [])));
+    return out({ ok: true, archive_days: days, tickets: rows.filter((t) => partnerTicketVisible(t, st)).map(({ partner_hidden_at, ...t }) => ({ ...t, archive_until: t.status === 'erledigt' && t.done_at ? isoOf(msOf(t.done_at) + days * 86400e3) : null })) });
   }
   if (path === '/tickets' && method === 'POST') {
     need(str(body.subject, 200) && str(body.text, 8000), 400, 'Bitte Betreff und Nachricht angeben.');
@@ -399,9 +400,10 @@ async function handlePartnerApi(ctx, url) {
   }
   if ((m = path.match(/^\/tickets\/(\d+)(?:\/reply)?$/))) {
     const tk = await DB.one(db, 'SELECT * FROM tickets WHERE id = ?', +m[1]);
-    need(tk && ((tk.requester_type === 'partner' && tk.requester_id === p.id) || (p.role === 'gf' && tk.org_id === p.orgId)), 404, 'Ticket nicht gefunden.');
-    if (method === 'GET') return out({ ok: true, ticket: { id: tk.id, subject: tk.subject, status: tk.status, priority: tk.priority, category: tk.category, created_at: tk.created_at }, messages: await DB.all(db, "SELECT id, author_type, author_name, text, created_at FROM ticket_messages WHERE ticket_id = ? AND internal = 0 AND author_type != 'system' ORDER BY id", tk.id) });
-    if (method === 'POST') { await ticketReply(ctx, tk.id, { authorType: 'requester', authorId: p.id, authorName: p.name, text: str(body.text, 8000) }); return out({ ok: true }); }
+    const st = await settingsOf(ctx);
+    need(tk && ((tk.requester_type === 'partner' && tk.requester_id === p.id) || (p.role === 'gf' && tk.org_id === p.orgId)) && partnerTicketVisible(tk, st), 404, 'Ticket nicht gefunden. Erledigte Tickets werden nach ' + partnerArchiveDays(st) + ' Tagen aus deinem Archiv entfernt.');
+    if (method === 'GET') return out({ ok: true, ticket: { id: tk.id, subject: tk.subject, status: tk.status, priority: tk.priority, category: tk.category, created_at: tk.created_at, done_at: tk.done_at, archive_until: tk.status === 'erledigt' && tk.done_at ? isoOf(msOf(tk.done_at) + partnerArchiveDays(st) * 86400e3) : null }, messages: await DB.all(db, "SELECT id, author_type, author_name, text, created_at FROM ticket_messages WHERE ticket_id = ? AND internal = 0 AND author_type != 'system' ORDER BY id", tk.id) });
+    if (method === 'POST') { need(tk.status !== 'erledigt', 409, 'Dieses Ticket ist erledigt und liegt im Archiv. Für ein neues Anliegen erstelle bitte ein neues Ticket.'); await ticketReply(ctx, tk.id, { authorType: 'requester', authorId: p.id, authorName: p.name, text: str(body.text, 8000) }); return out({ ok: true }); }
   }
   return fail(404, 'Nicht gefunden.');
 }

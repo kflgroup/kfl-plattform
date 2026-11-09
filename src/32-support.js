@@ -130,6 +130,27 @@ async function sendPartnerInvite(ctx, uid, token, { reset = false, tempPassword 
   return sendMail(ctx, { category: 'system', to: u.email, toName: u.name, subject: `Deine Einladung zum KFL-Partner-Dashboard – ${u.org_name}`, html, replyTo });
 }
 
+const partnerArchiveDays = (s) => Math.max(1, Math.min(365, +s.partner_ticket_archive_days || 30));
+// Für Partner sichtbar? Offene Tickets immer, erledigte nur innerhalb der Archivfrist
+const partnerTicketVisible = (tk, s) => !tk.partner_hidden_at && (tk.status !== 'erledigt' || !tk.done_at || msOf(tk.done_at) > nowMs() - partnerArchiveDays(s) * 86400e3);
+
+// Partner-Tickets: nach X Tagen (Standard 30) aus dem Partner-Archiv entfernen – danach nur noch im internen Backup-Archiv.
+// Sichtbarkeit für den Partner endet sofort über partnerTicketVisible; dieser Job sichert nur noch die Kopie (wenige Abfragen je Lauf)
+async function runPartnerTicketArchive(ctx) {
+  const s = await settingsOf(ctx), t = nowIso(); let n = 0;
+  const pcut = isoOf(nowMs() - partnerArchiveDays(s) * 86400e3);
+  for (const tk of await DB.all(ctx.db, "SELECT * FROM tickets WHERE status = 'erledigt' AND done_at < ? AND partner_hidden_at IS NULL AND (requester_type = 'partner' OR org_id IS NOT NULL) ORDER BY id LIMIT 2", pcut)) {
+    const msgs = await DB.all(ctx.db, 'SELECT * FROM ticket_messages WHERE ticket_id = ? ORDER BY id', tk.id);
+    const data = JSON.stringify({ ticket: { ...tk, partner_hidden_at: t }, messages: msgs });
+    const prev = await DB.one(ctx.db, "SELECT id FROM archive WHERE kind = 'ticket' AND ref_id = ? ORDER BY id DESC LIMIT 1", tk.id);
+    if (prev) await DB.run(ctx.db, 'UPDATE archive SET data = ? WHERE id = ?', data, prev.id);
+    else await DB.insert(ctx.db, 'archive', { kind: 'ticket', ref_id: tk.id, title: `#${tk.id} ${tk.subject}`, data, archived_at: t, expires_at: null });
+    await DB.update(ctx.db, 'tickets', tk.id, { partner_hidden_at: t, archived_at: tk.archived_at || t, updated_at: t });
+    n++;
+  }
+  return { partnerArchived: n };
+}
+
 async function runSupportJobs(ctx) {
   const s = await settingsOf(ctx);
   const t = nowIso(), res = { escalated: 0, archived: 0, toBackup: 0, sysToBackup: 0 };

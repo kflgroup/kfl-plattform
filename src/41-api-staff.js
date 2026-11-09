@@ -617,7 +617,7 @@ async function handleStaffApi(ctx, url) {
     if (!m[2] && method === 'PATCH') {
       requirePerm(u, 'support_manage');
       const upd = { updated_at: nowIso() };
-      if (body.status && TICKET_STATUSES.some((s) => s.key === body.status)) { upd.status = body.status; upd.done_at = body.status === 'erledigt' ? nowIso() : null; }
+      if (body.status && TICKET_STATUSES.some((s) => s.key === body.status)) { upd.status = body.status; upd.done_at = body.status === 'erledigt' ? nowIso() : null; if (body.status !== 'erledigt') upd.partner_hidden_at = null; }
       if (body.priority && TICKET_PRIORITIES.some((s) => s.key === body.priority)) upd.priority = body.priority;
       if (body.assignee_id !== undefined) upd.assignee_id = body.assignee_id ? toInt(body.assignee_id) : null;
       if (body.tag && ['Webseite', 'Intern', 'Partner', 'Kunde'].includes(body.tag)) upd.tag = body.tag;

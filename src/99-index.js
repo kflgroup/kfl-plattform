@@ -99,6 +99,7 @@ async function runJobs(ctx, { force } = {}) {
   if (force === 'erinnerungen' || (!force && !heavy)) await safe('erinnerungen', () => runCustomerReminders(ctx));
   // Rechnungs-Postfach (alle 10 Minuten, je Lauf eine E-Mail) – nur in Läufen ohne Verteilung oder Tagesjob (Abfragegrenze je Aufruf)
   if (force === 'postfach' || (!force && !heavy)) await safe('postfach', () => runInbox(ctx, s, { force: force === 'postfach' }));
+  if (force === 'support' || force === 'partnerarchiv' || (!force && !heavy)) await safe('partnerarchiv', () => runPartnerTicketArchive(ctx));
   return res;
 }
 

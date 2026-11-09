@@ -464,3 +464,4 @@ a.kpi:hover .go{color:var(--ink);transform:translateX(3px)}
 .combo-trade{padding:14px;border:1px dashed #ffc79c;border-radius:14px;background:#fffaf5}
 .combo-join{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:14px;border:1px dashed #ffc79c;border-radius:14px;background:#fffaf5}
 .combo-sent{padding:14px;border:1px solid var(--line,#eceef1);border-radius:14px}
+.rq.rq-done{opacity:.82}.rq.rq-done .fi-mark{background:var(--green-wash);color:var(--green)}
