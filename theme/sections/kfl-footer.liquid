@@ -109,6 +109,7 @@
 {%- endif -%}
 
 {%- if request.page_type == 'index' -%}
+{%- capture k_search_tpl -%}{{ shop.url }}/search?q={search_term_string}{%- endcapture -%}
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -119,7 +120,7 @@
   "inLanguage": "de-DE",
   "potentialAction": {
     "@type": "SearchAction",
-    "target": { "@type": "EntryPoint", "urlTemplate": {{ shop.url | append: '/search?q={search_term_string}' | json }} },
+    "target": { "@type": "EntryPoint", "urlTemplate": {{ k_search_tpl | json }} },
     "query-input": "required name=search_term_string"
   }
 }
