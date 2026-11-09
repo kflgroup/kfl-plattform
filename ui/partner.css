@@ -452,3 +452,7 @@ a.kpi:hover .go{color:var(--ink);transform:translateX(3px)}
   .p-main .note-box > .spacer,.p-main .info-box > .spacer{flex:1 1 calc(100% - 40px)}
   .p-main .note-box > .btn,.p-main .info-box > .btn{flex:1 1 100%;justify-content:center}
 }
+
+/* Anfragen: Verkauf (Ankauf) leicht grau, Kauf (Traumwagen-DEAL) leicht orange */
+.rq.rq-buy{background:#fff8f2}.rq.rq-buy:hover{background:#fff0e3}
+.rq.rq-sell{background:#f6f6f7}.rq.rq-sell:hover{background:#eeeef0}

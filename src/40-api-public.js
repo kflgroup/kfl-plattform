@@ -52,13 +52,11 @@ async function handleForm(ctx) {
   let sellId = null;
   if (sellData) {
     sellData['Inzahlungnahme zu'] = `Traumwagen-DEAL #${toNumber(id)}`;
-    sellId = await createRequest(ctx, 'sell', sellData, { customerAccount: kid !== '0' ? kid : null });
+    // Ankauf-Anfrage gleich verknüpft anlegen; verteilt wird sie im nächsten Durchlauf (spätestens 5 Minuten) – hält den Formular-Eingang schnell und im Abfragelimit
+    sellId = await createRequest(ctx, 'sell', sellData, { customerAccount: kid !== '0' ? kid : null, extra: { linked_request_id: id, dispatch_pending: 1 } });
     data['Ankauf-Anfrage zum Altwagen'] = `#${toNumber(sellId)}`;
     const dealData = { ...jparse(await DB.val(ctx.db, 'SELECT data FROM requests WHERE id = ?', id), {}), 'Ankauf-Anfrage zum Altwagen': `#${toNumber(sellId)}` };
-    await ctx.db.batch([
-      ctx.db.prepare('UPDATE requests SET linked_request_id = ?, data = ? WHERE id = ?').bind(sellId, JSON.stringify(dealData), id),
-      // Ankauf wird im nächsten Durchlauf (spätestens 5 Minuten) verteilt – hält den Formular-Eingang schnell und im Abfragelimit
-      ctx.db.prepare('UPDATE requests SET linked_request_id = ?, dispatch_pending = 1 WHERE id = ?').bind(id, sellId)]);
+    await DB.run(ctx.db, 'UPDATE requests SET linked_request_id = ?, data = ? WHERE id = ?', sellId, JSON.stringify(dealData), id);
     await reqEvent(ctx, id, 'verknuepft', `Inzahlungnahme: Ankauf-Anfrage #${toNumber(sellId)} angelegt`);
   }
   // Inzahlungnahme über zwei getrennte Formulare: automatisch verknüpfen

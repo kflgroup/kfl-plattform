@@ -151,7 +151,7 @@ const rqTitle = (a) => { const r = a.request || {}; return a.level === 'full' ? 
 function rqCard(a) {
   const r = a.request || {};
   const live = ['neu', 'in_bearbeitung'].includes(a.status);
-  return html`<a class="rq tone-${a.tone}" href="#/anfragen/${a.id}">${zTag(r.zustand)}<div class="rq-main"><div class="rq-t">${rqTitle(a)}<span class="rq-no">#${r.number}</span></div>
+  return html`<a class="rq tone-${a.tone} ${r.type === 'sell' ? 'rq-sell' : 'rq-buy'}" href="#/anfragen/${a.id}">${zTag(r.zustand)}<div class="rq-main"><div class="rq-t">${rqTitle(a)}<span class="rq-no">#${r.number}</span></div>
     <div class="rq-s"><span>${icon('pin')}PLZ ${r.plz || '–'}${a.distance_km != null ? ` · ${fNum(a.distance_km)} km` : ''}</span>${a.level === 'full' && r.summary ? html`<span>${r.summary}</span>` : r.typeLabel ? html`<span>${r.typeLabel}</span>` : ''}${a.taker ? html`<span>${icon('user')}${a.taker}</span>` : ''}${a.direct ? html`<span class="direct">${icon('star')}direkt an dich</span>` : ''}${r.tradeIn ? html`<span class="dual">${icon('refresh')}+ Inzahlungnahme</span>` : ''}${r.withPurchase ? html`<span class="dual">${icon('refresh')}+ Traumwagen</span>` : ''}</div></div>
     <div class="rq-side">${live && a.deadline_at ? tpill(a.deadline_at) : a.status === 'gewonnen' && a.contact_due_at ? tpill(a.contact_due_at) : ''}${a.status !== 'neu' || !a.deadline_at ? badge(a.statusLabel, a.tone) : ''}</div>${icon('arrow', 'rq-go')}</a>`;
 }

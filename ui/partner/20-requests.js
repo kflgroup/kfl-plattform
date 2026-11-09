@@ -68,6 +68,9 @@ function linkedCard(a) {
     const action = l.aid && l.mine ? html`<a class="btn btn-primary btn-sm" href="#/anfragen/${l.aid}">${icon('arrow')}Zur Ankauf-Anfrage #${l.number}</a>`
       : l.canJoin && a.mine ? html`<button class="btn btn-primary btn-sm" data-act="pjoin" data-id="${a.id}">${icon('plus')}Ankauf zusätzlich übernehmen</button>`
       : l.aid ? html`<a class="btn btn-sm" href="#/anfragen/${l.aid}">Ankauf-Anfrage #${l.number} ansehen</a>` : html`<span class="small muted">Für den Ankauf werden keine Angebote mehr angenommen.</span>`;
+    if (l.pending) return html`<section class="dual-card big">${icon('refresh')}<div><b>Doppeltes Geschäft möglich: Traumwagen + Ankauf</b>
+      <span>Der Kunde möchte sein jetziges Fahrzeug in Zahlung geben${l.vehicle ? ` (${l.vehicle})` : ''}. Übernimm den Ankauf zusätzlich – wir legen dafür eine eigene Anfrage an, nur für dich. Die Fahrzeugdaten erfragst du beim Kunden, sobald er dein Angebot annimmt, oder du gibst ein vorläufiges Ankaufangebot ab.</span>
+      ${a.mine ? html`<div class="row mt-s"><button class="btn btn-primary btn-sm" data-act="pjoin" data-id="${a.id}">${icon('plus')}Ankauf zusätzlich übernehmen</button></div>` : ''}</div></section>`;
     return html`<section class="dual-card big">${icon('refresh')}<div><b>Doppeltes Geschäft möglich: Traumwagen + Ankauf</b>
       <span>Der Kunde möchte sein jetziges Fahrzeug in Zahlung geben – die Angaben findest du unten unter „Altwagen“. Zum Ankauf gibt es die eigene Anfrage <b>#${l.number}</b>${l.vehicle ? ` (${l.vehicle})` : ''}. Übernimm sie zusätzlich, dann gibst du ein Angebot für den Traumwagen und eines für den Ankauf ab.</span>
       <div class="row mt-s">${action}</div></div></section>`;

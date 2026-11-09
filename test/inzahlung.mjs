@@ -111,4 +111,38 @@ const a3 = q1('SELECT * FROM assignments WHERE request_id = ? AND org_id = ?', i
 check(r.ok && r.id === a3.id && a3.status === 'in_bearbeitung' && a3.taken_by === pu.A && a3.deadline_at > '2026-11-03T09:00:00.000Z', 'Ankauf wieder geöffnet, mit neuer Frist übernommen', a3);
 r = await c.get(`/papi/requests/${a3.id}`, { who: 'A' });
 check(r.ok && r.item.request.type === 'sell', 'Partner kann den Ankauf bearbeiten');
+
+console.log('Vorbesitzer ist für Partner ausgeblendet');
+r = await c.get(`/papi/requests/${aidA}`, { who: 'A' });
+const fieldsD = JSON.stringify(r.item.request.fields || {});
+check(/Altwagen Marke/.test(fieldsD) && !/Vorbesitzer/.test(fieldsD) && q1('SELECT data FROM requests WHERE id = 1').data.includes('Altwagen Vorbesitzer'), 'Altwagen: „Vorbesitzer“ nicht beim Partner, intern weiter gespeichert');
+const sellAid = q1('SELECT id FROM assignments WHERE request_id = 2 AND org_id = ?', org.A);
+if (sellAid) { r = await c.get(`/papi/requests/${sellAid.id}`, { who: 'A' }); check(!/Vorbesitzer/.test(JSON.stringify(r.item.request.fields || {})) && q1('SELECT data FROM requests WHERE id = 2').data.includes('Vorbesitzer'), 'Ankauf-Anfrage: „Vorbesitzer“ ebenfalls ausgeblendet'); }
+
+console.log('Inzahlungnahme ohne Fahrzeugdaten: Ankauf trotzdem übernehmen');
+const kid5 = '55500000000001', ts5 = nowSec();
+r = await c.post('/', { ...deal(), Inzahlungnahme: 'Ja', _kid: kid5, _ts: ts5, _sig: sig(`${kid5}.${ts5}.deal`), Kundennummer: kid5, email: 'eva@kunde.de', Vorname: 'Eva' });
+const idD5 = r.number - 1000;
+check(!q1('SELECT linked_request_id FROM requests WHERE id = ?', idD5).linked_request_id, 'Ohne Fahrzeugdaten zunächst keine Ankauf-Anfrage');
+const aidD5 = q1('SELECT id FROM assignments WHERE request_id = ? AND org_id = ?', idD5, org.A).id;
+await c.post(`/papi/requests/${aidD5}/take`, {}, { who: 'A' });
+r = await c.get(`/papi/requests/${aidD5}`, { who: 'A' });
+check(r.item.linked && r.item.linked.canJoin && r.item.linked.pending && r.item.request.tradeIn, 'Partner sieht „Ankauf zusätzlich übernehmen“');
+r = await c.post(`/papi/requests/${aidD5}/linked`, {}, { who: 'A' });
+const s5 = q1('SELECT * FROM requests WHERE linked_request_id = ?', idD5);
+const a5 = q1('SELECT * FROM assignments WHERE id = ?', r.id);
+check(r.ok && s5 && s5.type === 'sell' && q1('SELECT linked_request_id FROM requests WHERE id = ?', idD5).linked_request_id === s5.id && a5.request_id === s5.id && a5.taken_by === pu.A, 'Ankauf-Anfrage angelegt, verknüpft und dem Partner zugeordnet');
+check(/Fahrzeugdaten liegen noch nicht vor/.test(s5.data) && JSON.parse(s5.data).email === 'eva@kunde.de' && q1('SELECT COUNT(*) AS n FROM assignments WHERE request_id = ?', s5.id).n === 1, 'Mit Kontaktdaten und Hinweis, nur für diesen Partner');
+
+console.log('Selbstheilung: nicht verknüpfte und nicht verteilte Inzahlungnahme');
+const kid6 = '66600000000001', ts6 = nowSec();
+r = await c.post('/', { ...deal(trade), _kid: kid6, _ts: ts6, _sig: sig(`${kid6}.${ts6}.deal`), Kundennummer: kid6, email: 'udo@kunde.de', Vorname: 'Udo' });
+const idD6 = r.number - 1000, idS6 = r.sellNumber - 1000;
+check(q1('SELECT linked_request_id FROM requests WHERE id = ?', idS6).linked_request_id === idD6 && q1('SELECT dispatch_pending FROM requests WHERE id = ?', idS6).dispatch_pending === 1, 'Ankauf wird direkt verknüpft und zur Verteilung vorgemerkt angelegt');
+// Abbruch simulieren: Verknüpfung und Vormerkung fehlen
+sq.prepare("UPDATE requests SET linked_request_id = NULL, dispatch_pending = 0, created_at = ? WHERE id IN (?, ?)").run('2026-11-03T08:00:00.000Z', idD6, idS6);
+await cron(worker, env);
+check(q1('SELECT linked_request_id FROM requests WHERE id = ?', idS6).linked_request_id === idD6 && q1('SELECT linked_request_id FROM requests WHERE id = ?', idD6).linked_request_id === idS6, 'Cron verknüpft beide wieder');
+await cron(worker, env);
+check(q1('SELECT COUNT(*) AS n FROM assignments WHERE request_id = ?', idS6).n > 0, 'Ankauf wird nachträglich verteilt');
 console.log(check.fails ? `\n${check.fails} FEHLER` : '\nINZAHLUNGNAHME-TEST BESTANDEN');

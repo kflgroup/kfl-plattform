@@ -300,7 +300,13 @@ fieldset.fieldset-plain{border:0;padding:0;margin:0;min-width:0}
 .req-table td{vertical-align:top}
 .rq-veh b{display:block;font-size:14.5px}
 .cell-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
-.tag-sell{background:var(--blue-wash);color:var(--blue)}
+.tag-sell{background:#ececee;color:#4a4d52;border-color:#dcdde0}
+.tag-buy{background:#ffe9d6;color:#b84d00;border-color:#ffd3b0}
+/* Anfragenliste: Verkauf leicht grau, Kauf leicht orange */
+.table tr.rt-buy td{background:#fff8f2}
+.table tr.rt-sell td{background:#f6f6f7}
+.table tr.rt-buy:hover td{background:#fff0e3}
+.table tr.rt-sell:hover td{background:#eeeef0}
 .tag-hot{background:var(--orange-wash);color:var(--orange-ink)}
 .rq-partner{min-width:170px}
 .rp-top{white-space:nowrap;display:flex;justify-content:space-between;gap:8px;font-size:13px}
