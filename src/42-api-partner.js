@@ -122,11 +122,29 @@ async function handlePartnerApi(ctx, url) {
   if (path === '/forgot' && method === 'POST') {
     const email = str(body.email, 200).toLowerCase().trim();
     need(emailOk(email), 400, 'Bitte gib deine E-Mail-Adresse ein.');
-    const done = out({ ok: true, message: 'Wenn diese E-Mail-Adresse bei uns hinterlegt ist, bekommst du in wenigen Minuten ein neues Passwort per E-Mail.' });
+    const done = out({ ok: true, message: 'Wenn diese E-Mail-Adresse als Partner-Zugang hinterlegt ist, bekommst du in wenigen Minuten ein neues Passwort per E-Mail. Bitte nutze die Adresse, mit der du dich im Partner-Dashboard anmeldest.' });
     need((await DB.val(db, "SELECT COUNT(*) FROM audit WHERE action = 'partner_passwort_vergessen' AND ip = ? AND at >= ?", ctx.ipHash || '-', isoOf(nowMs() - 3600e3))) < 5, 429, 'Zu viele Anfragen. Bitte versuche es später erneut.');
     const u = await DB.one(db, 'SELECT u.*, o.active AS org_active, o.deleted AS org_deleted FROM partner_users u JOIN orgs o ON o.id = u.org_id WHERE lower(u.email) = ?', email);
     ctx.actor = { type: 'web', name: email };
-    if (!u || !u.active || !u.org_active || u.org_deleted || (u.locked_until && u.locked_until > '9000')) { await audit(ctx, 'partner_passwort_vergessen', 'partnerkonto', u ? u.id : null, { ergebnis: 'kein aktives Konto' }); return done; }
+    if (!u) {
+      // Kein Partner-Zugang: bekannte KFL-Adressen (Mitarbeiter, Firmen-/Rechnungs-E-Mail, Ansprechpartner) bekommen einen Hinweis per E-Mail –
+      // nur an die Adresse selbst, höchstens alle 10 Minuten; unbekannte Adressen bekommen nichts
+      const staff = await DB.one(db, 'SELECT id, name FROM users WHERE lower(email) = ? AND active = 1', email);
+      const org = staff ? null : await partnerByEmail(ctx, email);
+      const recent = await DB.val(db, "SELECT COUNT(*) FROM audit WHERE action = 'partner_passwort_vergessen' AND actor_name = ? AND at >= ? AND detail LIKE '%Hinweis%'", email, isoOf(nowMs() - 10 * 60e3));
+      let ergebnis = 'kein Partner-Zugang';
+      if ((staff || org) && !recent) {
+        const base = String(s.link_partner || ((ctx.origin || '') + '/partner')).replace(/\/$/, '');
+        const body = staff
+          ? `<p>Hallo ${esc(String(staff.name || '').split(/\s+/)[0])},</p><p>im <b>Partner-Dashboard</b> wurde für diese Adresse „Passwort vergessen“ angeklickt. Die Adresse gehört zu einem <b>Mitarbeiterkonto des internen KFL-Dashboards</b>, nicht zu einem Partner-Zugang. Deshalb wurde kein Passwort verschickt.</p><p>Für das interne Dashboard setzt der Admin unter Verwaltung → Mitarbeiter das Passwort zurück. Zum Testen des Partner-Dashboards bitte die E-Mail-Adresse eines Partnerkontos verwenden.</p>`
+          : `<p>Hallo,</p><p>im <b>KFL-Partner-Dashboard</b> wurde für diese Adresse „Passwort vergessen“ angeklickt. Die Adresse ist bei uns für <b>${esc(org.org_name)}</b> hinterlegt, hat aber <b>keinen eigenen Zugang</b>. Deshalb wurde kein Passwort verschickt.</p><p>Bitte melde dich mit der E-Mail-Adresse an, an die deine Einladung ging. Brauchst du einen eigenen Zugang, antworte einfach auf diese E-Mail oder wende dich an den KFL-Support.</p>${mailBtn(base, 'Zum Partner-Dashboard')}`;
+        const r = await sendMail(ctx, { category: 'system', to: email, subject: 'Kein Zugang zum KFL-Partner-Dashboard mit dieser Adresse', title: 'Kein Partner-Zugang mit dieser Adresse', body, replyTo: { email: s.company_email, name: s.company_name } });
+        ergebnis = `Hinweis gesendet (${staff ? 'Mitarbeiterkonto' : 'Adresse des Partners ohne Zugang'}, ${r.status})`;
+      }
+      await audit(ctx, 'partner_passwort_vergessen', 'partnerkonto', null, { ergebnis });
+      return done;
+    }
+    if (!u.active || !u.org_active || u.org_deleted || (u.locked_until && u.locked_until > '9000')) { await audit(ctx, 'partner_passwort_vergessen', 'partnerkonto', u.id, { ergebnis: 'kein aktives Konto' }); return done; }
     // höchstens alle 10 Minuten ein neues Passwort je Konto
     if (u.temp_pw_at && nowMs() - msOf(u.temp_pw_at) < 10 * 60e3) { await audit(ctx, 'partner_passwort_vergessen', 'partnerkonto', u.id, { ergebnis: 'bereits gesendet' }); return done; }
     if (!u.pass_hash) {

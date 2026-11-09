@@ -84,7 +84,7 @@ let plastPw = '';
 SUBMIT.plogin = async (d) => { await POST('/login', d); plastPw = d.password; try { await pboot(); } finally { plastPw = ''; } };
 ACT.pforgot = () => {
   const mail = ($('input[name=email]') || {}).value || '';
-  pauthFrame(html`<div><h2>Passwort vergessen?</h2><p class="muted">Gib die E-Mail-Adresse deines Partnerkontos ein. Ist sie bei uns hinterlegt, schicken wir dir sofort ein neues, vorläufiges Passwort. Beim nächsten Login legst du dann dein eigenes fest.</p></div>
+  pauthFrame(html`<div><h2>Passwort vergessen?</h2><p class="muted">Gib die E-Mail-Adresse ein, mit der du dich im Partner-Dashboard anmeldest (die Adresse aus deiner Einladung). Ist sie hinterlegt, schicken wir dir sofort ein neues, vorläufiges Passwort. Beim nächsten Login legst du dann dein eigenes fest.</p></div>
     <form class="stack" data-submit="pforgot">${field('E-Mail', inp('email', mail, { type: 'email', req: true, attrs: 'autocomplete="username" inputmode="email"' }))}
       <button class="btn btn-primary btn-block" type="submit">Neues Passwort anfordern</button></form>
     <button class="btn btn-ghost btn-sm" type="button" data-act="ploginBack">Zurück zur Anmeldung</button>${psupportHelp()}`);

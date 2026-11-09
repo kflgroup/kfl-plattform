@@ -68,7 +68,7 @@ console.log('Partner: Passwort vergessen');
 const before = mails.length;
 r = await c.post('/papi/forgot', { email: 'unbekannt@nirgends.de' }, { who: 'x' });
 const msg = r.message;
-check(r.ok && /Wenn diese E-Mail-Adresse bei uns hinterlegt ist/.test(msg) && mails.length === before, 'Unbekannte Adresse: gleiche Antwort, keine E-Mail');
+check(r.ok && /Wenn diese E-Mail-Adresse als Partner-Zugang hinterlegt ist/.test(msg) && mails.length === before, 'Unbekannte Adresse: gleiche Antwort, keine E-Mail');
 r = await c.post('/papi/forgot', { email: 'MAX@alpha.de' }, { who: 'x' });
 const m = mailsTo('max@alpha.de').pop();
 const temp = (html(m).match(/monospace[^>]*>([^<]+)</) || [])[1];
@@ -88,6 +88,16 @@ r = await c.post('/papi/password', { current: tempPw, next: 'MeinNeues#2026' }, 
 r = await c.post('/papi/login', { email: 'max@alpha.de', password: 'Partner12345!' }, { who: 'alt2' }); check(r.status === 401, 'Altes Passwort danach ungültig');
 r = await c.post('/papi/login', { email: 'max@alpha.de', password: tempPw }, { who: 'alt3' }); check(r.status === 401, 'Vorläufiges Passwort nur einmal nutzbar');
 r = await c.post('/papi/login', { email: 'max@alpha.de', password: 'MeinNeues#2026' }, { who: 'p3' }); check(r.ok, 'Anmeldung mit dem eigenen Passwort');
+
+console.log('Adressen ohne Partner-Zugang');
+r = await c.post('/papi/forgot', { email: 'bh@kfl.de' }, { who: 'hint' });
+let hm = mailsTo('bh@kfl.de').pop();
+check(r.ok && r.message === msg && hm && /Mitarbeiterkonto des internen KFL-Dashboards/.test(html(hm)) && !/monospace/.test(html(hm)), 'Mitarbeiter-Adresse: Hinweis-Mail ohne Passwort');
+r = await c.post('/papi/forgot', { email: 'rechnung@alpha.de' }, { who: 'hint' });
+hm = mailsTo('rechnung@alpha.de').pop();
+check(r.ok && hm && /keinen eigenen Zugang/.test(html(hm)) && /Autohaus Alpha/.test(html(hm)) && !/max@alpha\.de/.test(html(hm)), 'Rechnungs-E-Mail des Partners: Hinweis ohne Passwort und ohne Login-Adresse');
+const nh = mailsTo('bh@kfl.de').length; await c.post('/papi/forgot', { email: 'bh@kfl.de' }, { who: 'hint' });
+check(mailsTo('bh@kfl.de').length === nh, 'Hinweis höchstens alle 10 Minuten');
 
 console.log('Ablauf, Sonderfälle und Missbrauchsschutz');
 advance(1);
