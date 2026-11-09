@@ -182,6 +182,8 @@ const sA = q1('SELECT * FROM offers WHERE request_id = ? AND org_id = ?', idS8, 
 const dA = JSON.parse(sA.score_detail || '{}'), dO = JSON.parse(sO.score_detail || '{}');
 check(dA.combo && dA.eval_value === 11000 && dA.points.price === 100 && !dO.combo && Math.abs(dO.points.price - 95.5) < 0.1, 'Bewertung: Kombi-Ankaufpreis zählt intern 10 % höher (11.000 € statt 10.000 €)', { dA, dO });
 check(JSON.parse(sA.data).buy_price === 10000 && sA.compare_value === 10000, 'Gespeichert bleibt der echte Ankaufpreis');
+const dD = JSON.parse(q1('SELECT score_detail FROM offers WHERE request_id = ? AND org_id = ?', idD8, org.A).score_detail || '{}');
+check(dD.combo && dD.combo_bonus === 2 && dD.eval_value === 30870 && q1('SELECT compare_value FROM offers WHERE request_id = ? AND org_id = ?', idD8, org.A).compare_value === 31500, 'Fahrzeugangebot im Kombi: Kosten zählen intern 2 % niedriger (30.870 € statt 31.500 €)', dD);
 check(q1('SELECT evaluated_at FROM requests WHERE id = ?', idD8).evaluated_at && q1('SELECT evaluated_at FROM requests WHERE id = ?', idS8).evaluated_at, 'Fahrzeug und Inzahlungnahme werden getrennt ausgewertet');
 const myTok8 = () => { const t = nowSec(); return { _kid: kid8, _ts: t, _sig: sig(`${kid8}.${t}.my`) }; };
 r = await c.post('/my/requests', myTok8());

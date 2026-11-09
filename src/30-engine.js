@@ -435,13 +435,17 @@ async function partnerRating(ctx, orgId) {
 /* Bewertung nach 7 Faktoren (je 0–100 Punkte), gewichtet laut Einstellung (Summe 100 %).
    Faktoren, die für eine Anfrage nicht zutreffen (z. B. Laufzeit beim Kauf), werden herausgerechnet. */
 const lastNum = (v) => { const m = String(v || '').replace(/\./g, '').match(/\d+/g); return m ? +m[m.length - 1] : null; };
-const COMBO_BONUS = 0.10; // +10 % auf den Ankaufpreis bei Kombi-Angebot (Fahrzeug + Inzahlungnahme vom selben Partner)
+// Kombi-Angebot (Fahrzeug + Inzahlungnahme vom selben Partner), nur für die interne Bewertung – der Kunde sieht die echten Preise:
+// Ankaufpreis zählt 10 % höher, Kosten des Fahrzeugangebots zählen 2 % niedriger
+const COMBO_BONUS_TRADE = 0.10, COMBO_BONUS_DEAL = 0.02;
 function scoreWeights(s) { const w = {}; for (const f of SCORE_FACTORS) w[f.key] = Math.max(0, toNum(s['score_w_' + f.key], 0) || 0); return w; }
 async function scoreOffers(ctx, req, offers, s) {
   const sell = req.type === 'sell', f = jparse(req.data, {}), w = scoreWeights(s);
   // Inzahlungnahme: Bietet derselbe Partner auch zum Traumwagen-DEAL an, zählt sein Ankaufpreis intern 10 % höher (nur Bewertung – der Kunde sieht den echten Preis)
-  const comboOrgs = sell && req.linked_request_id ? new Set((await DB.all(ctx.db, "SELECT DISTINCT org_id FROM offers WHERE request_id = ? AND status NOT IN ('zurueckgezogen')", req.linked_request_id)).map((x) => x.org_id)) : new Set();
-  for (const o of offers) { o.combo = comboOrgs.has(o.org_id); o.eval_value = o.combo && o.compare_value > 0 ? o.compare_value * (1 + COMBO_BONUS) : o.compare_value; }
+  // Fahrzeugangebot (DEAL): Bietet derselbe Partner auch zur Inzahlungnahme an, zählen seine Kosten intern 2 % günstiger
+  const comboOrgs = req.linked_request_id ? new Set((await DB.all(ctx.db, 'SELECT DISTINCT org_id FROM offers WHERE request_id = ?', req.linked_request_id)).map((x) => x.org_id)) : new Set();
+  const bonus = sell ? COMBO_BONUS_TRADE : COMBO_BONUS_DEAL;
+  for (const o of offers) { o.combo = comboOrgs.has(o.org_id); o.eval_value = o.combo && o.compare_value > 0 ? (sell ? o.compare_value * (1 + bonus) : o.compare_value * (1 - bonus)) : o.compare_value; }
   const vals = offers.map((o) => o.eval_value).filter((v) => v > 0);
   const best = vals.length ? (sell ? Math.max(...vals) : Math.min(...vals)) : 0;
   const maxKm = req.radius_km > 0 ? req.radius_km : 200;
@@ -464,7 +468,7 @@ async function scoreOffers(ctx, req, offers, s) {
     let sum = 0, wsum = 0; const detail = {};
     for (const k of Object.keys(pts)) { if (pts[k] === null) { detail[k] = null; continue; } const p = Math.round(Math.min(100, pts[k]) * 10) / 10; detail[k] = p; sum += p * w[k]; wsum += w[k]; }
     o.score = wsum ? Math.round((sum / wsum) * 10) / 10 : 0;
-    o.scoreDetail = { points: detail, weights: w, hours: hours == null ? null : Math.round(hours * 10) / 10, ...(o.combo ? { combo: true, combo_bonus: COMBO_BONUS * 100, eval_value: round2(o.eval_value) } : {}) };
+    o.scoreDetail = { points: detail, weights: w, hours: hours == null ? null : Math.round(hours * 10) / 10, ...(o.combo ? { combo: true, combo_bonus: Math.round(bonus * 100), eval_value: round2(o.eval_value) } : {}) };
   }
   return offers;
 }
