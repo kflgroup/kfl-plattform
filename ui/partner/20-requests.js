@@ -60,6 +60,9 @@ async function pRequest(id) {
       ${a.events && a.events.length ? html`<section class="block"><div class="block-head"><h2>Verlauf</h2></div><div class="block-body"><ul class="timeline">${a.events.map((e) => html`<li class="${/^KFL/.test(e.text || '') ? 'kfl' : ''}"><div><div class="tl-meta">${e.actor_name || 'KFL'} · ${fDT(e.created_at)}</div><div>${e.text}</div></div></li>`)}</ul></div></section>` : ''}
     </div><div class="stack">${r.type === 'deal' && a.mine && (a.trade || (a.linked && a.linked.canJoin && ['in_bearbeitung', 'versendet'].includes(a.status))) ? comboForm(a) : a.status === 'in_bearbeitung' && a.mine ? offerForm(a) : offerView}</div></div>`);
   // Direkt aus der E-Mail („Kontaktdaten öffnen“): zur Kontaktkarte springen und kurz hervorheben
+  // Nach dem Übernehmen direkt zum Angebotsformular
+  if (P.focusOffer) { P.focusOffer = false; const of = $('.offer-form'); if (of) { of.scrollIntoView({ block: 'start', behavior: 'smooth' }); of.classList.add('flash'); setTimeout(() => of.classList.remove('flash'), 2200); } }
+  wishUpdate($('.offer-form'));
   if (/[?&]kontakt\b/.test(location.hash)) { const cc = $('.contact-card'); if (cc) { cc.classList.add('flash'); cc.scrollIntoView({ block: 'start', behavior: 'smooth' }); setTimeout(() => cc.classList.remove('flash'), 2600); } }
 }
 // Verknüpfte Anfrage (Inzahlungnahme ↔ Traumwagen-DEAL)
@@ -81,7 +84,7 @@ ACT.pjoin = async (b) => {
   await POST(`/requests/${b.dataset.id}/linked`); toast('Inzahlungnahme übernommen – die Felder stehen jetzt in deinem Angebot.'); await pcounts(); plast = null; await preload();
   const t = $('.combo-trade'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
-ACT.ptake = async (b) => { await POST(`/requests/${b.dataset.id}/take`); toast('Übernommen – jetzt Angebot erstellen.'); await pcounts(); plast = null; preload(); };
+ACT.ptake = async (b) => { await POST(`/requests/${b.dataset.id}/take`); toast('Übernommen – jetzt Angebot erstellen.'); P.focusOffer = true; await pcounts(); plast = null; if (location.hash === '#/anfragen/' + b.dataset.id) preload(); else location.hash = '#/anfragen/' + b.dataset.id; };
 ACT.prelease = async (b) => { if (!(await confirmBox('Anfrage wieder öffnen?', 'Die Anfrage wird wieder für deine ganze Organisation sichtbar. Das wird vertraulich vermerkt.', 'Wieder öffnen'))) return; await POST(`/requests/${b.dataset.id}/release`); toast('Wieder für dein Team geöffnet.'); location.hash = '#/anfragen'; };
 ACT.pcontact = async (b) => {
   const s = b.dataset.s;
@@ -116,7 +119,7 @@ function offerFields(a, px = '') {
   const n = (x) => px + x;
   const money = (name, label, req, hint) => field(`${label}${req ? ' *' : ''} (${vat})`, inp(n(name), '', { req, ph: '0,00', attrs: 'inputmode="decimal"' }), hint);
   const seg = (name, opts, req) => html`<div class="seg">${opts.map(([v, l], i) => html`<label><input type="radio" name="${n(name)}" value="${v}" ${req && i === 0 ? raw('required') : ''}><span>${l}</span></label>`)}</div>`;
-  return html`<div class="pdf-drop"><b>Angebot als PDF hochladen</b><span class="small muted">Empfohlen. Wir lesen Preis, Rate, Laufzeit und weitere Eckdaten automatisch aus und tragen sie unten ein – bitte prüfen. Der Kunde sieht das Angebot neutral ohne deine Firmendaten.</span>
+  return html`${wishCard(a, px, kind, vat)}<div class="pdf-drop"><b>Angebot als PDF hochladen</b><span class="small muted">Empfohlen. Wir lesen Preis, Rate, Laufzeit und weitere Eckdaten automatisch aus und tragen sie unten ein – bitte prüfen. Der Kunde sieht das Angebot neutral ohne deine Firmendaten.</span>
       <input type="file" name="${n('pdf')}" accept="application/pdf" data-change="pparsePdf" data-aid="${a.id}" data-px="${px}" data-vat="${vat}"><div id="${n('sugg')}"></div></div>
     ${kind !== 'ankauf' ? html`<div class="field"><span class="field-label">Konfiguration *</span><div class="seg"><label><input type="radio" name="${n('config')}" value="gleich" checked data-change="pconfig" data-px="${px}"><span>Wie angefragt</span></label><label><input type="radio" name="${n('config')}" value="alternativ" data-change="pconfig" data-px="${px}"><span>Alternative</span></label></div></div>
       <div id="${n('altBox')}" class="stack hide">${field('Herstellercode / Konfigurationscode', inp(n('herstellercode'), '', { ph: 'z. B. AUDI-A4-XYZ123' }))}${field('Exposé (PDF)', raw(`<input type="file" name="${n('expose')}" accept="application/pdf">`))}</div>` : ''}
@@ -178,9 +181,46 @@ CHANGE.pparsePdf = async (el) => {
     if (i.value === val) continue;
     i.value = val; i.classList.add('is-filled'); done.push(k);
   }
+  wishUpdate(form);
   render(box, html`<div class="sugg ${done.length ? 'ok' : ''}">${done.length ? html`<b>${icon('check')}${plural(done.length, 'Feld', 'Felder')} aus deinem Angebot übernommen</b>${r.vehicle ? html`<span>Erkannt: ${r.vehicle}</span>` : ''}<span class="tiny">${done.map((k) => PDF_LABELS[k] || k).join(' · ')}${r.converted ? ` · Beträge in ${vat} umgerechnet` : ''} – bitte prüfen.</span>`
     : r.textFound ? 'Keine passenden Eckdaten erkannt – bitte manuell eintragen.' : 'Die PDF enthält keinen lesbaren Text (z. B. ein Scan). Bitte Eckdaten manuell eintragen.'}</div>`);
 };
+/* ---------- Kundenwunsch-Check: Wünsche auf einen Blick, beim Tippen live gegen das Angebot geprüft ---------- */
+const deNum = (v) => { const t = String(v ?? '').replace(/[^\d,.-]/g, ''); if (!t) return null; const n = parseFloat(/,\d{1,2}$/.test(t) ? t.replace(/\./g, '').replace(',', '.') : t.replace(/[.,](?=\d{3}\b)/g, '').replace(',', '.')); return isFinite(n) ? n : null; };
+const euro = (n) => fNum(Math.round(n)) + ' €';
+function wishInfo(a, kind) {
+  const f = (a.request && a.request.fields) || {};
+  if (kind === 'ankauf') { const w = deNum(f.Preisvorstellung || f['Altwagen Preisvorstellung']); return { target: w, mode: 'ankauf', chips: [w ? ['Preisvorstellung', euro(w)] : null, f.Erstzulassung ? ['Erstzulassung', f.Erstzulassung] : null, (f['Laufleistung km'] || f.Kilometerstand) ? ['Laufleistung', (f['Laufleistung km'] || f.Kilometerstand) + ' km'] : null, f.Unfallfrei ? ['Unfallfrei', f.Unfallfrei] : null].filter(Boolean) }; }
+  const b = String(f.Budget || ''), monthly = /monat|mtl|rate/i.test(b) || (kind !== 'kauf' && deNum(b) !== null && deNum(b) < 5000);
+  const chips = [b ? ['Budget', b] : null, f.Laufzeit ? ['Laufzeit', f.Laufzeit] : null, f['Kilometer pro Jahr'] ? ['km pro Jahr', f['Kilometer pro Jahr']] : null, f.Anzahlung ? ['Anzahlung', f.Anzahlung] : null,
+    f['Servicepaket Wartung & Inspektion'] ? ['Paket', 'Wartung & Inspektion'] : null, f['Servicepaket Versicherung / Kasko'] ? ['Paket', 'Versicherung / Kasko'] : null, f.Kundenart ? ['Kunde', f.Kundenart] : null].filter(Boolean);
+  return { target: deNum(b), mode: monthly ? 'rate' : 'preis', chips };
+}
+function wishCard(a, px, kind, vat) {
+  const w = wishInfo(a, kind);
+  if (!w.chips.length) return '';
+  return html`<div class="wish" data-wish="${w.mode}" data-target="${w.target ?? ''}" data-px="${px}" data-vat="${vat}"><div class="wish-h">${icon('user')}<b>Kundenwunsch auf einen Blick</b></div>
+    <div class="wish-chips">${w.chips.map(([k, v]) => html`<span><small>${k}</small>${v}</span>`)}</div>${w.target ? html`<div class="wish-check" id="${px}wishCheck"><span class="muted small">${w.mode === 'ankauf' ? 'Trag deinen Ankaufpreis ein – wir zeigen dir, wie er zur Preisvorstellung passt.' : w.mode === 'rate' ? 'Trag deine Rate ein – wir zeigen dir sofort, ob sie ins Budget passt.' : 'Trag deinen Preis ein – wir zeigen dir sofort, ob er ins Budget passt.'}</span></div>` : ''}</div>`;
+}
+function wishUpdate(form) {
+  if (!form) return;
+  for (const box of form.querySelectorAll('.wish[data-target]')) {
+    const px = box.dataset.px || '', target = +box.dataset.target, mode = box.dataset.wish, out = form.querySelector('#' + px + 'wishCheck'); if (!out || !target) continue;
+    const v = (k) => deNum((form.elements[px + k] || {}).value) || 0;
+    let val, label;
+    if (mode === 'ankauf') { val = v('buy_price'); label = 'Dein Ankaufpreis'; }
+    else if (mode === 'rate') { val = v('monthly_rate') + v('service_cost') + v('insurance_cost'); label = 'Monatlich gesamt' + (v('service_cost') || v('insurance_cost') ? ' inkl. Pakete' : ''); }
+    else { val = v('price') + v('transfer_cost'); label = 'Preis inkl. Überführung'; }
+    if (!val) { out.className = 'wish-check'; continue; }
+    const diff = val - target, pct = Math.round(Math.abs(diff) / target * 100);
+    let tone, text;
+    if (mode === 'ankauf') { tone = diff >= 0 ? 'ok' : pct <= 10 ? 'warn' : 'bad'; text = diff >= 0 ? `Erfüllt die Preisvorstellung${diff ? ` (+${euro(diff)})` : ''} – stark für den Kunden.` : `${euro(-diff)} unter der Preisvorstellung (−${pct} %). Eine kurze Begründung in den Anmerkungen hilft.`; }
+    else { tone = diff <= 0 ? 'ok' : pct <= 10 ? 'warn' : 'bad'; text = diff <= 0 ? `Im Budget${diff ? ` (${euro(-diff)} darunter)` : ''} – sehr gute Chancen.` : `${euro(diff)} über dem Budget (+${pct} %). ${pct <= 10 ? 'Knapp – ein Extra (z. B. Winterräder) kann überzeugen.' : 'Prüf Anzahlung, Laufzeit oder ein alternatives Modell.'}`; }
+    out.className = 'wish-check ' + tone;
+    render(out, html`<b>${label}: ${euro(val)}</b><span>${text}</span>`);
+  }
+}
+document.addEventListener('input', (e) => { const f = e.target.form; if (f && f.classList.contains('offer-form')) wishUpdate(f); });
 const kmTermConfirm = (d, fields) => ({ km_confirmed: d.km_per_year ? String(d.km_per_year) === String(numOf(fields['Kilometer pro Jahr'])) : undefined, term_confirmed: d.term_months ? String(d.term_months) === String(numOf(fields.Laufzeit)) : undefined });
 SUBMIT.psendCombo = async (d, f) => {
   const t = PA.trade, dealOpen = PA.status === 'in_bearbeitung' && PA.mine, tradeOpen = !!(t && t.mine && t.status === 'in_bearbeitung');

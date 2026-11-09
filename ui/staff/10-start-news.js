@@ -71,6 +71,7 @@ async function pageStart() {
     <div class="cockpit-head"><div><h1>${greeting()}, ${S.user.name.split(' ')[0]}</h1><p class="sub">${line}</p></div>
       ${can('req_view') ? html`<div class="row"><a class="btn" href="#/anfragen?mine=1">${icon('user')}Meine Anfragen</a><a class="btn btn-primary" href="#/anfragen">${icon('inbox')}Alle offenen Anfragen</a></div>` : ''}</div>
     ${pl ? staffPipeline(pl, { dark: true }) : ''}
+    ${securityCard(d.security)}
     ${(d.absenceRequests || []).map((a) => html`<div class="note-box mt">${icon('users')}<div class="spacer"><b>${a.user_name}</b> bittet dich um Vertretung vom ${fDate(a.from_date)} bis ${fDate(a.to_date)}.${a.note ? html` „${a.note}“` : ''}</div>
       <button class="btn btn-sm btn-ok" data-act="absDecide" data-id="${a.id}" data-accept="1">Zusagen</button><button class="btn btn-sm" data-act="absDecide" data-id="${a.id}" data-accept="0">Absagen</button></div>`)}
     <div class="cockpit-grid">
@@ -211,3 +212,11 @@ async function pageAbsences(P, tabs, actions) {
 SUBMIT.absNew = async (d) => { await POST('/absences', d); toast(d.substitute_id ? 'Eingetragen. Deine Vertretung wurde angefragt.' : 'Abwesenheit eingetragen.'); reload(); };
 ACT.absDecide = async (b) => { await POST(`/absences/${b.dataset.id}/decide`, { accept: b.dataset.accept === '1' }); toast(b.dataset.accept === '1' ? 'Vertretung zugesagt.' : 'Vertretung abgesagt.'); await loadSession(); reload(); };
 ACT.absCancel = async (b) => { if (!(await confirmBox('Abwesenheit stornieren?', 'Die Vertretung endet sofort.'))) return; await POST(`/absences/${b.dataset.id}/cancel`); reload(); };
+
+// Sicherheits-Check (nur Admin): offene Punkte mit kurzer Anleitung
+function securityCard(list) {
+  const open = (list || []).filter((x) => !x.ok);
+  if (!open.length) return '';
+  return html`<section class="sec-card mt"><div class="sec-h">${icon('shield')}<div><b>Sicherheit: ${open.length === 1 ? '1 Punkt' : open.length + ' Punkte'} offen</b><span>Bitte zeitnah erledigen – schützt das Dashboard zusätzlich vor fremden Zugriffen.</span></div></div>
+    <ul>${open.map((x) => html`<li><b>${x.label}</b><span>${x.hint}</span></li>`)}</ul></section>`;
+}

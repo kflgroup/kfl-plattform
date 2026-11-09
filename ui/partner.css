@@ -470,3 +470,20 @@ a.kpi:hover .go{color:var(--ink);transform:translateX(3px)}
 .sugg.is-busy{flex-direction:row;align-items:center;gap:9px;color:var(--steel);background:var(--sunken)}
 .sugg .spinner{width:15px;height:15px}
 input.is-filled{background:#f3fbf6;border-color:#9fd3b3}
+/* Kundenwunsch-Check im Angebotsformular */
+.wish{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:linear-gradient(180deg,#fff,#fafbfc);display:flex;flex-direction:column;gap:10px}
+.wish-h{display:flex;align-items:center;gap:8px;font-size:14px}.wish-h .ic{color:var(--orange)}
+.wish-chips{display:flex;flex-wrap:wrap;gap:6px}
+.wish-chips span{display:inline-flex;flex-direction:column;padding:6px 10px;border-radius:10px;background:var(--sunken);border:1px solid var(--line-2);font-size:13.5px;font-weight:600;line-height:1.25}
+.wish-chips small{font-size:11px;font-weight:600;color:var(--steel);text-transform:uppercase;letter-spacing:.04em}
+.wish-check{display:flex;flex-direction:column;gap:2px;padding:9px 12px;border-radius:10px;background:var(--sunken);font-size:13.5px;transition:background .2s,color .2s}
+.wish-check.ok{background:var(--green-wash);color:#0b5e2e}.wish-check.warn{background:var(--amber-wash);color:#7a4800}.wish-check.bad{background:var(--red-wash);color:#8f1d13}
+/* PDF-Feld als Ablagefläche */
+.pdf-drop input[type=file]{padding:10px;border:1.5px dashed #b9bcc2;border-radius:12px;background:#fff;cursor:pointer;font-size:13.5px}
+.pdf-drop input[type=file]:hover{border-color:var(--orange);background:var(--orange-wash)}
+.pdf-drop input[type=file]::file-selector-button{margin-right:12px;border:0;border-radius:8px;padding:8px 14px;background:var(--ink);color:#fff;font:600 13.5px var(--font);cursor:pointer}
+/* Schnell übernehmen in der Liste */
+.rq-side{display:flex;align-items:center;gap:10px}
+.rq-take{white-space:nowrap}
+.offer-form.flash{box-shadow:0 0 0 3px rgba(255,108,1,.45);transition:box-shadow .4s}
+@media (max-width:640px){.rq-take{padding:0 10px}}

@@ -42,7 +42,7 @@ function shell(active) {
       <div class="content">
         <header class="topbar" id="stop"><button class="icon-btn tb-menu" data-act="toggleNav" aria-label="Menü">${icon('menu')}</button><a href="#/" class="tb-logo" aria-label="Zu Home">${LOGO}</a>
           <div class="tb-crumb" id="scrumb"></div>
-          ${canAny('req_view', 'partner_view', 'customers_view', 'acc_view', 'support_view', 'users_view') ? html`<form class="tb-search" data-submit="globalSearch" role="search"><label>${icon('search')}<input name="q" placeholder="Suchen: Name, E-Mail, Anfragenummer, PLZ …" aria-label="Alles durchsuchen" autocomplete="off"></label></form>` : html`<span class="spacer"></span>`}
+          ${canAny('req_view', 'partner_view', 'customers_view', 'acc_view', 'support_view', 'users_view') ? html`<form class="tb-search" data-submit="globalSearch" role="search"><label>${icon('search')}<input name="q" placeholder="Suchen: Name, E-Mail, Anfragenummer, PLZ …  (Strg + K)" aria-label="Alles durchsuchen" autocomplete="off"></label></form>` : html`<span class="spacer"></span>`}
           <span class="tb-chip">${icon('calendar')}${fDate(new Date())} · KW ${isoWeekOf().week}</span><span id="sbell"></span></header>
         <main class="main" id="main" tabindex="-1"></main></div></div>`);
   }
@@ -205,3 +205,12 @@ async function boot() {
   Router.resolve();
 }
 setInterval(() => { if (S.user && document.visibilityState === 'visible') refreshCounts(); }, 30000);
+
+// Tastenkürzel: Strg/⌘ + K oder „/“ springt in die Suche
+document.addEventListener('keydown', (e) => {
+  const inField = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '') || (e.target && e.target.isContentEditable);
+  if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') || (e.key === '/' && !inField)) {
+    const i = document.querySelector('.tb-search input'); if (!i) return;
+    e.preventDefault(); i.focus(); i.select();
+  }
+});

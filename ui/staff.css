@@ -319,3 +319,9 @@ fieldset.fieldset-plain{border:0;padding:0;margin:0;min-width:0}
 .who-cell{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;font-size:13.5px}
 .who-cell .avatar{width:26px;height:26px;font-size:10.5px}
 .panel-body.bt{border-top:1px solid var(--line-2)}
+/* Sicherheits-Check (Admin) */
+.sec-card{border:1px solid #f2c9a6;background:linear-gradient(180deg,#fff7f0,#fff);border-radius:var(--r-m);padding:14px 18px}
+.sec-h{display:flex;gap:12px;align-items:flex-start}.sec-h .ic{color:var(--orange-ink);width:22px;height:22px;margin-top:1px}
+.sec-h b{display:block;font-size:15px}.sec-h span{font-size:13.5px;color:var(--steel)}
+.sec-card ul{margin:10px 0 0 34px;padding:0;display:flex;flex-direction:column;gap:8px}
+.sec-card li{font-size:14px}.sec-card li b{display:block}.sec-card li span{color:var(--steel);font-size:13px}
