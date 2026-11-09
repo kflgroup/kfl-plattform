@@ -1851,7 +1851,15 @@ async function joinLinkedRequest(ctx, p, aid) {
 function wantsTradeIn(req) { return !!req && req.type === 'deal' && /^ja/i.test(String(jparse(req.data, {}).Inzahlungnahme || '').trim()); }
 // Ankauf-Anfrage zum Traumwagen-DEAL nachtr\u00e4glich anlegen (Altwagen-Angaben aus dem DEAL, sonst nur Kontakt + Hinweis) \u2013 ohne Verteilung an andere Partner
 async function createTradeInFor(ctx, deal) {
-  const d = jparse(deal.data, {});
+  const d = jparse(deal.data, {}), ref = `Traumwagen-DEAL #${toNumber(deal.id)}`;
+  // Gibt es schon eine (unverkn\u00fcpfte) Ankauf-Anfrage zu diesem DEAL? Dann diese verkn\u00fcpfen statt eine zweite anzulegen
+  const ex = await DB.one(ctx.db, "SELECT id FROM requests WHERE type = 'sell' AND deleted = 0 AND (linked_request_id IS NULL OR linked_request_id = ?) AND json_extract(data, '$.\"Inzahlungnahme zu\"') = ? ORDER BY id LIMIT 1", deal.id, ref);
+  if (ex) {
+    await DB.run(ctx.db, 'UPDATE requests SET linked_request_id = ? WHERE id = ?', deal.id, ex.id);
+    await DB.run(ctx.db, 'UPDATE requests SET linked_request_id = ?, data = ? WHERE id = ?', ex.id, JSON.stringify({ ...d, 'Ankauf-Anfrage zum Altwagen': `#${toNumber(ex.id)}` }), deal.id);
+    await reqEvent(ctx, deal.id, 'verknuepft', `Inzahlungnahme: Ankauf-Anfrage #${toNumber(ex.id)} verkn\u00fcpft`);
+    return ex.id;
+  }
   let sell = tradeInSplit({ ...d });
   if (!sell) {
     sell = { Marke: d['Altwagen Marke'] || 'Noch offen' };
@@ -1874,6 +1882,9 @@ async function repairStuckRequests(ctx) {
     const m = r.type === 'sell' && !r.linked_request_id ? String(jparse(r.data, {})['Inzahlungnahme zu'] || '').match(/#(\d+)/) : null;
     const dealId = m ? fromNumber(m[1]) : null;
     if (dealId) {
+      // Der DEAL hat inzwischen schon eine andere Ankauf-Anfrage (z. B. vom Partner angelegt) \u2192 nicht doppelt verteilen, KFL pr\u00fcft
+      const other = await DB.val(ctx.db, 'SELECT linked_request_id FROM requests WHERE id = ?', dealId);
+      if (other && other !== r.id) { await DB.update(ctx.db, 'requests', r.id, { status: 'stoerung', status_note: `Doppelte Ankauf-Anfrage zum Traumwagen-DEAL #${toNumber(dealId)} (verkn\u00fcpft ist #${toNumber(other)}) \u2013 bitte pr\u00fcfen` }); await reqEvent(ctx, r.id, 'stoerung', 'Doppelte Ankauf-Anfrage \u2013 nicht verteilt'); n++; continue; }
       await DB.run(ctx.db, 'UPDATE requests SET linked_request_id = ? WHERE id = ?', dealId, r.id);
       await DB.run(ctx.db, "UPDATE requests SET linked_request_id = ? WHERE id = ? AND linked_request_id IS NULL AND type = 'deal'", r.id, dealId);
       await reqEvent(ctx, dealId, 'verknuepft', `Inzahlungnahme: Ankauf-Anfrage #${toNumber(r.id)} nachtr\u00e4glich verkn\u00fcpft`);
