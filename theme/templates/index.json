@@ -1,0 +1,428 @@
+{
+  "sections": {
+    "hero": {
+      "type": "kfl-hero",
+      "blocks": {
+        "f1": {
+          "type": "fact",
+          "settings": {
+            "icon": "euro",
+            "text": "Für dich kostenlos"
+          }
+        },
+        "f2": {
+          "type": "fact",
+          "settings": {
+            "icon": "clock",
+            "text": "Antwort in 24 Std. (werktags)"
+          }
+        },
+        "f3": {
+          "type": "fact",
+          "settings": {
+            "icon": "shield",
+            "text": "Unverbindlich, du entscheidest"
+          }
+        }
+      },
+      "block_order": [
+        "f1",
+        "f2",
+        "f3"
+      ],
+      "settings": {
+        "title": "Dein Traumwagen.",
+        "line_kaufen": "Gekauft zum besten Preis.",
+        "line_finanzieren": "Finanziert ohne Zinsfalle.",
+        "line_leasen": "Geleast für weniger im Monat.",
+        "lead": "Sag uns, welches Auto du suchst. Wir holen Angebote bei Autohäusern, Banken und Leasinggesellschaften ein und melden uns innerhalb von 24 Stunden. Für dich kostenlos und unverbindlich.",
+        "cta_1": "Traumwagen-DEAL anfragen",
+        "deal_link": "/pages/traumwagen-deal",
+        "cta_2": "Mein Auto verkaufen",
+        "cta_2_link": "/pages/auto-verkaufen"
+      }
+    },
+    "tiles": {
+      "type": "kfl-tiles",
+      "blocks": {
+        "t1": {
+          "type": "tile",
+          "settings": {
+            "style": "dark",
+            "image": "shopify://shop_images/Autoabholung_-_Present_-_Kaufen_Finanzieren_leasen.png",
+            "kicker": "Finde deinen Traumwagen-DEAL",
+            "title": "Du sagst, was du willst. Wir verhandeln.",
+            "text": "Neu oder gebraucht, kaufen, finanzieren oder leasen: Wir vergleichen Angebote aus unserem Netzwerk und schicken dir die besten.",
+            "btn_1": "Deal anfragen",
+            "link_1": "/pages/traumwagen-deal",
+            "btn_2": "So funktioniert’s",
+            "link_2": "/#ablauf",
+            "chips": "Neuwagen, Gebrauchte, Leasing, Finanzierung"
+          }
+        },
+        "t2": {
+          "type": "tile",
+          "settings": {
+            "style": "light",
+            "image": "shopify://shop_images/long-highway-in-arizona-desert.jpg",
+            "kicker": "Mein Auto verkaufen",
+            "title": "Dein Auto ist mehr wert, als du denkst.",
+            "text": "Ein paar Angaben genügen. Wir holen ein faires Ankaufangebot ein – auch als Inzahlungnahme für deinen nächsten Wagen.",
+            "btn_1": "Angebot anfordern",
+            "link_1": "/pages/auto-verkaufen",
+            "btn_2": "",
+            "link_2": "",
+            "chips": "Kostenlos, Unverbindlich, Bundesweit"
+          }
+        }
+      },
+      "block_order": [
+        "t1",
+        "t2"
+      ],
+      "settings": {
+        "heading": "Zwei Wege zum besseren Deal.",
+        "text": "",
+        "silver": false
+      }
+    },
+    "usp": {
+      "type": "kfl-usp",
+      "blocks": {
+        "u1": {
+          "type": "usp",
+          "settings": {
+            "icon": "euro",
+            "title": "Für dich kostenlos",
+            "text": "Du zahlst nichts für die Suche. Wir werden von unseren Partnern vergütet, wenn ein Vertrag zustande kommt."
+          }
+        },
+        "u2": {
+          "type": "usp",
+          "settings": {
+            "icon": "verified",
+            "title": "Partner aus deiner Region",
+            "text": "Autohäuser, Banken und Leasinggesellschaften aus unserem Netzwerk – passend zu deiner Marke und dem Umkreis, den du wählst."
+          }
+        },
+        "u3": {
+          "type": "usp",
+          "settings": {
+            "icon": "check",
+            "title": "Nur die besten Angebote",
+            "text": "Wir bewerten jedes Angebot nach festen Kriterien wie Preis, Rate und Konditionen und stellen dir bis zu drei vor."
+          }
+        },
+        "u4": {
+          "type": "usp",
+          "settings": {
+            "icon": "lock",
+            "title": "Keine Werbeanrufe",
+            "text": "Deine Kontaktdaten bekommt ein Partner erst, wenn du sein Angebot annimmst. Bis dahin bleibst du anonym."
+          }
+        },
+        "u5": {
+          "type": "usp",
+          "settings": {
+            "icon": "clock",
+            "title": "Schnell und digital",
+            "text": "Anfrage in rund drei Minuten, Antwort innerhalb von 24 Stunden an Werktagen. Alle Angebote findest du in deinem Kundenkonto."
+          }
+        },
+        "u6": {
+          "type": "usp",
+          "settings": {
+            "icon": "account",
+            "title": "Altes Auto? Gleich mit.",
+            "text": "Gib dein jetziges Auto in Zahlung: Fahrzeug- und Ankaufangebot kommen zusammen, damit du die Rechnung auf einen Blick hast."
+          }
+        }
+      },
+      "block_order": [
+        "u1",
+        "u2",
+        "u3",
+        "u4",
+        "u5",
+        "u6"
+      ],
+      "settings": {
+        "kicker": "Warum KFL",
+        "heading": "Mehr Auto für dein Geld. Ohne Risiko.",
+        "text": "Du sagst uns einmal, was du suchst. Wir holen Angebote ein, vergleichen sie nach festen Kriterien und zeigen dir nur die besten. Du entscheidest – ohne Druck und ohne Verpflichtung.",
+        "silver": true,
+        "show_compare": true,
+        "compare_heading": "Allein suchen oder mit KFL?",
+        "compare_rows": "Zeitaufwand | Viele Händler einzeln anfragen | Eine Anfrage in rund drei Minuten\nAngebote | Selbst sammeln und vergleichen | Wir vergleichen und zeigen dir die besten\nWerbeanrufe | Deine Nummer geht an jeden Händler | Kontaktdaten erst nach deiner Zusage\nAltes Auto | Separat verkaufen | Inzahlungnahme gleich mit anfragen\nKosten | Zeit, Nerven, oft zu viel bezahlt | Für dich kostenlos und unverbindlich",
+        "btn": "Jetzt kostenlos anfragen",
+        "link": "/pages/traumwagen-deal",
+        "note": "Kostenlos und unverbindlich. Antwort innerhalb von 24 Stunden an Werktagen."
+      }
+    },
+    "steps": {
+      "type": "kfl-steps",
+      "blocks": {
+        "s1": {
+          "type": "step",
+          "settings": {
+            "title": "Anfrage stellen",
+            "text": "Wunschauto, Bezahlart und Budget angeben. Dauert rund drei Minuten."
+          }
+        },
+        "s2": {
+          "type": "step",
+          "settings": {
+            "title": "Angebote vergleichen",
+            "text": "Wir prüfen Händler-, Finanzierungs- und Leasingangebote und schicken dir die besten – verständlich erklärt."
+          }
+        },
+        "s3": {
+          "type": "step",
+          "settings": {
+            "title": "Deal abschließen",
+            "text": "Du entscheidest in Ruhe. Den Vertrag schließt du direkt mit dem Partner, wir begleiten dich bis zur Übergabe."
+          }
+        }
+      },
+      "block_order": [
+        "s1",
+        "s2",
+        "s3"
+      ],
+      "settings": {
+        "heading": "So kommst du zu deinem Deal.",
+        "text": "",
+        "anchor": "ablauf",
+        "dark": true,
+        "btn": "Jetzt starten",
+        "link": "/pages/traumwagen-deal"
+      }
+    },
+    "check": {
+      "type": "kfl-leasing-check",
+      "blocks": {
+        "a": {
+          "type": "fact",
+          "settings": {
+            "value": "48,4 %",
+            "label": "aller neuen Pkw in Deutschland werden geleast."
+          }
+        },
+        "b": {
+          "type": "fact",
+          "settings": {
+            "value": "298 €",
+            "label": "beträgt die durchschnittliche Leasingrate 2025."
+          }
+        },
+        "c": {
+          "type": "fact",
+          "settings": {
+            "value": "0,62",
+            "label": "ist der durchschnittliche Leasingfaktor am Markt."
+          }
+        }
+      },
+      "block_order": [
+        "a",
+        "b",
+        "c"
+      ],
+      "settings": {
+        "kicker": "Leasing-Check",
+        "heading": "Ist dein Leasingangebot wirklich gut?",
+        "text": "Die Monatsrate ist der Preis, auf den alle schauen. Ob sie fair ist, zeigt erst der Leasingfaktor. Rechne dein Angebot in zehn Sekunden nach.",
+        "btn": "Besseres Angebot anfragen",
+        "link": "/pages/traumwagen-deal",
+        "source": "Quellen: BDL / IW Köln Leasing-Marktbericht 2025, LeasingMarkt.de Leasing-Rückspiegel 2025."
+      }
+    },
+    "products": {
+      "type": "kfl-products",
+      "settings": {
+        "kicker": "Die KFL Ratgeber",
+        "heading": "Erst verstehen. Dann unterschreiben.",
+        "text": "Was Händler und Banken wissen, solltest du auch wissen. Kompakt erklärt, mit Checklisten – als PDF sofort auf deinem Gerät.",
+        "featured": "kaufen-finanzieren-leasen-finde-deun-neues-traumauto",
+        "featured_badge": "Bester Preis pro Ratgeber",
+        "collection": "ratgeber",
+        "limit": 4,
+        "show_all": true,
+        "silver": false,
+        "note": "Alle Preise inkl. MwSt. Digitale Produkte zum Sofort-Download, keine Versandkosten."
+      }
+    },
+    "split": {
+      "type": "kfl-split",
+      "blocks": {
+        "n": {
+          "type": "teaser",
+          "settings": {
+            "style": "light",
+            "kicker": "KFL Network",
+            "title": "Echte Erfahrungen statt Werbeversprechen.",
+            "text": "Frag die Community, teile deinen Deal und lerne von anderen Käufern und Partnern. Anonym und von uns verifiziert.",
+            "btn": "Zum Network",
+            "link": "/blogs/network"
+          }
+        },
+        "h": {
+          "type": "teaser",
+          "settings": {
+            "style": "dark",
+            "kicker": "History",
+            "title": "Warum es KFL gibt.",
+            "text": "Wir wollten, dass niemand beim Autokauf draufzahlt, nur weil ihm Insiderwissen fehlt. Lern uns kennen.",
+            "btn": "Unsere Geschichte",
+            "link": "/pages/history"
+          }
+        }
+      },
+      "block_order": [
+        "n",
+        "h"
+      ],
+      "settings": {
+        "heading": "",
+        "silver": true
+      }
+    },
+    "faq": {
+      "type": "kfl-faq",
+      "blocks": {
+        "q0": {
+          "type": "qa",
+          "settings": {
+            "q": "Was kostet mich der Traumwagen-DEAL?",
+            "a": "<p>Nichts. Die Fahrzeugsuche ist für dich kostenlos und unverbindlich. Wir werden von unseren Partnern – Autohäusern, Banken und Leasinggesellschaften – vergütet, wenn ein Vertrag zustande kommt. Den Vertrag schließt du direkt mit dem jeweiligen Partner.</p>"
+          }
+        },
+        "q6": {
+          "type": "qa",
+          "settings": {
+            "q": "Rufen mich danach ständig Händler an?",
+            "a": "<p>Nein. Partner sehen zuerst nur die Eckdaten deiner Anfrage, nicht deinen Namen oder deine Telefonnummer. Deine Kontaktdaten bekommt ein Partner erst, wenn du sein Angebot annimmst.</p>"
+          }
+        },
+        "q7": {
+          "type": "qa",
+          "settings": {
+            "q": "Wie viele Angebote bekomme ich – und muss ich eins annehmen?",
+            "a": "<p>Wir stellen dir bis zu drei ausgewählte Angebote vor, bewertet nach festen Kriterien wie Preis, Rate und Konditionen. Annehmen musst du keins: Passt nichts, lehnst du einfach ab – ohne Kosten und ohne Begründung.</p>"
+          }
+        },
+        "q1": {
+          "type": "qa",
+          "settings": {
+            "q": "Wie schnell meldet ihr euch?",
+            "a": "<p>Innerhalb von 24 Stunden an Werktagen (Montag bis Freitag). Meist schon deutlich früher.</p>"
+          }
+        },
+        "q8": {
+          "type": "qa",
+          "settings": {
+            "q": "Kann ich mein jetziges Auto in Zahlung geben?",
+            "a": "<p>Ja. Gib im Traumwagen-DEAL einfach an, dass du dein Auto in Zahlung geben möchtest. Du bekommst dann zusätzlich ein Ankaufangebot – auf Wunsch vom selben Partner, damit beide Angebote zusammenpassen.</p>"
+          }
+        },
+        "q2": {
+          "type": "qa",
+          "settings": {
+            "q": "Warum brauche ich ein Kundenkonto?",
+            "a": "<p>Damit wir deine Anfrage sicher dir zuordnen und dich zuverlässig erreichen können. Die Anmeldung läuft per E-Mail-Code, ganz ohne Passwort. Dein Konto ist kostenlos und du kannst es jederzeit löschen lassen.</p>"
+          }
+        },
+        "q3": {
+          "type": "qa",
+          "settings": {
+            "q": "Was passiert mit meinen Daten?",
+            "a": "<p>Wir geben deine Angaben nur so weit an ausgewählte Partner weiter, wie es für deine Angebote nötig ist – deine Kontaktdaten erst nach deiner Zusage. Alles Weitere steht in unserer <a href=\"/policies/privacy-policy\">Datenschutzerklärung</a>.</p>"
+          }
+        },
+        "q4": {
+          "type": "qa",
+          "settings": {
+            "q": "Kann ich auch nur mein Auto verkaufen?",
+            "a": "<p>Ja. Über <a href=\"/pages/auto-verkaufen\">Mein Auto verkaufen</a> holen wir dir ein Ankaufangebot ein – unabhängig davon, ob du bei uns ein neues Auto suchst.</p>"
+          }
+        },
+        "q5": {
+          "type": "qa",
+          "settings": {
+            "q": "Für wen sind die Ratgeber?",
+            "a": "<p>Für alle, die beim nächsten Auto keinen teuren Fehler machen wollen – ob Erstkäufer oder Vielfahrer. Die Ratgeber erklären Kauf, Finanzierung, Leasing und E-Mobilität verständlich, mit Checklisten und Rechenbeispielen.</p>"
+          }
+        }
+      },
+      "block_order": [
+        "q0",
+        "q6",
+        "q7",
+        "q1",
+        "q8",
+        "q2",
+        "q3",
+        "q4",
+        "q5"
+      ],
+      "settings": {
+        "heading": "Häufige Fragen",
+        "text": "",
+        "silver": false
+      }
+    },
+    "quick": {
+      "type": "kfl-quickstart",
+      "settings": {
+        "heading": "Welches Auto suchst du?",
+        "text": "Tipp Marke und Modell ein. Den Rest fragen wir dich Schritt für Schritt.",
+        "placeholder": "z. B. BMW 3er Touring, Tesla Model Y",
+        "btn": "Deal starten",
+        "link": "/pages/traumwagen-deal",
+        "note": "Kostenlos und unverbindlich. Antwort innerhalb von 24 Stunden an Werktagen."
+      }
+    },
+    "apps": {
+      "type": "apps",
+      "blocks": {
+        "instafeed": {
+          "type": "shopify://apps/instafeed/blocks/app-block/c447db20-095d-4a10-9725-b5977662c9d5",
+          "settings": {
+            "title": "",
+            "title_color": "",
+            "title_size_v2": 0,
+            "alignment": "center",
+            "instafeed_margin_top": 0,
+            "instafeed_margin_bottom": 0,
+            "instafeed_margin_sides": 0,
+            "show_instagram_link": false,
+            "link_alignment": "left",
+            "link_color": "#000000",
+            "background_color": "",
+            "feed_id": "",
+            "html_area": ""
+          }
+        }
+      },
+      "block_order": [
+        "instafeed"
+      ],
+      "settings": {
+        "include_margins": true
+      },
+      "disabled": true
+    }
+  },
+  "order": [
+    "hero",
+    "tiles",
+    "usp",
+    "steps",
+    "check",
+    "products",
+    "split",
+    "faq",
+    "quick",
+    "apps"
+  ]
+}

@@ -1,0 +1,196 @@
+<footer class="k-footer" role="contentinfo">
+  <div class="k-wrap">
+    <div class="k-footer__top">
+      <div class="k-footer__brand">
+        <a href="{{ routes.root_url }}" class="k-logo" aria-label="{{ shop.name }}">
+          {%- if settings.logo != blank -%}{{ settings.logo | image_url: width: 160 | image_tag: alt: shop.name, width: 48, height: 48, loading: 'lazy' }}{%- else -%}<span class="k-logo__mark">KFL</span>{%- endif -%}
+        </a>
+        {%- if section.settings.claim != blank -%}<p>{{ section.settings.claim }}</p>{%- endif -%}
+        {%- if section.settings.show_newsletter -%}
+          {%- form 'customer', class: 'k-footer__form', id: 'k-newsletter' -%}
+            <input type="hidden" name="contact[tags]" value="newsletter">
+            {%- if form.posted_successfully? -%}
+              <p class="k-note k-note--ok" role="status" style="margin-top:2rem">Fast geschafft: Bitte bestätige deine Anmeldung über den Link in unserer E-Mail.</p>
+            {%- else -%}
+              <div class="k-footer__news">
+                <label for="k-nl-email" class="k-visually-hidden">E-Mail-Adresse</label>
+                <input id="k-nl-email" type="email" name="contact[email]" required autocomplete="email" placeholder="Deine E-Mail-Adresse">
+                <button type="submit" class="k-btn k-btn--primary k-btn--sm">Anmelden</button>
+              </div>
+              <p class="k-small" style="color:#8e8e93;margin-top:1rem;max-width:42ch">Deals, neue Ratgeber und Marktnews. Abmeldung jederzeit über den Link in jeder E-Mail. Infos in der <a href="{{ shop.privacy_policy.url | default: '/policies/privacy-policy' }}" style="font-size:inherit;text-decoration:underline">Datenschutzerklärung</a>.</p>
+              {%- if form.errors -%}<p class="k-note k-note--err">{{ form.errors | default_errors }}</p>{%- endif -%}
+            {%- endif -%}
+          {%- endform -%}
+        {%- endif -%}
+      </div>
+
+      {%- for block in section.blocks -%}
+        {%- assign ml = linklists[block.settings.menu] -%}
+        <div {{ block.shopify_attributes }}>
+          <h2>{{ block.settings.heading | default: ml.title }}</h2>
+          <ul>
+            {%- for link in ml.links -%}<li><a href="{{ link.url }}">{{ link.title }}</a></li>{%- endfor -%}
+          </ul>
+        </div>
+      {%- endfor -%}
+    </div>
+
+    <div class="k-footer__bottom">
+      <div class="k-footer__legal">
+        <span>© {{ 'now' | date: '%Y' }} {{ section.settings.company | default: shop.name }}</span>
+        <a href="/policies/legal-notice">Impressum</a>
+        <a href="{{ shop.terms_of_service.url | default: '/policies/terms-of-service' }}">AGB</a>
+        <a href="{{ shop.privacy_policy.url | default: '/policies/privacy-policy' }}">Datenschutz</a>
+        <a href="{{ shop.refund_policy.url | default: '/policies/refund-policy' }}">Widerrufsbelehrung</a>
+        <button type="button" data-cookie-settings>Cookie-Einstellungen</button>
+      </div>
+      {%- liquid
+        assign k_is_partner = false
+        if customer
+          for t in customer.tags
+            assign tl = t | downcase | strip
+            if tl == 'partner'
+              assign k_is_partner = true
+            endif
+          endfor
+        endif
+      -%}
+      <div class="k-footer__actions">
+        <a href="/pages/partner" class="k-partner-link" rel="nofollow">{% render 'kfl-icon', name: 'shield' %}{% if k_is_partner %}Partnerbereich{% else %}Partner-Login{% endif %}</a>
+        <a href="/pages/vertrag-widerrufen" class="k-withdraw-btn">Vertrag widerrufen</a>
+      </div>
+      <div style="display:flex;gap:1.6rem;align-items:center;flex-wrap:wrap">
+        {%- if settings.social_instagram_link != blank -%}
+          <a href="{{ settings.social_instagram_link }}" class="k-icon-btn" style="color:#c7c7cc" target="_blank" rel="noopener" aria-label="KFL auf Instagram">{% render 'kfl-icon', name: 'instagram' %}</a>
+        {%- endif -%}
+        {%- if section.settings.show_payment -%}
+          <ul class="k-pay" aria-label="Zahlungsarten">
+            {%- for type in shop.enabled_payment_types -%}<li>{{ type | payment_type_svg_tag }}</li>{%- endfor -%}
+          </ul>
+        {%- endif -%}
+      </div>
+    </div>
+  </div>
+</footer>
+
+{%- comment -%} Mobile Aktionsleiste: erscheint auf dem Smartphone nach dem ersten Scrollen (nicht auf Formular-, Konto- und Warenkorbseiten) {%- endcomment -%}
+{%- liquid
+  assign k_cta_hide = false
+  assign k_suffix = template.suffix | default: ''
+  if request.page_type == 'cart' or request.page_type == 'password' or request.page_type == 'gift_card' or request.page_type contains 'customers'
+    assign k_cta_hide = true
+  endif
+  if k_suffix == 'traumwagen-deal' or k_suffix == 'auto-verkaufen' or k_suffix == 'partner' or k_suffix == 'support' or k_suffix == 'vertrag-widerrufen' or k_suffix == 'meine-anfragen'
+    assign k_cta_hide = true
+  endif
+  if k_is_partner
+    assign k_cta_hide = true
+  endif
+-%}
+{%- if section.settings.sticky_cta and k_cta_hide == false -%}
+  <div class="k-mcta" id="k-mcta" aria-hidden="true">
+    <a class="k-btn k-btn--primary k-mcta__main" href="{{ section.settings.sticky_link | default: '/pages/traumwagen-deal' }}">{{ section.settings.sticky_label }}</a>
+    {%- if section.settings.sticky_label_2 != blank -%}<a class="k-mcta__alt" href="{{ section.settings.sticky_link_2 | default: '/pages/auto-verkaufen' }}">{{ section.settings.sticky_label_2 }}</a>{%- endif -%}
+  </div>
+  <script>
+    (function () {
+      var bar = document.getElementById('k-mcta'); if (!bar) return;
+      var shown = false, tick = false;
+      function upd() {
+        tick = false;
+        var y = window.scrollY || 0, nearEnd = (window.innerHeight + y) > (document.documentElement.scrollHeight - 420);
+        var show = y > 520 && !nearEnd;
+        if (show !== shown) { shown = show; bar.classList.toggle('is-on', show); bar.setAttribute('aria-hidden', show ? 'false' : 'true'); }
+      }
+      window.addEventListener('scroll', function () { if (!tick) { tick = true; requestAnimationFrame(upd); } }, { passive: true });
+      upd();
+    })();
+  </script>
+{%- endif -%}
+
+{%- if request.page_type == 'index' -%}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": {{ shop.name | json }},
+  "alternateName": "KFL – Kaufen Finanzieren Leasen",
+  "url": {{ shop.url | append: '/' | json }},
+  "inLanguage": "de-DE",
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": { "@type": "EntryPoint", "urlTemplate": {{ shop.url | append: '/search?q={search_term_string}' | json }} },
+    "query-input": "required name=search_term_string"
+  }
+}
+</script>
+{%- endif -%}
+{%- if request.page_type == 'page' or request.page_type == 'product' or request.page_type == 'collection' or request.page_type == 'article' or request.page_type == 'blog' -%}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Start", "item": {{ shop.url | append: '/' | json }} }
+    {%- if request.page_type == 'product' and collection -%}
+    ,{ "@type": "ListItem", "position": 2, "name": {{ collection.title | json }}, "item": {{ shop.url | append: collection.url | json }} }
+    ,{ "@type": "ListItem", "position": 3, "name": {{ product.title | json }}, "item": {{ shop.url | append: product.url | json }} }
+    {%- elsif request.page_type == 'product' -%}
+    ,{ "@type": "ListItem", "position": 2, "name": {{ product.title | json }}, "item": {{ shop.url | append: product.url | json }} }
+    {%- elsif request.page_type == 'collection' -%}
+    ,{ "@type": "ListItem", "position": 2, "name": {{ collection.title | json }}, "item": {{ shop.url | append: collection.url | json }} }
+    {%- elsif request.page_type == 'article' -%}
+    ,{ "@type": "ListItem", "position": 2, "name": {{ blog.title | json }}, "item": {{ shop.url | append: blog.url | json }} }
+    ,{ "@type": "ListItem", "position": 3, "name": {{ article.title | json }}, "item": {{ shop.url | append: article.url | json }} }
+    {%- elsif request.page_type == 'blog' -%}
+    ,{ "@type": "ListItem", "position": 2, "name": {{ blog.title | json }}, "item": {{ shop.url | append: blog.url | json }} }
+    {%- else -%}
+    ,{ "@type": "ListItem", "position": 2, "name": {{ page.title | json }}, "item": {{ shop.url | append: page.url | json }} }
+    {%- endif -%}
+  ]
+}
+</script>
+{%- endif -%}
+
+{% stylesheet %}
+  .k-footer__actions { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
+  .k-partner-link { display: inline-flex; align-items: center; gap: .8rem; min-height: 40px; padding: 0 1.8rem; border-radius: 999px; border: 1.5px solid #3a3a3c; color: #fff !important; font-weight: 700; font-size: 1.4rem !important; text-decoration: none; }
+  .k-partner-link svg { width: 18px; height: 18px; color: var(--k-orange); }
+  .k-partner-link:hover { border-color: #fff; }
+  @media (max-width: 640px) { .k-footer__actions { order: -1; width: 100%; } }
+  .k-verified.k-verified--partner { background: #fff1e6; color: var(--k-orange-deep); }
+  .k-partner .k-topic__meta svg { width: 20px; height: 20px; flex: none; }
+  .k-mcta { display: none; }
+  @media (max-width: 749px) {
+    .k-mcta { display: flex; position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 60; gap: .8rem; align-items: center; padding: .8rem; border-radius: 999px; background: rgba(17, 17, 17, .92); -webkit-backdrop-filter: saturate(1.4) blur(12px); backdrop-filter: saturate(1.4) blur(12px); box-shadow: 0 18px 40px -16px rgba(0, 0, 0, .55); transform: translateY(140%); opacity: 0; transition: transform .35s cubic-bezier(.2, .7, .1, 1), opacity .25s; pointer-events: none; }
+    .k-mcta.is-on { transform: none; opacity: 1; pointer-events: auto; }
+    .k-mcta__main { flex: 1; justify-content: center; min-height: 48px; }
+    .k-mcta__alt { color: #fff; font-weight: 700; font-size: 1.4rem; padding: 0 1.4rem; white-space: nowrap; text-decoration: none; }
+    .k-footer { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+  }
+  @media (prefers-reduced-motion: reduce) { .k-mcta { transition: none; } }
+{% endstylesheet %}
+
+{% schema %}
+{
+  "name": "KFL Footer",
+  "settings": [
+    { "type": "textarea", "id": "claim", "label": "Kurzbeschreibung", "default": "KFL steht für Kaufen, Finanzieren, Leasen. Wir finden deinen Traumwagen zum besseren Deal, kaufen dein Auto an und erklären dir den Fahrzeugmarkt ohne Verkaufsgerede." },
+    { "type": "text", "id": "company", "label": "Firmenname", "default": "KFL GbR" },
+    { "type": "checkbox", "id": "show_newsletter", "label": "Newsletter-Anmeldung zeigen", "default": true, "info": "Bitte in Shopify unter Einstellungen > Kundenbenachrichtigungen das Double-Opt-in aktivieren." },
+    { "type": "checkbox", "id": "show_payment", "label": "Zahlungsarten zeigen", "default": true },
+    { "type": "header", "content": "Mobile Aktionsleiste" },
+    { "type": "checkbox", "id": "sticky_cta", "label": "Auf dem Smartphone nach dem Scrollen zeigen", "default": true, "info": "Nicht auf Formular-, Konto-, Partner- und Warenkorbseiten." },
+    { "type": "text", "id": "sticky_label", "label": "Button", "default": "Traumwagen-DEAL starten" },
+    { "type": "url", "id": "sticky_link", "label": "Button-Link" },
+    { "type": "text", "id": "sticky_label_2", "label": "Zweiter Link (optional)", "default": "Auto verkaufen" },
+    { "type": "url", "id": "sticky_link_2", "label": "Zweiter Link – Ziel" }
+  ],
+  "blocks": [
+    { "type": "menu", "name": "Menü-Spalte", "settings": [
+      { "type": "text", "id": "heading", "label": "Überschrift" },
+      { "type": "link_list", "id": "menu", "label": "Menü" }
+    ] }
+  ]
+}
+{% endschema %}

@@ -25,6 +25,31 @@ endif
 assign dash_label = section.settings.dashboard_label | default: 'Zum Partner-Dashboard'
 -%}
 
+{%- capture k_benefits -%}
+<div class="k-pb" aria-labelledby="k-pb-{{ section.id }}">
+<div class="k-pb__head">
+<p class="k-kicker">{% if is_partner %}Deine Vorteile{% else %}Partner werden{% endif %}</p>
+<h2 class="k-h2" id="k-pb-{{ section.id }}">{% if is_partner %}{{ section.settings.benefits_heading_partner }}{% else %}{{ section.settings.benefits_heading }}{% endif %}</h2>
+<p class="k-lead k-muted">{{ section.settings.benefits_text }}</p>
+</div>
+<ul class="k-pb__grid" role="list">
+<li><span class="k-pb__ic" aria-hidden="true">{% render 'kfl-icon', name: 'check' %}</span><h3>Kaufbereite Kunden statt kalter Kontakte</h3><p>Jede Anfrage kommt mit Wunschauto, Bezahlart, Budget und Laufzeit – passend zu deinen Marken und deinem Umkreis.</p></li>
+<li><span class="k-pb__ic" aria-hidden="true">{% render 'kfl-icon', name: 'euro' %}</span><h3>Doppeltes Geschäft</h3><p>Traumwagen-DEAL mit Inzahlungnahme: Fahrzeug- und Ankaufangebot gibst du in einer Maske ab. So machst du dem Kunden das rundere Paket.</p></li>
+<li><span class="k-pb__ic" aria-hidden="true">{% render 'kfl-icon', name: 'verified' %}</span><h3>Faire Auswahl, klare Regeln</h3><p>Alle Angebote werden nach festen Kriterien bewertet. Die besten stellen wir dem Kunden vor – das stärkste Angebot gewinnt, nicht das lauteste.</p></li>
+<li><span class="k-pb__ic" aria-hidden="true">{% render 'kfl-icon', name: 'clock' %}</span><h3>Angebot in Minuten</h3><p>Angebots-PDF hochladen, Preis, Rate und Laufzeit werden automatisch übernommen. Der Kundenwunsch-Check zeigt dir sofort, ob du im Budget liegst.</p></li>
+<li><span class="k-pb__ic" aria-hidden="true">{% render 'kfl-icon', name: 'account' %}</span><h3>Kontakt mit Zusage</h3><p>Du rufst Kunden an, die dein Angebot wollen: Die Kontaktdaten bekommst du, sobald der Kunde zusagt – direkt im Dashboard und per E-Mail.</p></li>
+<li><span class="k-pb__ic" aria-hidden="true">{% render 'kfl-icon', name: 'shield' %}</span><h3>Alles im Blick, auch mobil</h3><p>Team mit Rollen für Geschäftsführung, Verkaufsleitung und Vertrieb, Statistik, Abrechnung und Support – im eigenen Partner-Dashboard auf jedem Gerät.</p></li>
+</ul>
+{%- unless is_partner -%}
+<ol class="k-pb__steps" aria-label="So startet die Zusammenarbeit">
+<li><b>Antrag senden</b><span>Unternehmen, Ansprechpartner und Schwerpunkte angeben – dauert zwei Minuten.</span></li>
+<li><b>Kurzes Kennenlernen</b><span>Wir prüfen deine Angaben und stimmen Marken, Umkreis und Ablauf mit dir ab.</span></li>
+<li><b>Anfragen erhalten</b><span>Nach der Freischaltung bekommst du passende Kundenanfragen in dein Partner-Dashboard.</span></li>
+</ol>
+{%- endunless -%}
+</div>
+{%- endcapture -%}
+
 <section class="k-section k-partner" style="padding-top:clamp(40px,6vw,88px)">
 <div class="k-wrap">
 
@@ -52,6 +77,8 @@ assign dash_label = section.settings.dashboard_label | default: 'Zum Partner-Das
 {%- if section.settings.contact_phone != blank -%}<p style="margin:.8rem 0 0"><a class="k-link" href="tel:{{ section.settings.contact_phone | remove: ' ' }}">{{ section.settings.contact_phone }}</a></p>{%- endif -%}
 </div>
 </div>
+
+{%- if section.settings.show_benefits_partner -%}{{ k_benefits }}{%- endif -%}
 
 {%- if section.blocks.size > 0 -%}
 <div class="k-topics">
@@ -249,6 +276,7 @@ assign dash_label = section.settings.dashboard_label | default: 'Zum Partner-Das
 {%- endunless -%}
 </div>
 </div>
+{%- if section.settings.show_benefits -%}{{ k_benefits }}{%- endif -%}
 {%- endif -%}
 
 </div>
@@ -264,6 +292,21 @@ assign dash_label = section.settings.dashboard_label | default: 'Zum Partner-Das
 .k-partner__dash-btn span svg, .k-partner__dash-note .k-btn span svg { width: 1.8rem; height: 1.8rem; }
 .k-partner__dash-note { display: grid; gap: 1.2rem; justify-items: start; margin-top: 3.2rem; padding-top: 2.4rem; border-top: 1px solid rgba(0, 0, 0, .08); }
 @media (max-width: 960px) { .k-partner__hero { grid-template-columns: 1fr; } }
+.k-pb { margin-top: clamp(56px, 7vw, 104px); display: grid; gap: clamp(28px, 3.5vw, 48px); }
+.k-pb__head { max-width: 760px; display: grid; gap: 1.4rem; }
+.k-pb__grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(14px, 1.8vw, 22px); }
+.k-pb__grid li { padding: clamp(22px, 2.2vw, 30px); border-radius: var(--k-radius-l, 24px); background: var(--k-silver, #f5f5f7); display: grid; gap: .9rem; align-content: start; }
+.k-pb__grid h3 { margin: .4rem 0 0; font-size: 1.9rem; line-height: 1.25; }
+.k-pb__grid p { margin: 0; color: #6e6e73; font-size: 1.5rem; line-height: 1.55; }
+.k-pb__ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: #111; color: var(--k-orange, #ff6c01); }
+.k-pb__ic svg { width: 21px; height: 21px; }
+.k-pb__steps { list-style: none; counter-reset: pb; margin: 0; padding: clamp(22px, 2.6vw, 36px); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(16px, 2vw, 32px); border-radius: var(--k-radius-l, 24px); background: #111; color: #fff; }
+.k-pb__steps li { counter-increment: pb; display: grid; gap: .6rem; }
+.k-pb__steps li::before { content: counter(pb); width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--k-orange, #ff6c01); color: #fff; font-weight: 800; }
+.k-pb__steps b { font-size: 1.8rem; }
+.k-pb__steps span { color: #b9b9be; font-size: 1.5rem; line-height: 1.5; }
+@media (max-width: 960px) { .k-pb__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .k-pb__steps { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .k-pb__grid { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .k-partner__dash .k-btn { width: 100%; justify-content: center; } }
 {% endstylesheet %}
 
@@ -272,6 +315,12 @@ assign dash_label = section.settings.dashboard_label | default: 'Zum Partner-Das
 "name": "KFL Partnerbereich",
 "settings": [
 { "type": "textarea", "id": "lead", "label": "Text (Login)", "default": "Für Autohäuser, Banken, Leasinggesellschaften und Ankaufpartner: Hier meldest du dich an und erreichst deinen persönlichen Partnerbereich." },
+{ "type": "header", "content": "Vorteile für Partner" },
+{ "type": "checkbox", "id": "show_benefits", "label": "Vorteile beim Login / Partner werden zeigen", "default": true },
+{ "type": "checkbox", "id": "show_benefits_partner", "label": "Vorteile für eingeloggte Partner zeigen", "default": true },
+{ "type": "text", "id": "benefits_heading", "label": "Überschrift (Partner werden)", "default": "Mehr Abschlüsse mit kaufbereiten Kunden." },
+{ "type": "text", "id": "benefits_heading_partner", "label": "Überschrift (eingeloggte Partner)", "default": "Das hast du als KFL-Geschäftspartner." },
+{ "type": "textarea", "id": "benefits_text", "label": "Text", "default": "KFL bringt Autohäuser, Banken, Leasinggesellschaften und Ankaufpartner mit Kunden zusammen, die genau wissen, was sie wollen. Du konzentrierst dich aufs Verkaufen – wir liefern die Anfragen." },
 { "type": "header", "content": "Partner-Dashboard" },
 { "type": "paragraph", "content": "Sichtbar für Kundenkonten mit dem Tag „partner“ (Shopify → Kunden → Kunde öffnen → Tags)." },
 { "type": "textarea", "id": "dash_lead", "label": "Begrüßungstext", "default": "Schön, dass du da bist. Hier findest du alles für die Zusammenarbeit mit KFL." },

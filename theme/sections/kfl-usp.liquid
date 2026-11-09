@@ -1,0 +1,119 @@
+{%- comment -%}
+KFL Warum KFL: Vorteile, Vergleich „allein suchen vs. mit KFL“ und Versprechen – räumt typische Bedenken vor der Anfrage aus.
+Inhalte sind im Theme-Editor anpassbar (Vorteile als Blöcke). Keine erfundenen Zahlen oder Bewertungen.
+{%- endcomment -%}
+<section class="k-section k-usp{% if section.settings.silver %} k-bg-silver{% endif %}" aria-labelledby="k-usp-{{ section.id }}">
+  <div class="k-wrap">
+    <div class="k-usp__head k-reveal">
+      {%- if section.settings.kicker != blank -%}<p class="k-kicker">{{ section.settings.kicker }}</p>{%- endif -%}
+      <h2 class="k-h2" id="k-usp-{{ section.id }}">{{ section.settings.heading }}</h2>
+      {%- if section.settings.text != blank -%}<p class="k-lead k-muted">{{ section.settings.text }}</p>{%- endif -%}
+    </div>
+
+    {%- if section.blocks.size > 0 -%}
+    <ul class="k-usp__grid" role="list">
+      {%- for block in section.blocks -%}
+        <li class="k-usp__item k-reveal" {{ block.shopify_attributes }}>
+          <span class="k-usp__icon" aria-hidden="true">{% render 'kfl-icon', name: block.settings.icon %}</span>
+          <h3 class="k-h3">{{ block.settings.title }}</h3>
+          <p>{{ block.settings.text }}</p>
+        </li>
+      {%- endfor -%}
+    </ul>
+    {%- endif -%}
+
+    {%- if section.settings.show_compare -%}
+    <div class="k-usp__compare k-reveal">
+      <h3 class="k-h3">{{ section.settings.compare_heading }}</h3>
+      <div class="k-usp__table" role="table" aria-label="{{ section.settings.compare_heading | escape }}">
+        <div class="k-usp__row k-usp__row--head" role="row">
+          <span role="columnheader"></span>
+          <span role="columnheader">Allein suchen</span>
+          <span role="columnheader" class="k-usp__kfl">Mit KFL</span>
+        </div>
+        {%- assign rows = section.settings.compare_rows | newline_to_br | split: '<br />' -%}
+        {%- for row in rows -%}
+          {%- assign cells = row | strip | split: '|' -%}
+          {%- if cells.size >= 3 -%}
+          <div class="k-usp__row" role="row">
+            <span role="rowheader">{{ cells[0] | strip }}</span>
+            <span role="cell" class="k-usp__alone">{{ cells[1] | strip }}</span>
+            <span role="cell" class="k-usp__kfl">{% render 'kfl-icon', name: 'check' %}{{ cells[2] | strip }}</span>
+          </div>
+          {%- endif -%}
+        {%- endfor -%}
+      </div>
+    </div>
+    {%- endif -%}
+
+    {%- if section.settings.btn != blank -%}
+    <div class="k-usp__cta k-reveal">
+      <a href="{{ section.settings.link | default: '/pages/traumwagen-deal' }}" class="k-btn k-btn--primary">{{ section.settings.btn }}</a>
+      {%- if section.settings.note != blank -%}<p class="k-small k-muted">{{ section.settings.note }}</p>{%- endif -%}
+    </div>
+    {%- endif -%}
+  </div>
+</section>
+
+{% stylesheet %}
+.k-usp__head { max-width: 760px; display: grid; gap: 1.6rem; }
+.k-usp__grid { list-style: none; margin: clamp(32px, 4vw, 56px) 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(16px, 2vw, 24px); }
+.k-usp__item { padding: clamp(22px, 2.4vw, 32px); border-radius: var(--k-radius-l, 24px); background: #fff; border: 1px solid rgba(0, 0, 0, .07); box-shadow: 0 1px 2px rgba(0, 0, 0, .03); display: grid; gap: 1rem; align-content: start; transition: transform .25s ease, box-shadow .25s ease; }
+.k-usp__item:hover { transform: translateY(-2px); box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .25); }
+.k-bg-silver .k-usp__item { border-color: transparent; }
+.k-usp__item .k-h3 { margin: .4rem 0 0; font-size: clamp(1.8rem, 1.6vw, 2.1rem); }
+.k-usp__item p { margin: 0; color: #6e6e73; font-size: 1.55rem; line-height: 1.55; }
+.k-usp__icon { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: #fff1e6; color: var(--k-orange, #ff6c01); }
+.k-usp__icon svg { width: 22px; height: 22px; }
+.k-usp__compare { margin-top: clamp(40px, 5vw, 72px); display: grid; gap: 2rem; }
+.k-usp__table { border-radius: var(--k-radius-l, 24px); overflow: hidden; border: 1px solid rgba(0, 0, 0, .08); background: #fff; }
+.k-usp__row { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.2fr); gap: 1.6rem; padding: 1.6rem 2.4rem; border-top: 1px solid rgba(0, 0, 0, .06); align-items: center; font-size: 1.55rem; }
+.k-usp__row:first-child { border-top: 0; }
+.k-usp__row--head { background: #f5f5f7; font-weight: 700; font-size: 1.35rem; letter-spacing: .02em; text-transform: uppercase; color: #6e6e73; }
+.k-usp__row [role="rowheader"] { font-weight: 700; }
+.k-usp__alone { color: #86868b; }
+.k-usp__kfl { display: flex; gap: .8rem; align-items: flex-start; font-weight: 600; }
+.k-usp__row--head .k-usp__kfl { color: var(--k-orange-deep, #c24f00); }
+.k-usp__kfl svg { width: 18px; height: 18px; flex: none; margin-top: .2rem; color: var(--k-orange, #ff6c01); }
+.k-usp__cta { margin-top: clamp(32px, 4vw, 56px); display: flex; flex-wrap: wrap; gap: 1.6rem; align-items: center; }
+.k-usp__cta p { margin: 0; }
+@media (max-width: 960px) { .k-usp__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+  .k-usp__grid { grid-template-columns: 1fr; }
+  .k-usp__row { grid-template-columns: 1fr 1fr; padding: 1.4rem 1.6rem; gap: .6rem 1.2rem; }
+  .k-usp__row [role="rowheader"] { grid-column: 1 / -1; }
+  .k-usp__row--head [role="columnheader"]:first-child { display: none; }
+  .k-usp__cta .k-btn { width: 100%; justify-content: center; }
+}
+{% endstylesheet %}
+
+{% schema %}
+{
+  "name": "KFL Warum KFL",
+  "settings": [
+    { "type": "text", "id": "kicker", "label": "Kicker", "default": "Warum KFL" },
+    { "type": "text", "id": "heading", "label": "Überschrift", "default": "Mehr Auto für dein Geld. Ohne Risiko." },
+    { "type": "textarea", "id": "text", "label": "Text", "default": "Du sagst uns einmal, was du suchst. Wir holen Angebote ein, vergleichen sie nach festen Kriterien und zeigen dir nur die besten. Du entscheidest – ohne Druck und ohne Verpflichtung." },
+    { "type": "checkbox", "id": "silver", "label": "Grauer Hintergrund", "default": true },
+    { "type": "header", "content": "Vergleich" },
+    { "type": "checkbox", "id": "show_compare", "label": "Vergleich zeigen", "default": true },
+    { "type": "text", "id": "compare_heading", "label": "Überschrift Vergleich", "default": "Allein suchen oder mit KFL?" },
+    { "type": "textarea", "id": "compare_rows", "label": "Zeilen (je Zeile: Thema | allein | mit KFL)", "default": "Zeitaufwand | Viele Händler einzeln anfragen | Eine Anfrage in rund drei Minuten\nAngebote | Selbst sammeln und vergleichen | Wir vergleichen und zeigen dir die besten\nWerbeanrufe | Deine Nummer geht an jeden Händler | Kontaktdaten erst nach deiner Zusage\nAltes Auto | Separat verkaufen | Inzahlungnahme gleich mit anfragen\nKosten | Zeit, Nerven, oft zu viel bezahlt | Für dich kostenlos und unverbindlich" },
+    { "type": "header", "content": "Button" },
+    { "type": "text", "id": "btn", "label": "Button", "default": "Jetzt kostenlos anfragen" },
+    { "type": "url", "id": "link", "label": "Button-Link" },
+    { "type": "text", "id": "note", "label": "Hinweis neben dem Button", "default": "Kostenlos und unverbindlich. Antwort innerhalb von 24 Stunden an Werktagen." }
+  ],
+  "blocks": [
+    { "type": "usp", "name": "Vorteil", "limit": 6, "settings": [
+      { "type": "select", "id": "icon", "label": "Symbol", "default": "check", "options": [
+        { "value": "check", "label": "Haken" }, { "value": "euro", "label": "Euro" }, { "value": "clock", "label": "Uhr" },
+        { "value": "shield", "label": "Schild" }, { "value": "lock", "label": "Schloss" }, { "value": "verified", "label": "Siegel" }, { "value": "account", "label": "Person" }
+      ] },
+      { "type": "text", "id": "title", "label": "Titel", "default": "Vorteil" },
+      { "type": "textarea", "id": "text", "label": "Text" }
+    ] }
+  ],
+  "presets": [{ "name": "KFL Warum KFL", "blocks": [{ "type": "usp" }, { "type": "usp" }, { "type": "usp" }] }]
+}
+{% endschema %}
