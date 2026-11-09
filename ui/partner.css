@@ -456,3 +456,11 @@ a.kpi:hover .go{color:var(--ink);transform:translateX(3px)}
 /* Anfragen: Verkauf (Ankauf) leicht grau, Kauf (Traumwagen-DEAL) leicht orange */
 .rq.rq-buy{background:#fff8f2}.rq.rq-buy:hover{background:#fff0e3}
 .rq.rq-sell{background:#f6f6f7}.rq.rq-sell:hover{background:#eeeef0}
+
+/* Kombi-Angebot: Fahrzeug + Inzahlungnahme in einer Maske */
+.combo-step{display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:14px;background:var(--surface-2,#f6f7f9);margin-top:6px}
+.combo-step b{display:block}.combo-step .small{display:block}
+.combo-n{flex:0 0 28px;height:28px;border-radius:50%;background:var(--orange,#ff6c01);color:#fff;font-weight:800;display:grid;place-items:center}
+.combo-trade{padding:14px;border:1px dashed #ffc79c;border-radius:14px;background:#fffaf5}
+.combo-join{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:14px;border:1px dashed #ffc79c;border-radius:14px;background:#fffaf5}
+.combo-sent{padding:14px;border:1px solid var(--line,#eceef1);border-radius:14px}

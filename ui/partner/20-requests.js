@@ -55,9 +55,10 @@ async function pRequest(id) {
       ${linkedCard(a)}
       <section class="block"><div class="block-head"><h2>Anfrage des Kunden</h2><span class="small muted">${fDT(r.created_at)}</span></div><div class="block-body">${kv(Object.entries(f).filter(([k]) => !k.startsWith('Altwagen ')).map(([k, v]) => [k === 'body' ? 'Sonstiges' : k, html`<span class="pre">${v}</span>`]))}
         <p class="tiny muted mt">Name, E-Mail, Telefon und Anschrift des Kunden siehst du nach seiner Zusage.</p></div></section>
-      ${Object.keys(f).some((k) => k.startsWith('Altwagen ')) ? html`<section class="block"><div class="block-head"><h2>Altwagen zur Inzahlungnahme</h2></div><div class="block-body">${kv(Object.entries(f).filter(([k]) => k.startsWith('Altwagen ')).map(([k, v]) => [k.slice(9), html`<span class="pre">${v}</span>`]))}</div></section>` : ''}
+      ${a.trade ? html`<section class="block"><div class="block-head"><h2>Altwagen zur Inzahlungnahme</h2><span class="small muted">#${a.trade.request.number}</span></div><div class="block-body">${kv(Object.entries(a.trade.request.fields || {}).filter(([k]) => !/^Inzahlungnahme zu$|^(PLZ|Umkreis|Kontaktweg)$/.test(k)).map(([k, v]) => [k === 'body' ? 'Sonstiges' : k, html`<span class="pre">${v}</span>`]))}</div></section>` : ''}
+      ${!a.trade && Object.keys(f).some((k) => k.startsWith('Altwagen ')) ? html`<section class="block"><div class="block-head"><h2>Altwagen zur Inzahlungnahme</h2></div><div class="block-body">${kv(Object.entries(f).filter(([k]) => k.startsWith('Altwagen ')).map(([k, v]) => [k.slice(9), html`<span class="pre">${v}</span>`]))}</div></section>` : ''}
       ${a.events && a.events.length ? html`<section class="block"><div class="block-head"><h2>Verlauf</h2></div><div class="block-body"><ul class="timeline">${a.events.map((e) => html`<li class="${/^KFL/.test(e.text || '') ? 'kfl' : ''}"><div><div class="tl-meta">${e.actor_name || 'KFL'} · ${fDT(e.created_at)}</div><div>${e.text}</div></div></li>`)}</ul></div></section>` : ''}
-    </div><div class="stack">${a.status === 'in_bearbeitung' && a.mine ? offerForm(a) : offerView}</div></div>`);
+    </div><div class="stack">${r.type === 'deal' && a.mine && (a.trade || (a.linked && a.linked.canJoin && ['in_bearbeitung', 'versendet'].includes(a.status))) ? comboForm(a) : a.status === 'in_bearbeitung' && a.mine ? offerForm(a) : offerView}</div></div>`);
   // Direkt aus der E-Mail („Kontaktdaten öffnen“): zur Kontaktkarte springen und kurz hervorheben
   if (/[?&]kontakt\b/.test(location.hash)) { const cc = $('.contact-card'); if (cc) { cc.classList.add('flash'); cc.scrollIntoView({ block: 'start', behavior: 'smooth' }); setTimeout(() => cc.classList.remove('flash'), 2600); } }
 }
@@ -65,22 +66,20 @@ async function pRequest(id) {
 function linkedCard(a) {
   const l = a.linked; if (!l) return '';
   if (a.request.type === 'deal') {
-    const action = l.aid && l.mine ? html`<a class="btn btn-primary btn-sm" href="#/anfragen/${l.aid}">${icon('arrow')}Zur Ankauf-Anfrage #${l.number}</a>`
-      : l.canJoin && a.mine ? html`<button class="btn btn-primary btn-sm" data-act="pjoin" data-id="${a.id}">${icon('plus')}Ankauf zusätzlich übernehmen</button>`
-      : l.aid ? html`<a class="btn btn-sm" href="#/anfragen/${l.aid}">Ankauf-Anfrage #${l.number} ansehen</a>` : html`<span class="small muted">Für den Ankauf werden keine Angebote mehr angenommen.</span>`;
-    if (l.pending) return html`<section class="dual-card big">${icon('refresh')}<div><b>Doppeltes Geschäft möglich: Traumwagen + Ankauf</b>
-      <span>Der Kunde möchte sein jetziges Fahrzeug in Zahlung geben${l.vehicle ? ` (${l.vehicle})` : ''}. Übernimm den Ankauf zusätzlich – wir legen dafür eine eigene Anfrage an, nur für dich. Die Fahrzeugdaten erfragst du beim Kunden, sobald er dein Angebot annimmt, oder du gibst ein vorläufiges Ankaufangebot ab.</span>
-      ${a.mine ? html`<div class="row mt-s"><button class="btn btn-primary btn-sm" data-act="pjoin" data-id="${a.id}">${icon('plus')}Ankauf zusätzlich übernehmen</button></div>` : ''}</div></section>`;
-    return html`<section class="dual-card big">${icon('refresh')}<div><b>Doppeltes Geschäft möglich: Traumwagen + Ankauf</b>
-      <span>Der Kunde möchte sein jetziges Fahrzeug in Zahlung geben – die Angaben findest du unten unter „Altwagen“. Zum Ankauf gibt es die eigene Anfrage <b>#${l.number}</b>${l.vehicle ? ` (${l.vehicle})` : ''}. Übernimm sie zusätzlich, dann gibst du ein Angebot für den Traumwagen und eines für den Ankauf ab.</span>
-      <div class="row mt-s">${action}</div></div></section>`;
+    if (a.trade) return html`<section class="dual-card big">${icon('refresh')}<div><b>Kombi-Angebot: Fahrzeug + Inzahlungnahme</b>
+      <span>Du hast die Inzahlungnahme (#${a.trade.request.number}) mit übernommen. Beide Angebote gibst du rechts in einer Maske ab – sie werden getrennt bewertet, der Kunde sieht, dass sie zusammengehören.</span></div></section>`;
+    if (!l.canJoin) return html`<section class="dual-card">${icon('refresh')}<div><b>Inzahlungnahme</b><span>Der Kunde möchte sein jetziges Fahrzeug in Zahlung geben. Für den Ankauf werden keine Angebote mehr angenommen.</span></div></section>`;
+    return html`<section class="dual-card big">${icon('refresh')}<div><b>Doppeltes Geschäft möglich: Fahrzeug + Inzahlungnahme</b>
+      <span>Der Kunde möchte sein jetziges Fahrzeug in Zahlung geben${l.vehicle ? ` (${l.vehicle})` : ''}. Biete den Ankauf direkt mit an – die Felder erscheinen rechts unter deinem Fahrzeugangebot, du musst nicht zwischen Anfragen wechseln.</span>
+      ${a.mine ? html`<div class="row mt-s"><button class="btn btn-primary btn-sm" data-act="pjoin" data-id="${a.id}">${icon('plus')}Inzahlungnahme mit anbieten</button></div>` : ''}</div></section>`;
   }
-  return html`<section class="dual-card">${icon('refresh')}<div><b>Kunde kauft gleichzeitig einen Traumwagen</b><span>Dieses Fahrzeug soll beim Kauf über KFL in Zahlung gehen (Traumwagen-DEAL #${l.number}${l.vehicle ? ` · ${l.vehicle}` : ''}).</span>
-    ${l.aid ? html`<div class="row mt-s"><a class="btn btn-sm" href="#/anfragen/${l.aid}">Zur Traumwagen-Anfrage #${l.number}</a></div>` : ''}</div></section>`;
+  return html`<section class="dual-card">${icon('refresh')}<div><b>Kunde kauft gleichzeitig ein Fahrzeug</b><span>Dieses Fahrzeug soll beim Kauf über KFL in Zahlung gehen (Fahrzeug-Anfrage #${l.number}${l.vehicle ? ` · ${l.vehicle}` : ''}).${l.aid && l.mine ? ' Du kannst beide Angebote gemeinsam in der Fahrzeug-Anfrage abgeben.' : ''}</span>
+    ${l.aid ? html`<div class="row mt-s"><a class="btn btn-sm" href="#/anfragen/${l.aid}">Zur Fahrzeug-Anfrage #${l.number}</a></div>` : ''}</div></section>`;
 }
 ACT.pjoin = async (b) => {
-  if (!(await confirmBox('Ankauf zusätzlich übernehmen?', 'Die Ankauf-Anfrage wird dir direkt zugeordnet und für dich reserviert. Du kannst dann ein Angebot für den Ankauf des Altwagens abgeben – zusätzlich zu deinem Angebot für den Traumwagen.', 'Übernehmen'))) return;
-  const r = await POST(`/requests/${b.dataset.id}/linked`); toast('Ankauf-Anfrage übernommen.'); await pcounts(); plast = null; location.hash = '#/anfragen/' + r.id;
+  if (!(await confirmBox('Inzahlungnahme mit anbieten?', 'Die Inzahlungnahme wird dir zugeordnet und für dich reserviert. Die Felder für dein Ankaufangebot erscheinen direkt unter deinem Fahrzeugangebot.', 'Mit anbieten'))) return;
+  await POST(`/requests/${b.dataset.id}/linked`); toast('Inzahlungnahme übernommen – die Felder stehen jetzt in deinem Angebot.'); await pcounts(); plast = null; await preload();
+  const t = $('.combo-trade'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 ACT.ptake = async (b) => { await POST(`/requests/${b.dataset.id}/take`); toast('Übernommen – jetzt Angebot erstellen.'); await pcounts(); plast = null; preload(); };
 ACT.prelease = async (b) => { if (!(await confirmBox('Anfrage wieder öffnen?', 'Die Anfrage wird wieder für deine ganze Organisation sichtbar. Das wird vertraulich vermerkt.', 'Wieder öffnen'))) return; await POST(`/requests/${b.dataset.id}/release`); toast('Wieder für dein Team geöffnet.'); location.hash = '#/anfragen'; };
@@ -107,43 +106,81 @@ function custConfig(r, o) {
 }
 ACT.pprint = () => { document.body.classList.add('printing'); window.print(); setTimeout(() => document.body.classList.remove('printing'), 500); };
 
-function offerForm(a) {
+// Eingabefelder eines Angebots; px = Namenspräfix (z. B. „t_“ für die Inzahlungnahme in derselben Maske)
+function offerFields(a, px = '') {
   const r = a.request, f = r.fields || {}, kind = a.kindHint;
   const used = /gebraucht/i.test(r.zustand || '');
   const service = !!f['Servicepaket Wartung & Inspektion'], kasko = !!f['Servicepaket Versicherung / Kasko'];
   const km = numOf(f['Kilometer pro Jahr']), term = numOf(f.Laufzeit);
   const vat = kind === 'finanzierung' ? 'brutto' : a.b2b ? 'netto' : 'brutto';
-  const money = (name, label, req, hint) => field(`${label}${req ? ' *' : ''} (${vat})`, inp(name, '', { req, ph: '0,00', attrs: 'inputmode="decimal"' }), hint);
-  return html`<form class="block offer-form" data-submit="psendOffer"><div class="block-head"><h2>Angebot erstellen</h2><span class="kind-pill">${OFFER_KIND[kind]}</span></div><div class="block-body stack">
-    <div class="pdf-drop"><b>Angebot als PDF hochladen</b><span class="small muted">Optional. Wir lesen die Eckdaten aus und tragen sie unten ein – bitte prüfen. Der Kunde sieht das Angebot neutral ohne deine Firmendaten.</span>
-      <input type="file" name="pdf" accept="application/pdf" data-change="pparsePdf"><div id="sugg"></div></div>
-    ${kind !== 'ankauf' ? html`<div class="field"><span class="field-label">Konfiguration *</span><div class="seg"><label><input type="radio" name="config" value="gleich" checked data-change="pconfig"><span>Wie angefragt</span></label><label><input type="radio" name="config" value="alternativ" data-change="pconfig"><span>Alternative</span></label></div></div>
-      <div id="altBox" class="stack hide">${field('Herstellercode / Konfigurationscode', inp('herstellercode', '', { ph: 'z. B. AUDI-A4-XYZ123' }))}${field('Exposé (PDF)', raw('<input type="file" name="expose" accept="application/pdf">'))}</div>` : ''}
-    <div class="field"><span class="field-label">Entspricht die Ausstattung der Anfrage? *</span><div class="seg"><label><input type="radio" name="equipment_match" value="ja" required><span>Ja</span></label><label><input type="radio" name="equipment_match" value="nein"><span>Nein</span></label></div></div>
+  const n = (x) => px + x;
+  const money = (name, label, req, hint) => field(`${label}${req ? ' *' : ''} (${vat})`, inp(n(name), '', { req, ph: '0,00', attrs: 'inputmode="decimal"' }), hint);
+  const seg = (name, opts, req) => html`<div class="seg">${opts.map(([v, l], i) => html`<label><input type="radio" name="${n(name)}" value="${v}" ${req && i === 0 ? raw('required') : ''}><span>${l}</span></label>`)}</div>`;
+  return html`<div class="pdf-drop"><b>Angebot als PDF hochladen</b><span class="small muted">Optional. Wir lesen die Eckdaten aus und tragen sie unten ein – bitte prüfen. Der Kunde sieht das Angebot neutral ohne deine Firmendaten.</span>
+      <input type="file" name="${n('pdf')}" accept="application/pdf" data-change="pparsePdf" data-aid="${a.id}" data-px="${px}"><div id="${n('sugg')}"></div></div>
+    ${kind !== 'ankauf' ? html`<div class="field"><span class="field-label">Konfiguration *</span><div class="seg"><label><input type="radio" name="${n('config')}" value="gleich" checked data-change="pconfig" data-px="${px}"><span>Wie angefragt</span></label><label><input type="radio" name="${n('config')}" value="alternativ" data-change="pconfig" data-px="${px}"><span>Alternative</span></label></div></div>
+      <div id="${n('altBox')}" class="stack hide">${field('Herstellercode / Konfigurationscode', inp(n('herstellercode'), '', { ph: 'z. B. AUDI-A4-XYZ123' }))}${field('Exposé (PDF)', raw(`<input type="file" name="${n('expose')}" accept="application/pdf">`))}</div>` : ''}
+    <div class="field"><span class="field-label">${kind === 'ankauf' ? 'Entsprechen die Fahrzeugangaben deiner Einschätzung? *' : 'Entspricht die Ausstattung der Anfrage? *'}</span>${seg('equipment_match', [['ja', 'Ja'], ['nein', 'Nein']], true)}</div>
     <div class="grid-2">
       ${kind === 'kauf' ? money('price', 'Kaufpreis', true) : ''}
-      ${kind === 'leasing' ? html`${money('monthly_rate', 'Monatliche Rate', true, 'ohne Service- und Versicherungskosten')}${field('Kilometer pro Jahr *', inp('km_per_year', km, { req: true, attrs: 'inputmode="numeric"' }), km ? `Kundenwunsch: ${fNum(km)} km – bestätigen oder Alternative eintragen` : '')}
-        ${field('Laufzeit in Monaten *', inp('term_months', term, { req: true, attrs: 'inputmode="numeric"' }), term ? `Kundenwunsch: ${term} Monate` : '')}${money('down_payment', 'Sonderzahlung', false)}` : ''}
-      ${kind === 'finanzierung' ? html`${money('price', 'Kaufpreis', true)}${money('monthly_rate', 'Monatliche Rate', true)}${money('final_rate', 'Schlussrate', true)}${field('Laufzeit in Monaten *', inp('term_months', term, { req: true, attrs: 'inputmode="numeric"' }))}${money('down_payment', 'Anzahlung', false)}` : ''}
-      ${kind === 'ankauf' ? html`${money('buy_price', 'Dein Ankaufpreis', true)}${field('Abholung / Übergabe', inp('pickup', '', { ph: 'z. B. Abholung beim Kunden möglich' }))}` : ''}
+      ${kind === 'leasing' ? html`${money('monthly_rate', 'Monatliche Rate', true, 'ohne Service- und Versicherungskosten')}${field('Kilometer pro Jahr *', inp(n('km_per_year'), km, { req: true, attrs: 'inputmode="numeric"' }), km ? `Kundenwunsch: ${fNum(km)} km – bestätigen oder Alternative eintragen` : '')}
+        ${field('Laufzeit in Monaten *', inp(n('term_months'), term, { req: true, attrs: 'inputmode="numeric"' }), term ? `Kundenwunsch: ${term} Monate` : '')}${money('down_payment', 'Sonderzahlung', false)}` : ''}
+      ${kind === 'finanzierung' ? html`${money('price', 'Kaufpreis', true)}${money('monthly_rate', 'Monatliche Rate', true)}${money('final_rate', 'Schlussrate', true)}${field('Laufzeit in Monaten *', inp(n('term_months'), term, { req: true, attrs: 'inputmode="numeric"' }))}${money('down_payment', 'Anzahlung', false)}` : ''}
+      ${kind === 'ankauf' ? html`${money('buy_price', 'Dein Ankaufpreis', true, px ? 'Der Kunde sieht genau diesen Preis.' : '')}${field('Abholung / Übergabe', inp(n('pickup'), '', { ph: 'z. B. Übergabe bei Auslieferung des neuen Fahrzeugs' }))}` : ''}
       ${kind !== 'ankauf' ? money('transfer_cost', 'Überführung und Zulassung', false) : ''}
       ${service ? money('service_cost', 'Servicepaket Wartung & Inspektion (mtl.)', true, 'Vom Kunden gewünscht') : ''}${kasko ? money('insurance_cost', 'Versicherung / Kasko (mtl.)', true, 'Vom Kunden gewünscht') : ''}
-      ${field('Lieferzeit / Verfügbarkeit', inp('delivery', '', { ph: 'z. B. sofort, 8 Wochen' }))}${field('Angebot gültig bis', inp('valid_until', addDays(todayISO(), 7), { type: 'date' }))}</div>
-    ${used || kind === 'ankauf' ? html`<fieldset><legend>Angaben zum Fahrzeug</legend><div class="grid-2">${field('Erstzulassung', inp('first_registration', '', { ph: 'MM/JJJJ' }))}${field('Kilometerstand', inp('mileage', '', { attrs: 'inputmode="numeric"' }))}
-      ${field('UPE (Neupreis, falls bekannt)', inp('upe', '', { attrs: 'inputmode="decimal"' }))}${field('Vorbesitzer', inp('owners', '', { attrs: 'inputmode="numeric"' }))}
-      <div class="field"><span class="field-label">Unfallfrei</span><div class="seg"><label><input type="radio" name="accident_free" value="ja"><span>Ja</span></label><label><input type="radio" name="accident_free" value="nein"><span>Nein</span></label></div></div></div></fieldset>` : ''}
-    ${field('Anmerkungen für den Kunden', area('notes', '', { rows: 3, ph: 'Was macht dein Angebot besonders? z. B. Wartung inklusive, Winterräder' }))}
-    <p class="tiny muted">Preise ${vat === 'netto' ? 'netto (gewerblicher Kunde)' : 'brutto'}. Mit * markierte Felder sind Pflicht.</p>
-    <div class="sticky-submit"><button class="btn btn-primary btn-block" type="submit">${icon('send')}Angebot senden</button></div></div></form>`;
+      ${kind !== 'ankauf' ? field('Lieferzeit / Verfügbarkeit', inp(n('delivery'), '', { ph: 'z. B. sofort, 8 Wochen' })) : ''}${field('Angebot gültig bis', inp(n('valid_until'), addDays(todayISO(), 7), { type: 'date' }))}</div>
+    ${used || kind === 'ankauf' ? html`<fieldset><legend>${kind === 'ankauf' ? 'Fahrzeugzustand laut deiner Einschätzung' : 'Angaben zum Fahrzeug'}</legend><div class="grid-2">${field('Erstzulassung', inp(n('first_registration'), '', { ph: 'MM/JJJJ' }))}${field('Kilometerstand', inp(n('mileage'), '', { attrs: 'inputmode="numeric"' }))}
+      ${kind !== 'ankauf' ? field('UPE (Neupreis, falls bekannt)', inp(n('upe'), '', { attrs: 'inputmode="decimal"' })) : ''}${kind !== 'ankauf' ? field('Vorbesitzer', inp(n('owners'), '', { attrs: 'inputmode="numeric"' })) : ''}
+      <div class="field"><span class="field-label">Unfallfrei</span>${seg('accident_free', [['ja', 'Ja'], ['nein', 'Nein']], false)}</div></div></fieldset>` : ''}
+    ${field(kind === 'ankauf' && px ? 'Zusätzliche Informationen / Sonstiges zur Inzahlungnahme' : 'Anmerkungen für den Kunden', area(n('notes'), '', { rows: 3, ph: kind === 'ankauf' ? 'z. B. Preis vorbehaltlich Besichtigung, Winterräder werden mit übernommen' : 'Was macht dein Angebot besonders? z. B. Wartung inklusive, Winterräder' }))}
+    <p class="tiny muted">Preise ${vat === 'netto' ? 'netto (gewerblicher Kunde)' : 'brutto'}. Mit * markierte Felder sind Pflicht.</p>`;
 }
-CHANGE.pconfig = (el) => { $('#altBox').classList.toggle('hide', el.value !== 'alternativ'); };
+function offerForm(a) {
+  return html`<form class="block offer-form" data-submit="psendOffer"><div class="block-head"><h2>Angebot erstellen</h2><span class="kind-pill">${OFFER_KIND[a.kindHint]}</span></div><div class="block-body stack">
+    ${offerFields(a)}<div class="sticky-submit"><button class="btn btn-primary btn-block" type="submit">${icon('send')}Angebot senden</button></div></div></form>`;
+}
+const sentOffer = (o, label) => html`<div class="combo-sent"><div class="row-between"><b>${label}</b>${offerStatus(o.status)}</div><div class="offer-price num">${offerHeadline(o.data)}</div><div class="mt-s">${kv(offerRows(o.data))}</div></div>`;
+// Traumwagen-DEAL mit Inzahlungnahme: beide Angebote in einer Maske, ein Klick zum Senden – getrennt gespeichert und bewertet
+function comboForm(a) {
+  const t = a.trade, l = a.linked || {};
+  const dealOpen = a.status === 'in_bearbeitung' && a.mine, tradeOpen = !!(t && t.mine && t.status === 'in_bearbeitung');
+  const ta = t ? { ...t, kindHint: 'ankauf' } : null;
+  const both = dealOpen && tradeOpen;
+  return html`<form class="block offer-form" data-submit="psendCombo"><div class="block-head"><h2>${both ? 'Angebote erstellen' : 'Angebot erstellen'}</h2><span class="kind-pill">${OFFER_KIND[a.kindHint]}${t ? ' + Ankauf' : ''}</span></div><div class="block-body stack">
+    <div class="combo-step"><span class="combo-n">1</span><div><b>Angebot für das Fahrzeug</b><span class="small muted">${OFFER_KIND[a.kindHint]} · #${a.request.number}</span></div></div>
+    ${dealOpen ? offerFields(a) : a.offer ? sentOffer(a.offer, 'Fahrzeugangebot gesendet') : html`<p class="small muted">Für das Fahrzeug ist kein Angebot mehr möglich.</p>`}
+    <div class="combo-step"><span class="combo-n">2</span><div><b>Angebot zur Inzahlungnahme</b><span class="small muted">${t ? `Ankauf des Altwagens · #${t.request.number}` : 'Der Kunde möchte sein jetziges Fahrzeug in Zahlung geben.'}</span></div></div>
+    ${tradeOpen ? html`<div class="combo-trade stack">${offerFields(ta, 't_')}</div>`
+      : t && t.offer ? sentOffer(t.offer, 'Inzahlungnahme-Angebot gesendet')
+      : t ? html`<p class="small muted">${t.statusLabel}: Für die Inzahlungnahme ist kein Angebot mehr möglich.</p>`
+      : l.canJoin && a.mine ? html`<div class="combo-join"><span class="small">Gib zusätzlich ein Ankaufangebot für den Altwagen ab – die Felder erscheinen dann direkt hier.</span><button class="btn btn-primary btn-sm" type="button" data-act="pjoin" data-id="${a.id}">${icon('plus')}Inzahlungnahme mit anbieten</button></div>`
+      : html`<p class="small muted">Für die Inzahlungnahme werden keine Angebote mehr angenommen.</p>`}
+    ${dealOpen || tradeOpen ? html`<div class="info-box small">${icon('star')}<span>Beide Angebote werden getrennt bewertet und dem Kunden getrennt vorgestellt. Der Kunde sieht, dass sie von dir zusammen kommen, und kann sie unabhängig voneinander annehmen.</span></div>
+      <div class="sticky-submit"><button class="btn btn-primary btn-block" type="submit">${icon('send')}${both ? 'Beide Angebote senden' : tradeOpen ? 'Inzahlungnahme-Angebot senden' : 'Angebot senden'}</button></div>` : ''}</div></form>`;
+}
+CHANGE.pconfig = (el) => { $('#' + (el.dataset.px || '') + 'altBox').classList.toggle('hide', el.value !== 'alternativ'); };
 CHANGE.pparsePdf = async (el) => {
   const file = await fileField(el, { max: 8 }); if (!file) return;
-  render('#sugg', html`<div class="sugg">Wird ausgelesen …</div>`);
-  const r = await POST(`/requests/${PA.id}/parse-pdf`, { base64: file.base64 });
+  const px = el.dataset.px || '', box = '#' + px + 'sugg';
+  render(box, html`<div class="sugg">Wird ausgelesen …</div>`);
+  const r = await POST(`/requests/${el.dataset.aid || PA.id}/parse-pdf`, { base64: file.base64 });
   const s = r.suggestions || {}, form = el.form; let n = 0;
-  for (const [k, v] of Object.entries(s)) { const i = form.elements[k]; if (i && !i.value) { i.value = typeof v === 'number' && !['km_per_year', 'term_months', 'mileage'].includes(k) ? v.toFixed(2).replace('.', ',') : v; n++; } }
-  render('#sugg', html`<div class="sugg">${n ? `${plural(n, 'Feld', 'Felder')} aus der PDF übernommen – bitte prüfen.` : r.textFound ? 'Keine Eckdaten erkannt – bitte manuell eintragen.' : 'Die PDF enthält keinen lesbaren Text (z. B. Scan). Bitte Eckdaten manuell eintragen.'}</div>`);
+  for (const [k, v] of Object.entries(s)) { const i = form.elements[px + k]; if (i && !i.value) { i.value = typeof v === 'number' && !['km_per_year', 'term_months', 'mileage'].includes(k) ? v.toFixed(2).replace('.', ',') : v; n++; } }
+  render(box, html`<div class="sugg">${n ? `${plural(n, 'Feld', 'Felder')} aus der PDF übernommen – bitte prüfen.` : r.textFound ? 'Keine Eckdaten erkannt – bitte manuell eintragen.' : 'Die PDF enthält keinen lesbaren Text (z. B. Scan). Bitte Eckdaten manuell eintragen.'}</div>`);
+};
+const kmTermConfirm = (d, fields) => ({ km_confirmed: d.km_per_year ? String(d.km_per_year) === String(numOf(fields['Kilometer pro Jahr'])) : undefined, term_confirmed: d.term_months ? String(d.term_months) === String(numOf(fields.Laufzeit)) : undefined });
+SUBMIT.psendCombo = async (d, f) => {
+  const t = PA.trade, dealOpen = PA.status === 'in_bearbeitung' && PA.mine, tradeOpen = !!(t && t.mine && t.status === 'in_bearbeitung');
+  const deal = {}, trade = {};
+  for (const [k, v] of Object.entries(d)) { if (k.startsWith('t_')) trade[k.slice(2)] = v; else deal[k] = v; }
+  const body = {
+    deal: dealOpen ? { ...deal, pdf: await fileField(f.elements.pdf, { max: 8 }), expose: f.elements.expose ? await fileField(f.elements.expose, { max: 8 }) : null, ...kmTermConfirm(deal, PA.request.fields || {}) } : null,
+    trade: tradeOpen ? { ...trade, pdf: f.elements.t_pdf ? await fileField(f.elements.t_pdf, { max: 8 }) : null } : null };
+  const both = body.deal && body.trade;
+  if (!(await confirmBox(both ? 'Beide Angebote jetzt senden?' : 'Angebot jetzt senden?', `Nach dem Senden kannst du ${both ? 'die Angebote' : 'das Angebot'} nicht mehr ändern. Die KFL wertet Fahrzeug und Inzahlungnahme getrennt aus.`, both ? 'Beide senden' : 'Angebot senden'))) return;
+  await POST(`/requests/${PA.id}/offer-combo`, body);
+  toast(both ? 'Beide Angebote gesendet – Daumen sind gedrückt!' : 'Angebot gesendet – Daumen sind gedrückt!'); await pcounts(); preload();
 };
 SUBMIT.psendOffer = async (d, f) => {
   const pdf = await fileField(f.elements.pdf, { max: 8 }), expose = f.elements.expose ? await fileField(f.elements.expose, { max: 8 }) : null;

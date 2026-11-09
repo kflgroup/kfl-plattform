@@ -76,6 +76,14 @@ if (!process.env.EMPTY) {
   // Abrechnungsfälle (Beispiel) für Buchhaltung und Storno
   const bi = (o, rid, d, a) => env.DB._sq.prepare("INSERT INTO billing_items (org_id, request_id, description, amount_net, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'offen', datetime('now'), datetime('now'))").run(o, rid, d, a);
   bi(org.B, 4, 'Vermittlung Anfrage #1004 – BMW X1 (PLZ 28195)', 49); bi(org.A, 5, 'Vermittlung Anfrage #1005 – Audi Q5 (PLZ 49074)', 49);
+  { const sq = env.DB._sq; const a = sq.prepare("SELECT a.id, a.request_id FROM assignments a JOIN partner_users u ON u.org_id = a.org_id JOIN requests r ON r.id = a.request_id WHERE a.status = 'neu' AND r.type = 'deal' AND u.email = 'a_gf@partner.de' ORDER BY a.id LIMIT 1").get();
+    if (a) {
+      const d = JSON.parse(sq.prepare('SELECT data FROM requests WHERE id = ?').get(a.request_id).data);
+      Object.assign(d, { Inzahlungnahme: 'Ja', 'Altwagen Marke': 'Volvo', 'Altwagen Modell': 'V50', 'Altwagen Erstzulassung': '2015', 'Altwagen Laufleistung km': '199.000', 'Altwagen Kraftstoff': 'Benzin', 'Altwagen Getriebe': 'Automatik', 'Altwagen Vorbesitzer': '4', 'Altwagen Preisvorstellung': '5.000', 'Altwagen Anmerkungen': 'Evtl. als Anzahlung verrechnen' });
+      sq.prepare('UPDATE requests SET data = ? WHERE id = ?').run(JSON.stringify(d), a.request_id);
+      const t = await c.post(`/papi/requests/${a.id}/take`, {}, { who: 'a_gf' }); const l = await c.post(`/papi/requests/${a.id}/linked`, {}, { who: 'a_gf' });
+      console.log('Kombi-Beispiel: Partner-Zuordnung', a.id, t.ok, l.ok, l.error || '');
+    } }
   console.log('Beispieldaten angelegt:', nums.join(', '));
 }
 

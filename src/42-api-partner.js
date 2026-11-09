@@ -32,6 +32,16 @@ async function partnerAssignmentView(ctx, p, a, { detail = false, req = null, ta
     v.payKind = req.pay_kind; v.kindHint = req.type === 'sell' ? 'ankauf' : ({ kaufen: 'kauf', finanzieren: 'finanzierung', leasen: 'leasing' }[req.pay_kind] || 'kauf');
     v.b2b = /gewerb|selbst/i.test(jparse(req.data, {}).Kundenart || '');
     v.linked = await linkedInfoFor(ctx, p, req);
+    // Inzahlungnahme in derselben Maske: Ankauf-Zuordnung dieses Partners mitliefern (Formular bzw. abgegebenes Angebot)
+    if (req.type === 'deal' && v.linked && v.linked.aid && v.linked.mine) {
+      const ta = await DB.one(ctx.db, 'SELECT * FROM assignments WHERE id = ? AND org_id = ?', v.linked.aid, p.orgId);
+      const treq = ta ? await DB.one(ctx.db, 'SELECT * FROM requests WHERE id = ?', ta.request_id) : null;
+      if (ta && treq) {
+        const toffer = ta.offer_id ? await DB.one(ctx.db, 'SELECT * FROM offers WHERE id = ?', ta.offer_id) : null;
+        v.trade = { id: ta.id, status: ta.status, statusLabel: statusLabel(ASSIGN_STATUSES, ta.status), tone: asgTone(ta), mine: ta.taken_by === p.id, deadline_at: ta.deadline_at, lock_until: ta.lock_until,
+          request: partnerRequestData(treq, 'full'), offer: toffer ? { ...toffer, data: jparse(toffer.data, {}) } : null, b2b: v.b2b };
+      }
+    }
     if (!a.seen_at) await DB.update(ctx.db, 'assignments', a.id, { seen_at: nowIso() });
   }
   return v;
@@ -243,7 +253,7 @@ async function handlePartnerApi(ctx, url) {
     need(W && (tab !== 'team' || p.rank >= 2), 400, 'Unbekannte Ansicht.');
     return out({ ok: true, items: await visibleAsg(...W) });
   }
-  if ((m = path.match(/^\/requests\/(\d+)(?:\/(take|release|offer|contact|parse-pdf|linked))?$/))) {
+  if ((m = path.match(/^\/requests\/(\d+)(?:\/(take|release|offer|offer-combo|contact|parse-pdf|linked))?$/))) {
     const a = await DB.one(db, 'SELECT * FROM assignments WHERE id = ? AND org_id = ?', +m[1], p.orgId);
     need(a, 404, 'Anfrage nicht gefunden.');
     const sub = m[2] || '';
@@ -251,6 +261,12 @@ async function handlePartnerApi(ctx, url) {
     if (sub === 'take' && method === 'POST') { const r = await takeAssignment(ctx, p, a.id); await readAssignmentNews(ctx, a.id, { userId: p.id }); await readAssignmentNews(ctx, a.id, { orgId: p.orgId, kinds: ['anfrage', 'mahnung'] }); return out(r); }
     if (sub === 'release' && method === 'POST') { need(a.taken_by === p.id && a.status === 'in_bearbeitung', 409, 'Du kannst nur deine eigenen Anfragen in Bearbeitung wieder öffnen.'); await releaseAssignment(ctx, a.id, { byPartner: true }); await audit(ctx, 'partner_wieder_geoeffnet', 'zuordnung', a.id, null); return out({ ok: true }); }
     if (sub === 'offer' && method === 'POST') { const r = await submitOffer(ctx, p, a.id, body); await readAssignmentNews(ctx, a.id, { userId: p.id }); return out(r); }
+    // Fahrzeugangebot und Inzahlungnahme-Angebot in einem Schritt – getrennt gespeichert und getrennt ausgewertet
+    if (sub === 'offer-combo' && method === 'POST') {
+      const r = await submitComboOffer(ctx, p, a.id, body.deal || null, body.trade || null);
+      await readAssignmentNews(ctx, [a.id, r.tradeAid].filter(Boolean), { userId: p.id });
+      return out(r);
+    }
     if (sub === 'linked' && method === 'POST') { const r = await joinLinkedRequest(ctx, p, a.id); await readAssignmentNews(ctx, [a.id, r && r.id], { userId: p.id }); if (r && r.id) await readAssignmentNews(ctx, r.id, { orgId: p.orgId, kinds: ['anfrage', 'mahnung'] }); return out(r); }
     if (sub === 'contact' && method === 'POST') { await partnerContactStatus(ctx, p, a.id, body.status, str(body.note, 1000)); await readAssignmentNews(ctx, a.id, { userId: p.id }); await audit(ctx, 'partner_kontaktstatus', 'zuordnung', a.id, { status: body.status }); return out({ ok: true }); }
     if (sub === 'parse-pdf' && method === 'POST') {

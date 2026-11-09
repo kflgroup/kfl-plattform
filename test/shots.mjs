@@ -4,7 +4,7 @@ const { chromium } = createRequire(import.meta.url)('playwright');
 const [app, email, pw, outDir, ...hashes] = process.argv.slice(2);
 const mobile = !!process.env.MOBILE;
 const browser = await chromium.launch();
-const ctx = await browser.newContext(mobile ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true } : { viewport: { width: 1440, height: 900 } });
+const ctx = await browser.newContext(mobile ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true } : { viewport: { width: 1440, height: +(process.env.H || 900) } });
 const page = await ctx.newPage();
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });

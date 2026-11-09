@@ -94,6 +94,7 @@
       <div class="k-offer__head"><div><p class="k-offer__kind">${esc(KIND[o.kind] || 'Angebot')}${d.vat_mode ? ' · ' + (d.vat_mode === 'netto' ? 'netto' : 'inkl. MwSt.') : ''}</p><p class="k-offer__price">${headline(d)}</p></div>
         <span class="k-req__status" data-tone="${accepted ? 'offer' : 'progress'}">${accepted ? 'Angenommen' : open ? 'Für dich ausgewählt' : 'Angebot'}</span></div>
       ${partner}
+      ${o.combo ? `<p class="k-offer__combo" style="margin:0;padding:1rem 1.4rem;border-radius:1.2rem;background:#fff4ec;border:1px solid #ffd9bd;color:#7a3500;font-size:1.4rem;line-height:1.5"><strong>Kombi-Angebot:</strong> ${o.combo.type === 'sell' ? 'Derselbe Partner hat dir auch ein Angebot für die Inzahlungnahme deines jetzigen Autos gemacht' : 'Derselbe Partner hat dir auch ein Angebot für dein neues Fahrzeug gemacht'} (Anfrage #${esc(o.combo.number)}). Beide Angebote kannst du unabhängig voneinander annehmen.</p>` : ''}
       ${rows ? `<dl class="k-req__dl">${rows}</dl>` : ''}
       ${o.has_pdf || o.has_expose ? `<p class="k-actions" style="margin:0">${o.has_pdf ? `<button type="button" class="k-link" data-file="${esc(r.id)}" data-offer="${esc(o.id)}" data-which="pdf">Angebot als PDF</button>` : ''}${o.has_expose ? `<button type="button" class="k-link" data-file="${esc(r.id)}" data-offer="${esc(o.id)}" data-which="expose">Exposé als PDF</button>` : ''}</p>` : ''}
       ${open ? `<div class="k-offer__cta"><button type="button" class="k-btn k-btn--primary" data-accept="${esc(r.id)}" data-offer="${esc(o.id)}">Interessiert mich</button>

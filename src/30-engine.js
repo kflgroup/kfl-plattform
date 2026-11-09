@@ -361,7 +361,33 @@ function compareValue(kind, d) {
   if (kind === 'ankauf') return d.buy_price || 0;
   return 0;
 }
-async function submitOffer(ctx, p, aid, body) {
+// Beide Angebote erst prüfen, dann speichern – damit nicht nur eines der beiden durchgeht
+async function submitComboOffer(ctx, p, dealAid, dealBody, tradeBody) {
+  need(dealBody || tradeBody, 400, 'Bitte mindestens ein Angebot ausfüllen.');
+  const a = await DB.one(ctx.db, 'SELECT * FROM assignments WHERE id = ? AND org_id = ?', dealAid, p.orgId); need(a, 404, 'Anfrage nicht gefunden.');
+  const req = await DB.one(ctx.db, 'SELECT * FROM requests WHERE id = ?', a.request_id);
+  need(req.type === 'deal', 400, 'Kombi-Angebote gibt es nur zum Traumwagen-DEAL.');
+  let ta = null, treq = null;
+  if (tradeBody) {
+    need(req.linked_request_id, 409, 'Bitte übernimm zuerst die Inzahlungnahme.');
+    ta = await DB.one(ctx.db, 'SELECT * FROM assignments WHERE request_id = ? AND org_id = ?', req.linked_request_id, p.orgId);
+    need(ta && ta.taken_by === p.id && ta.status === 'in_bearbeitung', 409, 'Bitte übernimm zuerst die Inzahlungnahme.');
+    need(!ta.deadline_at || ta.deadline_at > nowIso(), 409, 'Die Frist für die Inzahlungnahme ist leider abgelaufen.');
+    treq = await DB.one(ctx.db, 'SELECT * FROM requests WHERE id = ?', ta.request_id);
+    const e = normalizeOffer(treq, tradeBody).errors; need(!e.length, 400, 'Inzahlungnahme: ' + e.join(' '));
+  }
+  if (dealBody) {
+    need(a.status === 'in_bearbeitung' && a.taken_by === p.id, 409, 'Bitte übernimm die Anfrage zuerst.');
+    need(!a.deadline_at || a.deadline_at > nowIso(), 409, 'Die Angebotsfrist ist leider abgelaufen.');
+    const e = normalizeOffer(req, dealBody).errors; need(!e.length, 400, 'Fahrzeugangebot: ' + e.join(' '));
+  }
+  const out = { ok: true, tradeAid: ta ? ta.id : null };
+  if (dealBody) out.dealOffer = (await submitOffer(ctx, p, a.id, dealBody, { evaluate: !tradeBody })).id;
+  // Ausgewertet wird die Inzahlungnahme im nächsten Cron-Lauf (hält den Aufruf im Abfragelimit)
+  if (tradeBody) out.tradeOffer = (await submitOffer(ctx, p, ta.id, tradeBody, { evaluate: false })).id;
+  return out;
+}
+async function submitOffer(ctx, p, aid, body, { evaluate = true } = {}) {
   const a = await DB.one(ctx.db, 'SELECT * FROM assignments WHERE id = ? AND org_id = ?', aid, p.orgId);
   need(a, 404, 'Anfrage nicht gefunden.');
   need(a.status === 'in_bearbeitung' && a.taken_by === p.id, 409, 'Bitte übernimm die Anfrage zuerst.');
@@ -387,7 +413,7 @@ async function submitOffer(ctx, p, aid, body) {
   await reqEvent(ctx, req.id, 'angebot', `Angebot von ${p.org.name} eingegangen`);
   await audit(ctx, 'angebot_abgegeben', 'angebot', oid, { anfrage: toNumber(req.id), org: p.orgId });
   await notifyStaff(ctx, { perm: 'req_edit' }, { kind: 'angebot', title: `Angebot zu #${toNumber(req.id)} eingegangen`, body: `${p.org.name} · ${req.vehicle || ''}`, link: `#/anfragen/${toNumber(req.id)}` });
-  await maybeEvaluate(ctx, req.id);
+  if (evaluate) await maybeEvaluate(ctx, req.id);
   return { ok: true, id: oid };
 }
 
@@ -409,10 +435,14 @@ async function partnerRating(ctx, orgId) {
 /* Bewertung nach 7 Faktoren (je 0–100 Punkte), gewichtet laut Einstellung (Summe 100 %).
    Faktoren, die für eine Anfrage nicht zutreffen (z. B. Laufzeit beim Kauf), werden herausgerechnet. */
 const lastNum = (v) => { const m = String(v || '').replace(/\./g, '').match(/\d+/g); return m ? +m[m.length - 1] : null; };
+const COMBO_BONUS = 0.10; // +10 % auf den Ankaufpreis bei Kombi-Angebot (Fahrzeug + Inzahlungnahme vom selben Partner)
 function scoreWeights(s) { const w = {}; for (const f of SCORE_FACTORS) w[f.key] = Math.max(0, toNum(s['score_w_' + f.key], 0) || 0); return w; }
 async function scoreOffers(ctx, req, offers, s) {
   const sell = req.type === 'sell', f = jparse(req.data, {}), w = scoreWeights(s);
-  const vals = offers.map((o) => o.compare_value).filter((v) => v > 0);
+  // Inzahlungnahme: Bietet derselbe Partner auch zum Traumwagen-DEAL an, zählt sein Ankaufpreis intern 10 % höher (nur Bewertung – der Kunde sieht den echten Preis)
+  const comboOrgs = sell && req.linked_request_id ? new Set((await DB.all(ctx.db, "SELECT DISTINCT org_id FROM offers WHERE request_id = ? AND status NOT IN ('zurueckgezogen')", req.linked_request_id)).map((x) => x.org_id)) : new Set();
+  for (const o of offers) { o.combo = comboOrgs.has(o.org_id); o.eval_value = o.combo && o.compare_value > 0 ? o.compare_value * (1 + COMBO_BONUS) : o.compare_value; }
+  const vals = offers.map((o) => o.eval_value).filter((v) => v > 0);
   const best = vals.length ? (sell ? Math.max(...vals) : Math.min(...vals)) : 0;
   const maxKm = req.radius_km > 0 ? req.radius_km : 200;
   const winH = Math.max(1, toNum(s.offer_window_hours, 24) || 24);
@@ -426,7 +456,7 @@ async function scoreOffers(ctx, req, offers, s) {
       distance: o.distance_km == null ? 50 : Math.max(0, 100 * (1 - o.distance_km / maxKm)),
       response: hours == null ? 50 : Math.max(0, 100 * (1 - hours / winH)),
       equipment: d.equipment_match === 'ja' ? 100 : d.equipment_match === 'nein' ? 0 : 50,
-      price: best && o.compare_value > 0 ? (sell ? o.compare_value / best : best / o.compare_value) * 100 : 0,
+      price: best && o.eval_value > 0 ? (sell ? o.eval_value / best : best / o.eval_value) * 100 : 0,
       model: sell ? null : d.config === 'alternativ' ? 0 : 100,
       term: wantTerm && d.term_months ? (+lastNum(d.term_months) === wantTerm ? 100 : Math.max(0, 100 - Math.abs(+lastNum(d.term_months) - wantTerm) * 5)) : null,
       addons: wantService || wantKasko ? ((wantService ? (toNum(d.service_cost) > 0 ? 1 : 0) : 0) + (wantKasko ? (toNum(d.insurance_cost) > 0 ? 1 : 0) : 0)) / ((wantService ? 1 : 0) + (wantKasko ? 1 : 0)) * 100 : null
@@ -434,7 +464,7 @@ async function scoreOffers(ctx, req, offers, s) {
     let sum = 0, wsum = 0; const detail = {};
     for (const k of Object.keys(pts)) { if (pts[k] === null) { detail[k] = null; continue; } const p = Math.round(Math.min(100, pts[k]) * 10) / 10; detail[k] = p; sum += p * w[k]; wsum += w[k]; }
     o.score = wsum ? Math.round((sum / wsum) * 10) / 10 : 0;
-    o.scoreDetail = { points: detail, weights: w, hours: hours == null ? null : Math.round(hours * 10) / 10 };
+    o.scoreDetail = { points: detail, weights: w, hours: hours == null ? null : Math.round(hours * 10) / 10, ...(o.combo ? { combo: true, combo_bonus: COMBO_BONUS * 100, eval_value: round2(o.eval_value) } : {}) };
   }
   return offers;
 }
@@ -511,7 +541,9 @@ async function customerOffers(ctx, req) {
       const u = await DB.one(ctx.db, 'SELECT name, email, phone FROM partner_users WHERE id = (SELECT taken_by FROM assignments WHERE id = ?)', o.assignment_id);
       contact = { person: u ? u.name : '', email: (u && u.email) || o.org_email, phone: (u && u.phone) || o.org_phone };
     }
-    out.push({ id: o.id, kind: o.kind, status: o.status, rank: o.rank, data: pick(d, OFFER_FIELDS.filter((k) => k !== 'herstellercode' || !!d.herstellercode)),
+    // Hinweis für den Kunden: Angebot gehört zu einem Angebot desselben Partners zur verknüpften Anfrage (Fahrzeug ↔ Inzahlungnahme)
+    const combo = req.linked_request_id ? await DB.one(ctx.db, "SELECT id FROM offers WHERE request_id = ? AND org_id = ? AND status IN ('vorgestellt','angenommen','abgelehnt_kunde') LIMIT 1", req.linked_request_id, o.org_id) : null;
+    out.push({ id: o.id, kind: o.kind, status: o.status, rank: o.rank, combo: combo ? { number: toNumber(req.linked_request_id), type: req.type === 'deal' ? 'sell' : 'deal' } : null, data: pick(d, OFFER_FIELDS.filter((k) => k !== 'herstellercode' || !!d.herstellercode)),
       partner: identity ? { name: o.org_name, city: o.org_city, street: accepted ? o.org_street : undefined, zip: accepted ? o.org_zip : undefined, web: o.org_web, ...(contact || {}) } : { name: 'Geprüfter KFL-Partner', city: '' },
       distance_km: o.distance_km, has_pdf: !!o.public_file_id, has_expose: !!o.public_expose_id });
   }
