@@ -75,10 +75,29 @@ async function scoringPasswordOk(ctx, password) {
 }
 async function setAreaPassword(ctx, password) { const h = await hashPassword(password); await setRawSetting(ctx.db, '_area_pw', JSON.stringify(h)); }
 
+// Schutz vor automatisierten Anmeldeversuchen: höchstens 10 Fehlversuche je Anschluss (IP-Kennung) in 15 Minuten
+const LOGIN_FAILS = ['login_fehlgeschlagen', 'login_gesperrt', 'login_unbekannt'];
+async function loginThrottled(ctx) {
+  if (!ctx.ipHash) return false;
+  const n = await DB.val(ctx.db, `SELECT COUNT(*) FROM audit WHERE ip = ? AND action IN (${LOGIN_FAILS.map(() => '?').join(',')}) AND at >= ?`, ctx.ipHash, ...LOGIN_FAILS, isoOf(nowMs() - 15 * 60e3));
+  return n >= 10;
+}
+// Zusatzpasswörter (Bereich, Freigabe): höchstens 5 Fehlversuche je Person in 15 Minuten
+async function secondPasswordThrottled(ctx, action) {
+  const a = ctx.actor || {};
+  const n = await DB.val(ctx.db, 'SELECT COUNT(*) FROM audit WHERE action = ? AND actor_id = ? AND at >= ?', action, a.id ?? -1, isoOf(nowMs() - 15 * 60e3));
+  return n >= 5;
+}
 async function loginGeneric(ctx, table, sessTable, email, password) {
-  const u = await DB.one(ctx.db, `SELECT * FROM ${table} WHERE email = ?`, email);
   const generic = 'E-Mail oder Passwort ist falsch.';
-  if (!u || !u.active || !u.pass_hash) { await hashPassword(password || 'x', 'timing-protect'); return { error: generic, status: 401 }; }
+  if (await loginThrottled(ctx)) return { error: 'Zu viele Anmeldeversuche von diesem Anschluss. Bitte in 15 Minuten erneut versuchen.', status: 429 };
+  const u = await DB.one(ctx.db, `SELECT * FROM ${table} WHERE email = ?`, email);
+  if (!u || !u.active || !u.pass_hash) {
+    await hashPassword(password || 'x', 'timing-protect');
+    ctx.actor = { type: 'web', id: null, name: 'Unbekannt' };
+    await audit(ctx, 'login_unbekannt', table === 'users' ? 'mitarbeiter' : 'partner', null, null);
+    return { error: generic, status: 401 };
+  }
   if (table === 'partner_users') { const org = await DB.one(ctx.db, 'SELECT active, deleted FROM orgs WHERE id = ?', u.org_id); if (!org || !org.active || org.deleted) return { error: 'Dieses Partnerkonto ist derzeit nicht aktiv. Bitte wende dich an den KFL-Support.', status: 403 }; }
   if (u.locked_until && u.locked_until > nowIso()) return { error: u.locked_until > '9000' ? 'Dieses Konto ist gesperrt. Bitte wende dich an die Administration.' : 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.', status: 429 };
   let ok = await verifyPassword(password, u.pass_hash, u.pass_salt);

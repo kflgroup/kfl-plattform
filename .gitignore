@@ -6,3 +6,6 @@ theme/test/my.html
 *.log
 .DS_Store
 dist/worker.test.mjs
+
+# Screenshots (können Kundendaten zeigen) nie ins öffentliche Repository
+/*.png

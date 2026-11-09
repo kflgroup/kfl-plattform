@@ -119,6 +119,7 @@ async function handleStaffApi(ctx, url) {
   }
   if (path === '/area/unlock' && method === 'POST') {
     need(can(u, 'audit_view') || can(u, 'backup_view'), 403, 'Dafür fehlt dir die Berechtigung.');
+    need(!(await secondPasswordThrottled(ctx, 'bereich_passwort_falsch')), 429, 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.');
     const ok = await areaPasswordOk(ctx, body.password);
     await audit(ctx, ok ? 'bereich_entsperrt' : 'bereich_passwort_falsch', 'bereich', null, null);
     need(ok, 403, 'Das Bereichspasswort ist falsch.');
@@ -167,7 +168,17 @@ async function handleStaffApi(ctx, url) {
         lastMonth: { requests: row(2).n || 0, won: row(2).won || 0 }, responseHours: row(4).n ? Math.round(row(4).h * 10) / 10 : null, deadlineSoon: row(5).n || 0, unassigned: row(6).n || 0,
         revenue: stmts.length > 7 ? Math.round((row(7).net || 0) * 100) / 100 : null };
     }
-    return out({ ok: true, today: berlinDate(nowMs()), week: w.week, year: w.year, news, chats, kpis: kp, absenceRequests: abs, pipeline });
+    // Sicherheits-Check für den Admin (nur auf der Startseite)
+    let security = null;
+    if (q.full === '1' && u.role === 'admin') {
+      const keys = new Set((await DB.all(db, "SELECT key FROM settings WHERE key IN ('_area_pw', '_scoring_pw')")).map((r) => r.key));
+      security = [
+        { key: 'app_secret', ok: !!env.APP_SECRET, label: 'Eigener Server-Schlüssel (APP_SECRET)', hint: 'Cloudflare → Worker → Einstellungen → Variablen und Geheimnisse → APP_SECRET als „Geheimnis“ mit einem langen Zufallswert anlegen.' },
+        { key: 'area_pw', ok: keys.has('_area_pw') || !!env.AREA_PASSWORD, label: 'Eigenes Bereichspasswort (Protokoll, Backup)', hint: 'Verwaltung → Einstellungen → Bereichspasswort ändern. Der Startwert ist nur ein Platzhalter.' },
+        { key: 'scoring_pw', ok: keys.has('_scoring_pw') || !!env.SCORING_PASSWORD, label: 'Eigenes Freigabepasswort (Angebotsauswahl)', hint: 'Verwaltung → Angebotsauswahl → Freigabepasswort ändern.' }
+      ];
+    }
+    return out({ ok: true, today: berlinDate(nowMs()), week: w.week, year: w.year, news, chats, kpis: kp, absenceRequests: abs, pipeline, security });
   }
 
   /* ---------- News & Chat ---------- */
@@ -804,6 +815,8 @@ async function handleStaffApi(ctx, url) {
   }
   if (path === '/scoring' && method === 'POST') {
     need(u.role === 'admin', 403, 'Die Angebotsauswahl kann nur der Admin ändern.');
+    need(!(await secondPasswordThrottled(ctx, 'freigabe_passwort_falsch')), 429, 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.');
+    if (!(await scoringPasswordOk(ctx, body.password))) await audit(ctx, 'freigabe_passwort_falsch', 'einstellungen', null, null);
     need(await scoringPasswordOk(ctx, body.password), 403, 'Das Freigabepasswort ist falsch. Die Einstellungen wurden nicht gespeichert.');
     const upd = {}; let sum = 0;
     for (const f of SCORE_FACTORS) {
@@ -820,10 +833,21 @@ async function handleStaffApi(ctx, url) {
   }
   if (path === '/settings/area-password' && method === 'POST') {
     need(u.role === 'admin', 403, 'Nur der Admin kann das Bereichspasswort ändern.');
-    need(await areaPasswordOk(ctx, body.current), 403, 'Das aktuelle Bereichspasswort ist falsch.');
+    need(!(await secondPasswordThrottled(ctx, 'bereich_passwort_falsch')), 429, 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.');
+    if (!(await areaPasswordOk(ctx, body.current))) { await audit(ctx, 'bereich_passwort_falsch', 'bereich', null, null); need(false, 403, 'Das aktuelle Bereichspasswort ist falsch.'); }
     const p = passwordProblem(body.next); need(!p, 400, p);
     await setAreaPassword(ctx, body.next);
     await audit(ctx, 'bereichspasswort_geaendert', 'einstellungen', null, null);
+    return out({ ok: true });
+  }
+  // Freigabepasswort der Angebotsauswahl ändern (bisher nur Startwert)
+  if (path === '/settings/scoring-password' && method === 'POST') {
+    need(u.role === 'admin', 403, 'Nur der Admin kann das Freigabepasswort ändern.');
+    need(!(await secondPasswordThrottled(ctx, 'freigabe_passwort_falsch')), 429, 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.');
+    if (!(await scoringPasswordOk(ctx, body.current))) { await audit(ctx, 'freigabe_passwort_falsch', 'einstellungen', null, null); need(false, 403, 'Das aktuelle Freigabepasswort ist falsch.'); }
+    const p = passwordProblem(body.next); need(!p, 400, p);
+    await setRawSetting(db, '_scoring_pw', JSON.stringify(await hashPassword(body.next)));
+    await audit(ctx, 'freigabepasswort_geaendert', 'einstellungen', null, null);
     return out({ ok: true });
   }
   if (path === '/links' && method === 'GET') {

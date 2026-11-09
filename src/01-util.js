@@ -111,7 +111,7 @@ const statusLabel = (list, k) => (list.find((s) => s.key === k) || {}).label || 
 const normBrand = (b) => String(b || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 
 /* ---------- HTTP ---------- */
-const SEC_HEADERS = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow' };
+const SEC_HEADERS = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow', 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains', 'Cross-Origin-Opener-Policy': 'same-origin' };
 function out(obj, status = 200, extra = {}) {
   return new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...SEC_HEADERS, ...extra } });
 }
@@ -119,7 +119,15 @@ const fail = (status, error, extra) => out({ ok: false, error, ...(extra || {}) 
 async function readJson(request, maxBytes = 2_000_000) {
   const len = parseInt(request.headers.get('Content-Length') || '0', 10);
   if (len > maxBytes) throw new HttpError(413, 'Die Daten sind zu groß.');
-  try { const b = await request.json(); return b && typeof b === 'object' ? b : {}; } catch (e) { return {}; }
+  // Größe auch ohne Content-Length begrenzen (z. B. bei „chunked“ gesendeten Daten)
+  let text = '';
+  try {
+    const reader = request.body ? request.body.getReader() : null, parts = []; let size = 0;
+    if (reader) for (;;) { const { done, value } = await reader.read(); if (done) break; size += value.length; if (size > maxBytes) { try { await reader.cancel(); } catch (e) { /* egal */ } throw new HttpError(413, 'Die Daten sind zu groß.'); } parts.push(value); }
+    const all = new Uint8Array(size); let o = 0; for (const p of parts) { all.set(p, o); o += p.length; }
+    text = new TextDecoder().decode(all);
+  } catch (e) { if (e instanceof HttpError) throw e; return {}; }
+  try { const b = JSON.parse(text); return b && typeof b === 'object' && !Array.isArray(b) ? b : {}; } catch (e) { return {}; }
 }
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const need = (cond, status, msg) => { if (!cond) throw new HttpError(status, msg); };

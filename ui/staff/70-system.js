@@ -162,7 +162,9 @@ async function admSettings(P, tab) {
     <section class="panel mt"><div class="panel-head"><h2>Verbindungen</h2></div><div class="panel-body row">${[['r2', 'Dateispeicher (R2)'], ['shopify', 'Shopify-Statistik'], ['oldDb', 'Alte Datenbank (Import)']].map(([k, l]) => badge(`${l}: ${d.env[k] ? 'verbunden' : 'nicht eingerichtet'}`, d.env[k] ? 'ok' : 'muted'))}</div></section>` : ''}
     <form class="stack mt" data-submit="settingsSave">${groups.map(([title, list]) => html`<section class="panel"><div class="panel-head"><h2>${title}</h2><button class="btn btn-sm btn-dark" type="submit">Speichern</button></div><div class="panel-body grid-2">${list.map(([k, l]) => input(k, l))}</div></section>`)}</form>
     ${isAdmin() ? html`<section class="panel mt"><div class="panel-head"><h2>Bereichspasswort (Protokoll und Backup)</h2></div><form class="panel-body inline-form" data-submit="areaPw">
-      ${field('Aktuelles Bereichspasswort', inp('current', '', { type: 'password', req: true, attrs: 'autocomplete="off"' }))}${field('Neues Bereichspasswort', inp('next', '', { type: 'password', req: true, attrs: 'minlength="10" autocomplete="new-password"' }))}<button class="btn btn-dark" type="submit">Ändern</button></form></section>` : ''}`);
+      ${field('Aktuelles Bereichspasswort', inp('current', '', { type: 'password', req: true, attrs: 'autocomplete="off"' }))}${field('Neues Bereichspasswort', inp('next', '', { type: 'password', req: true, attrs: 'minlength="10" autocomplete="new-password"' }))}<button class="btn btn-dark" type="submit">Ändern</button></form></section>
+      <section class="panel mt" id="scoringPw"><div class="panel-head"><h2>Freigabepasswort (Angebotsauswahl)</h2></div><form class="panel-body inline-form" data-submit="scoringPw">
+      ${field('Aktuelles Freigabepasswort', inp('current', '', { type: 'password', req: true, attrs: 'autocomplete="off"' }))}${field('Neues Freigabepasswort', inp('next', '', { type: 'password', req: true, attrs: 'minlength="10" autocomplete="new-password"' }))}<button class="btn btn-dark" type="submit">Ändern</button></form></section>` : ''}`);
   S.settingsTypes = s;
 }
 SUBMIT.mailTest = async (d) => { const r = await POST('/mail/test', d); if (r.status === 'gesendet') toast(`Test-E-Mail an ${d.to} gesendet.`); else toast(r.error ? `Nicht gesendet: ${r.error}` : 'Kein E-Mail-Versand eingerichtet – die E-Mail liegt nur im Postausgang.', 'err'); };
@@ -171,6 +173,7 @@ SUBMIT.settingsSave = async (d) => {
   await PATCH('/settings', out); toast('Einstellungen gespeichert.'); reload();
 };
 SUBMIT.areaPw = async (d, f) => { await POST('/settings/area-password', d); f.reset(); toast('Bereichspasswort geändert.'); };
+SUBMIT.scoringPw = async (d, f) => { await POST('/settings/scoring-password', d); f.reset(); toast('Freigabepasswort geändert.'); };
 
 async function admLinks(P, tab) {
   const d = await GET('/links'); if (!P.alive()) return;

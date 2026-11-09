@@ -139,6 +139,7 @@ const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_req_account ON requests(customer_account)`,
   `CREATE INDEX IF NOT EXISTS idx_events_req ON events(request_id)`,
   `CREATE INDEX IF NOT EXISTS idx_audit_at ON audit(at)`,
+  `CREATE INDEX IF NOT EXISTS idx_audit_ip ON audit(ip, action, at)`,
   `CREATE INDEX IF NOT EXISTS idx_asg_req ON assignments(request_id)`,
   `CREATE INDEX IF NOT EXISTS idx_asg_org ON assignments(org_id, status)`,
   `CREATE INDEX IF NOT EXISTS idx_offers_req ON offers(request_id)`,

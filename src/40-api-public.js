@@ -36,6 +36,12 @@ async function handleForm(ctx) {
 
   if (TICKET_FORMS[form]) {
     const def = TICKET_FORMS[form];
+    // Ohne Kundenkonto: höchstens 8 Formulare je Anschluss und Stunde (Schutz vor automatisiertem Spam)
+    if (kid === '0' && ctx.ipHash) {
+      const n = await DB.val(ctx.db, "SELECT COUNT(*) FROM audit WHERE ip = ? AND action = 'formular_anonym' AND at >= ?", ctx.ipHash, isoOf(nowMs() - 3600e3));
+      if (n >= 8) return cjson({ ok: false, error: 'Gerade sind zu viele Anfragen von deinem Anschluss eingegangen. Bitte versuch es später noch einmal oder schreib an info@kfl-group.com.' }, 429, origin);
+      await audit(ctx, 'formular_anonym', 'formular', null, form);
+    }
     const text = Object.entries(data).filter(([k, v]) => !/^_|^Firma2$|^Formular$|AGB|Datenschutz|Einwilligung/.test(k) && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join('\n');
     const subject = form === 'widerruf' ? `Widerruf: ${data.Vertrag || data.Bestellnummer || ''}`.trim() : (data.Thema || data.Betreff || def.category);
     const id = await createTicket(ctx, { tag: def.tag, category: def.category, subject, priority: def.priority, requester: { type: kid !== '0' ? 'customer' : 'web', name: [data.Vorname, data.name].filter(Boolean).join(' '), email }, text, ack: form !== 'widerruf' });

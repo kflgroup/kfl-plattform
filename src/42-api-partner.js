@@ -281,6 +281,8 @@ async function handlePartnerApi(ctx, url) {
     const pr = passwordProblem(body.next); need(!pr, 400, pr);
     const h = await hashPassword(body.next);
     await DB.run(db, 'UPDATE partner_users SET pass_hash = ?, pass_salt = ?, must_change_pw = 0 WHERE id = ?', h.hash, h.salt, p.id);
+    // Alle anderen Anmeldungen dieses Kontos beenden (z. B. auf einem fremden Gerät)
+    const own = readCookie(request, PARTNER_COOKIE); await DB.run(db, 'DELETE FROM partner_sessions WHERE user_id = ? AND token_hash != ?', p.id, own ? await sha256Hex(own) : '-');
     await audit(ctx, 'partner_passwort_geaendert', 'partnerkonto', p.id, null);
     return out({ ok: true });
   }

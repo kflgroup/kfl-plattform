@@ -158,8 +158,23 @@ function distanceKm(a, b) {
 
 /* ---------- Dateien (R2-Bucket FILES, sonst Datenbank) ---------- */
 const CHUNK = 700000;
+// Dateityp nach Inhalt bestimmen (nicht nach Angabe des Absenders) – verhindert z. B. als „PDF“ getarnte HTML-Dateien
+function sniffMime(u8, given) {
+  const b = (i) => u8[i], str4 = String.fromCharCode(b(0), b(1), b(2), b(3));
+  if (str4 === '%PDF') return 'application/pdf';
+  if (b(0) === 0x89 && str4.slice(1) === 'PNG') return 'image/png';
+  if (b(0) === 0xff && b(1) === 0xd8 && b(2) === 0xff) return 'image/jpeg';
+  if (str4 === 'GIF8') return 'image/gif';
+  if (str4 === 'RIFF' && String.fromCharCode(b(8), b(9), b(10), b(11)) === 'WEBP') return 'image/webp';
+  if (str4 === 'PK\x03\x04') return /officedocument|zip/.test(String(given || '')) ? String(given) : 'application/zip';
+  const g = String(given || '').toLowerCase();
+  if (/^text\/(plain|csv)$/.test(g) || g === 'application/xml' || g === 'text/xml') return g;
+  return 'application/octet-stream';
+}
+const INLINE_MIMES = ['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 async function putFile(ctx, { name, mime, bytes, ownerType, ownerId }) {
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  mime = sniffMime(u8, mime);
   const storage = ctx.env.FILES ? 'r2' : 'd1';
   const id = await DB.insert(ctx.db, 'files', { name: str(name, 200) || 'datei', mime: mime || 'application/octet-stream', size: u8.length, storage, key: null, owner_type: ownerType || null, owner_id: ownerId || null, created_at: nowIso() });
   if (storage === 'r2') {
@@ -186,8 +201,13 @@ async function deleteFile(ctx, id) {
   await DB.run(ctx.db, 'DELETE FROM file_chunks WHERE file_id = ?', id);
   await DB.run(ctx.db, 'DELETE FROM files WHERE id = ?', id);
 }
+// Ausgabe nur der geprüften Typen im Browser (PDF, Bilder); alles andere immer als Download in einer abgeschotteten Antwort
 function fileResponse(f, download = false) {
-  return new Response(f.bytes, { headers: { 'Content-Type': f.meta.mime || 'application/octet-stream', 'Content-Disposition': `${download ? 'attachment' : 'inline'}; filename="${String(f.meta.name || 'datei').replace(/[^\w.\- ]+/g, '_')}"`, 'Cache-Control': 'private, no-store', ...SEC_HEADERS } });
+  need(f, 404, 'Datei nicht gefunden.');
+  const mime = sniffMime(f.bytes, f.meta.mime), inline = !download && INLINE_MIMES.includes(mime);
+  return new Response(f.bytes, { headers: { 'Content-Type': inline ? mime : (mime === 'application/octet-stream' ? mime : mime + (mime.startsWith('text/') ? '; charset=utf-8' : '')),
+    'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${String(f.meta.name || 'datei').replace(/[^\w.\- ]+/g, '_')}"`, 'Cache-Control': 'private, no-store',
+    'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; plugin-types application/pdf; sandbox allow-downloads", 'Cross-Origin-Resource-Policy': 'same-origin', ...SEC_HEADERS } });
 }
 
 /* ---------- Benachrichtigungen (News-Feed je Nutzer) ---------- */
