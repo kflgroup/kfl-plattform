@@ -40,7 +40,7 @@ const decWord = (v) => v.replace(/=\?UTF-8\?B\?([^?]+)\?=/g, (_, b) => Buffer.fr
 const env = { DB: makeD1(), FILES: makeR2(), FORM_SECRET: SECRET, SETUP_TOKEN: 'setup-123', SMTP_USER: 'noreplay@kfl-group.com', SMTP_PASS: 'Postfach-Passwort1' };
 const c = client(worker, env);
 console.log('E-Mail über SMTP (IONOS)');
-await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123' }, { who: 'admin' });
+await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123!' }, { who: 'admin' });
 let r = await c.get('/api/settings', { who: 'admin' });
 check(r.env.mail === 'smtp' && r.env.smtpUser === 'noreplay@kfl-group.com' && r.settings.mail_from_system === 'noreplay@kfl-group.com', 'Einstellungen: Versand über Postfach noreplay@ aktiv', r.env);
 for (const [kind, name] of [['einzel', 'Einzelhändler Meyer'], ['organisation', 'Autohaus Organisation GmbH']]) {
@@ -68,7 +68,7 @@ console.log('Rechnung ohne eingerichteten E-Mail-Versand');
   const w2 = (await import('./wk.mjs?nomail')).default;
   const env2 = { DB: makeD1(), FILES: makeR2(), FORM_SECRET: SECRET, SETUP_TOKEN: 'setup-123' };
   const c2 = client(w2, env2);
-  await c2.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123' }, { who: 'admin' });
+  await c2.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123!' }, { who: 'admin' });
   check((await c2.get('/api/session', { who: 'admin' })).mailReady === false, 'Dashboard erkennt: E-Mail-Versand nicht eingerichtet');
   const o = await c2.post('/api/orgs', { name: 'Musterfirma GmbH', kind: 'einzel', zip: '49451', email: 'kunde@test.de', brands: ['Audi'] }, { who: 'admin' });
   env2.DB._sq.prepare("INSERT INTO billing_items (org_id, description, amount_net, status, created_at, updated_at) VALUES (?, 'Vermittlung Test', 49, 'offen', datetime('now'), datetime('now'))").run(o.id);

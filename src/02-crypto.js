@@ -32,11 +32,23 @@ async function verifyPassword(password, hash, salt) {
   const h = await hashPassword(String(password || ''), salt);
   return safeEqual(h.hash, hash);
 }
+// Passwortregel (alle Konten): mindestens 10 Zeichen, eine Zahl, ein Großbuchstabe und ein Sonderzeichen
+const PASSWORD_RULE = 'Mindestens 10 Zeichen mit mindestens einer Zahl, einem Großbuchstaben und einem Sonderzeichen.';
 function passwordProblem(pw) {
   if (typeof pw !== 'string' || pw.length < 10) return 'Das Passwort muss mindestens 10 Zeichen lang sein.';
   if (pw.length > 200) return 'Das Passwort ist zu lang.';
-  if (!/[A-Za-zÄÖÜäöüß]/.test(pw) || !/[0-9]/.test(pw)) return 'Bitte verwende Buchstaben und mindestens eine Ziffer.';
+  const miss = [!/[0-9]/.test(pw) && 'eine Zahl', !/[A-ZÄÖÜ]/.test(pw) && 'einen Großbuchstaben', !/[^A-Za-z0-9ÄÖÜäöüß\s]/.test(pw) && 'ein Sonderzeichen (z. B. ! ? # %)'].filter(Boolean);
+  if (miss.length) return `Das Passwort braucht noch ${miss.join(', ').replace(/, ([^,]*)$/, ' und $1')}.`;
   return null;
+}
+// Zufälliges vorläufiges Passwort, das die Passwortregel erfüllt (ohne verwechselbare Zeichen wie 0/O, 1/l)
+function randomPassword(len = 12) {
+  const sets = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnpqrstuvwxyz', '23456789', '!#%+?@*'];
+  const all = sets.join(''), rnd = crypto.getRandomValues(new Uint32Array(len + 4));
+  const chars = sets.map((s, i) => s[rnd[i] % s.length]);
+  for (let i = chars.length; i < len; i++) chars.push(all[rnd[i] % all.length]);
+  for (let i = chars.length - 1; i > 0; i--) { const j = rnd[len + (i % 4)] % (i + 1); [chars[i], chars[j]] = [chars[j], chars[i]]; }
+  return chars.join('');
 }
 
 // AES-GCM mit Schlüssel aus Passwort (für Backups und geschützte Einstellungen)

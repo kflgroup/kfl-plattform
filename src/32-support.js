@@ -6,6 +6,8 @@
 async function createTicket(ctx, { tag, kind = 'ticket', category, subject, priority = 'normal', requester, orgId = null, requestId = null, text, payload = null, ack = true, notifyAdmin = false }) {
   const s = await settingsOf(ctx);
   const t = nowIso();
+  // Bekannte E-Mail eines Geschäftspartners → Ticket automatisch dem Partner zuordnen
+  if (!orgId && requester && requester.type !== 'staff' && requester.email) { const pb = await partnerByEmail(ctx, requester.email); if (pb) orgId = pb.org_id; }
   const id = await DB.insert(ctx.db, 'tickets', { tag, kind, category: category || null, subject: str(subject, 200) || 'Support-Anfrage', priority, status: 'neu',
     requester_type: requester.type, requester_id: requester.id || null, requester_name: str(requester.name, 120), requester_email: str(requester.email, 200).toLowerCase(),
     org_id: orgId, request_id: requestId, payload: payload ? JSON.stringify(payload) : null, created_at: t, updated_at: t });
@@ -107,7 +109,7 @@ function partnerMailHtml(s, { preheader, kicker, headline, intro, cta, link, fac
 </table></td></tr></table></body></html>`;
 }
 
-async function sendPartnerInvite(ctx, uid, token, { reset = false, tempPassword = null } = {}) {
+async function sendPartnerInvite(ctx, uid, token, { reset = false, tempPassword = null, forgot = false } = {}) {
   const s = await settingsOf(ctx);
   const u = await DB.one(ctx.db, 'SELECT u.*, o.name AS org_name FROM partner_users u JOIN orgs o ON o.id = u.org_id WHERE u.id = ?', uid);
   const base = s.link_partner || ((ctx.origin || '') + '/partner');
@@ -115,6 +117,13 @@ async function sendPartnerInvite(ctx, uid, token, { reset = false, tempPassword 
   const first = esc(String(u.name || '').split(/\s+/)[0] || '');
   const validUntil = fmtDE(nowMs() + INVITE_DAYS * 86400e3);
   const replyTo = { email: s.company_email, name: s.company_name };
+  if (tempPassword && forgot) {
+    const html = partnerMailHtml(s, { preheader: 'Dein neues Passwort für das KFL-Partner-Dashboard', kicker: 'Passwort vergessen', headline: 'Dein neues Passwort', link: base, cta: 'Jetzt anmelden',
+      intro: `<p style="margin:0 0 14px">Hallo ${first},</p><p style="margin:0 0 14px">du hast im Partner-Dashboard „Passwort vergessen“ angeklickt. Dein neues, vorläufiges Passwort lautet:</p><p style="margin:0;font:700 20px monospace;background:#f6f7f8;border-radius:10px;padding:12px 16px;display:inline-block">${esc(tempPassword)}</p><p style="margin:14px 0 0">Es ist <b>24 Stunden</b> gültig. Nach der Anmeldung vergibst du direkt ein eigenes Passwort (mindestens 10 Zeichen mit Zahl, Großbuchstabe und Sonderzeichen).</p>`,
+      facts: [['Anmelde-E-Mail', u.email], ['Unternehmen', u.org_name]],
+      note: 'Du hast kein neues Passwort angefordert? Dann ignoriere diese E-Mail – dein bisheriges Passwort bleibt gültig. Bei Fragen hilft dir der KFL-Support.' });
+    return sendMail(ctx, { category: 'system', to: u.email, toName: u.name, subject: 'Dein neues Passwort für das KFL-Partner-Dashboard', html, replyTo });
+  }
   if (tempPassword) {
     const html = partnerMailHtml(s, { preheader: 'Dein vorläufiges Passwort für das KFL-Partner-Dashboard', kicker: 'Passwort zurückgesetzt', headline: 'Dein vorläufiges Passwort', link: base, cta: 'Zum Partner-Dashboard',
       intro: `<p style="margin:0 0 14px">Hallo ${first},</p><p style="margin:0 0 14px">dein Passwort für das KFL-Partner-Dashboard wurde zurückgesetzt. Dein vorläufiges Passwort lautet:</p><p style="margin:0;font:700 20px monospace;background:#f6f7f8;border-radius:10px;padding:12px 16px;display:inline-block">${esc(tempPassword)}</p><p style="margin:14px 0 0">Bitte melde dich an und vergib direkt ein eigenes Passwort.</p>`,
@@ -133,7 +142,7 @@ async function sendPartnerInvite(ctx, uid, token, { reset = false, tempPassword 
     intro: `<p style="margin:0 0 14px">Hallo ${first},</p><p style="margin:0">für <b>${esc(u.org_name)}</b> haben wir deinen persönlichen Zugang zum <b>KFL-Partner-Dashboard</b> eingerichtet. Dort landen ab sofort die Kundenanfragen aus deiner Region – zum Kaufen, Finanzieren und Leasen. Mit einem Klick legst du dein Passwort fest und bist startklar.</p>`,
     cta: 'Jetzt Zugang aktivieren', link,
     facts: [['Anmelde-E-Mail', u.email], ['Unternehmen', u.org_name], ['Rolle', (PARTNER_ROLES[u.role] || {}).label], ['Link gültig bis', validUntil]],
-    steps: ['<b>Button klicken</b> und die Einladung öffnen.', '<b>Passwort festlegen</b> (mindestens 10 Zeichen) und AGB sowie Datenschutz bestätigen.', '<b>Loslegen:</b> Neue Anfragen übernehmen, Angebot abgeben und Kunden gewinnen.'],
+    steps: ['<b>Button klicken</b> und die Einladung öffnen.', '<b>Passwort festlegen</b> (mindestens 10 Zeichen mit Zahl, Großbuchstabe und Sonderzeichen) und AGB sowie Datenschutz bestätigen.', '<b>Loslegen:</b> Neue Anfragen übernehmen, Angebot abgeben und Kunden gewinnen.'],
     perks: [['Anfragen in Echtzeit', 'Neue Kundenanfragen aus deiner Region sofort im Dashboard und per E-Mail.'], ['24 Std. Angebotsfrist', 'Eine Uhr zeigt dir an jeder Anfrage, wie viel Zeit noch bleibt.'], ['Kontakt nach Zusage', 'Nimmt der Kunde dein Angebot an, erhältst du direkt seine Kontaktdaten.']],
     note: `Diese Einladung ist persönlich und nur für ${esc(u.email)} bestimmt. Du hast sie nicht erwartet? Dann ignoriere diese E-Mail einfach.`
   });

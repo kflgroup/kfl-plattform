@@ -171,6 +171,7 @@ const EXTRA_COLUMNS = {
   users: { extra_perms: "TEXT NOT NULL DEFAULT '[]'", revoked_perms: "TEXT NOT NULL DEFAULT '[]'", department: 'TEXT', phone: 'TEXT',
     must_change_pw: "INTEGER NOT NULL DEFAULT 0", created_by: 'INTEGER', prev_login: 'TEXT' },
   sessions: { area_until: 'TEXT' },
+  partner_users: { temp_pw_hash: 'TEXT', temp_pw_salt: 'TEXT', temp_pw_expires: 'TEXT', temp_pw_at: 'TEXT' },
   mail_outbox: { server_reply: 'TEXT' },
   offers: { score_detail: 'TEXT' },
   suppliers: { org_id: 'INTEGER' },

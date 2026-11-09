@@ -29,7 +29,7 @@ globalThis.fetch = async (input, init = {}) => {
 const worker = (await import('./wk.mjs')).default;
 const env = { DB: makeD1(), FILES: makeR2(), FORM_SECRET: SECRET, SETUP_TOKEN: 'setup-123', BREVO_API_KEY: 'test-brevo', PUBLIC_ORIGIN: 'https://w.example' };
 const sq = env.DB._sq, c = client(worker, env), q1 = (sql, ...a) => sq.prepare(sql).get(...a);
-await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123' }, { who: 'admin' });
+await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123!' }, { who: 'admin' });
 const DATA = (consent) => JSON.stringify({ Vorname: 'Max', 'AGB akzeptiert': 'Ja (Version 2026-10)', 'Datenschutz akzeptiert': 'Ja (Version 2026-10)', ...(consent ? { 'Einwilligung Feedback und Erinnerungen': 'Ja (Version 2026-10)' } : {}) });
 const addReq = (email, status, extra = {}, consent = false) => {
   const cols = { type: 'deal', status, customer_name: 'Max Muster', email, brand: 'Audi', model: 'A4', vehicle: 'Audi A4', data: DATA(consent), created_at: '2026-11-01T10:00:00Z', updated_at: '2026-11-01T10:00:00Z', ...extra };

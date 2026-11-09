@@ -56,10 +56,10 @@ const ai = {
 const worker = (await import('./wk.mjs')).default;
 const env = { DB: makeD1(), FILES: makeR2(), FORM_SECRET: SECRET, SETUP_TOKEN: 'setup-123', BREVO_API_KEY: 'test-brevo', AI: ai };
 const sq = env.DB._sq, c = client(worker, env), q1 = (sql, ...a) => sq.prepare(sql).get(...a), qa = (sql, ...a) => sq.prepare(sql).all(...a);
-await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123' }, { who: 'admin' });
+await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123!' }, { who: 'admin' });
 for (const [key, role, name] of [['bh', 'buchhaltung', 'Berta BH'], ['vt', 'vertrieb', 'Vera VT'], ['gf', 'gf', 'Greta GF']]) {
   const r = await c.post('/api/users', { email: key + '@kfl.de', name, role_key: role }, { who: 'admin' });
-  await c.post('/api/invite/accept', { token: r.invite.split('/').pop(), password: 'Passwort1234' }, { who: key });
+  await c.post('/api/invite/accept', { token: r.invite.split('/').pop(), password: 'Passwort1234!' }, { who: key });
 }
 await c.post('/api/acc/suppliers', { name: 'Werbeagentur Nord GmbH', email: 'buchhaltung@werbeagentur-nord.de' }, { who: 'bh' });
 await c.post('/api/acc/suppliers', { name: 'Druckerei Süd', iban: 'DE89 3704 0044 0532 0130 00' }, { who: 'bh' });

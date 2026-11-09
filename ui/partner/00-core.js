@@ -76,10 +76,21 @@ const psupportHelp = () => html`<div class="auth-help">${icon('support')}<span>P
 function plogin(msg) {
   pauthFrame(html`<div><h2>Willkommen zurück</h2><p class="muted">Melde dich mit deiner E-Mail-Adresse an.</p></div>${msg ? html`<div class="info-box">${icon('check')}<span>${msg}</span></div>` : ''}
     <form class="stack" data-submit="plogin">${field('E-Mail', inp('email', '', { type: 'email', req: true, attrs: 'autocomplete="username" inputmode="email"' }))}${field('Passwort', inp('password', '', { type: 'password', req: true, attrs: 'autocomplete="current-password"' }))}
-      <button class="btn btn-primary btn-block" type="submit">Anmelden</button></form>${psupportHelp()}
-    <p class="tiny muted">Passwort vergessen? Schreib dem Support – die KFL schickt dir einen Link zum Zurücksetzen.</p>`);
+      <button class="btn btn-primary btn-block" type="submit">Anmelden</button></form>
+    <div class="row-between"><button class="btn btn-ghost btn-sm" type="button" data-act="pforgot">${icon('key')}Passwort vergessen?</button></div>${psupportHelp()}`);
 }
-SUBMIT.plogin = async (d) => { await POST('/login', d); await pboot(); };
+// Das gerade eingegebene (vorläufige) Passwort nur im Arbeitsspeicher, damit es beim Pflichtwechsel nicht erneut abgefragt wird
+let plastPw = '';
+SUBMIT.plogin = async (d) => { await POST('/login', d); plastPw = d.password; try { await pboot(); } finally { plastPw = ''; } };
+ACT.pforgot = () => {
+  const mail = ($('input[name=email]') || {}).value || '';
+  pauthFrame(html`<div><h2>Passwort vergessen?</h2><p class="muted">Gib die E-Mail-Adresse deines Partnerkontos ein. Ist sie bei uns hinterlegt, schicken wir dir sofort ein neues, vorläufiges Passwort. Beim nächsten Login legst du dann dein eigenes fest.</p></div>
+    <form class="stack" data-submit="pforgot">${field('E-Mail', inp('email', mail, { type: 'email', req: true, attrs: 'autocomplete="username" inputmode="email"' }))}
+      <button class="btn btn-primary btn-block" type="submit">Neues Passwort anfordern</button></form>
+    <button class="btn btn-ghost btn-sm" type="button" data-act="ploginBack">Zurück zur Anmeldung</button>${psupportHelp()}`);
+};
+SUBMIT.pforgot = async (d) => { const r = await POST('/forgot', d); plogin(r.message + ' Schau auch im Spam-Ordner nach.'); };
+ACT.ploginBack = () => plogin();
 ACT.plogout = async () => { closeModal(); await POST('/logout'); P.user = null; plast = null; plogin('Du wurdest abgemeldet.'); };
 ACT.psupportPublic = async () => {
   const d = await ask({ title: 'Support kontaktieren', text: 'Das KFL-Support-Team meldet sich per E-Mail bei dir.', ok: 'Anfrage senden', fields: html`${field('Name', inp('name', '', { req: true }))}${field('E-Mail', inp('email', '', { type: 'email', req: true }))}
@@ -102,10 +113,10 @@ function pconsents() {
 SUBMIT.pconsents = async (d) => { if (!d.agb || !d.privacy) throw new Error('Bitte bestätige beides.'); await POST('/consents', d); await pboot(); };
 function pforcePw() {
   pauthFrame(html`<div><h2>Eigenes Passwort festlegen</h2><p class="muted">Du hast ein vorläufiges Passwort von der KFL bekommen. Bitte vergib jetzt dein eigenes.</p></div>
-    <form class="stack" data-submit="pforcePw">${field('Vorläufiges Passwort', inp('current', '', { type: 'password', req: true }))}${field('Neues Passwort', inp('next', '', { type: 'password', req: true, attrs: 'minlength="10"' }), PW_HINT)}${field('Wiederholen', inp('next2', '', { type: 'password', req: true }))}
+    <form class="stack" data-submit="pforcePw">${plastPw ? html`<input type="hidden" name="current" value="${plastPw}">` : field('Vorläufiges Passwort', inp('current', '', { type: 'password', req: true }))}${field('Neues Passwort', inp('next', '', { type: 'password', req: true, attrs: 'minlength="10"' }), PW_HINT)}${field('Wiederholen', inp('next2', '', { type: 'password', req: true }))}
       <button class="btn btn-primary btn-block" type="submit">Speichern</button></form>`);
 }
-SUBMIT.pforcePw = async (d) => { if (d.next !== d.next2) throw new Error('Die Passwörter stimmen nicht überein.'); await POST('/password', d); await pboot(); };
+SUBMIT.pforcePw = async (d) => { if (d.next !== d.next2) throw new Error('Die Passwörter stimmen nicht überein.'); await POST('/password', d); plastPw = ''; await pboot(); };
 async function pcounts() {
   try { const d = await GET('/start'); P.start = d; P.newCount = d.newRequests.length; P.unread = d.news.notifications.filter((n) => !n.read).length + d.news.posts.filter((p) => !p.read).length; if ($('#pnav')) pnav(); return d; } catch (e) { return null; }
 }

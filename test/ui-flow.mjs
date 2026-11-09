@@ -22,7 +22,7 @@ const shot = (page, name, full = true) => page.screenshot({ path: `${out}/${name
 const text = (page) => page.innerText('body');
 
 console.log('Partner: Anfrage übernehmen und Angebot senden');
-let p = await session('partner', 'a_vt1@partner.de', 'Partner12345');
+let p = await session('partner', 'a_vt1@partner.de', 'Partner12345!');
 await go(p, '#/anfragen');
 await p.click('.rq'); await p.waitForTimeout(800);
 ok((await text(p)).includes('Anfrage übernehmen'), 'Teaser mit Übernahme-Button');
@@ -48,7 +48,7 @@ await p.click('.modal-foot .btn-primary'); await p.waitForTimeout(1200);
 ok((await text(p)).includes('Frage zur Frist'), 'Support-Ticket angelegt und geöffnet');
 
 console.log('Partner mobil');
-const pm = await session('partner', 'a_gf@partner.de', 'Partner12345', { mobile: true });
+const pm = await session('partner', 'a_gf@partner.de', 'Partner12345!', { mobile: true });
 await shot(pm, 'pm_start', false);
 await go(pm, '#/anfragen?tab=team'); await shot(pm, 'pm_team', false);
 await go(pm, '#/statistik'); await shot(pm, 'pm_stats', false);
@@ -62,7 +62,7 @@ const hasOffers = await pm.$('[data-act=pofferOpen]');
 if (hasOffers) { await pm.click('[data-act=pofferOpen]'); await pm.waitForTimeout(700); ok((await text(pm)).includes('Vertrauliche Information'), 'Hinweis auf vertraulichen Vermerk'); await shot(pm, 'pm_offer', false); }
 
 console.log('Intern: Anfrage, Buchhaltung, Support, Backup');
-const s = await session('admin', 'admin@kfl.de', 'AdminPass123');
+const s = await session('admin', 'admin@kfl.de', 'AdminPass123!');
 await go(s, '#/anfragen/1009'); await shot(s, 's_request_1009');
 ok((await text(s)).includes('Autohaus Alpha'), 'Partnerangebot in der internen Ansicht');
 await go(s, '#/buchhaltung/rechnungen'); await s.click('tr.clickable'); await s.waitForTimeout(800); await shot(s, 's_invoice_modal', false);
@@ -76,7 +76,7 @@ await go(s, '#/protokoll'); await shot(s, 's_protokoll', false);
 ok((await text(s)).includes('Einträge'), 'Protokoll sichtbar');
 await go(s, '#/statistik'); await shot(s, 's_stats', false);
 await go(s, '#/verwaltung'); await s.click('[data-act=userEdit]'); await s.waitForTimeout(500); await shot(s, 's_user_edit', false);
-const sm = await session('admin', 'vt@kfl.de', 'Passwort1234', { mobile: true });
+const sm = await session('admin', 'vt@kfl.de', 'Passwort1234!', { mobile: true });
 await shot(sm, 'sm_start', false);
 ok(!(await sm.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)), 'Internes Dashboard ohne seitliches Scrollen auf dem Handy');
 const navTxt = await sm.evaluate(() => document.querySelector('#nav').innerText);

@@ -81,7 +81,15 @@ async function loginGeneric(ctx, table, sessTable, email, password) {
   if (!u || !u.active || !u.pass_hash) { await hashPassword(password || 'x', 'timing-protect'); return { error: generic, status: 401 }; }
   if (table === 'partner_users') { const org = await DB.one(ctx.db, 'SELECT active, deleted FROM orgs WHERE id = ?', u.org_id); if (!org || !org.active || org.deleted) return { error: 'Dieses Partnerkonto ist derzeit nicht aktiv. Bitte wende dich an den KFL-Support.', status: 403 }; }
   if (u.locked_until && u.locked_until > nowIso()) return { error: u.locked_until > '9000' ? 'Dieses Konto ist gesperrt. Bitte wende dich an die Administration.' : 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.', status: 429 };
-  if (!(await verifyPassword(password, u.pass_hash, u.pass_salt))) {
+  let ok = await verifyPassword(password, u.pass_hash, u.pass_salt);
+  // „Passwort vergessen“ (Partner): vorläufiges Passwort, 24 h gültig – das bisherige Passwort bleibt bis zur ersten Nutzung gültig
+  if (!ok && table === 'partner_users' && u.temp_pw_hash && u.temp_pw_expires > nowIso() && (await verifyPassword(password, u.temp_pw_hash, u.temp_pw_salt))) {
+    ok = true;
+    await DB.run(ctx.db, 'UPDATE partner_users SET pass_hash = temp_pw_hash, pass_salt = temp_pw_salt, must_change_pw = 1, temp_pw_hash = NULL, temp_pw_salt = NULL, temp_pw_expires = NULL WHERE id = ?', u.id);
+    ctx.actor = { type: 'partner', id: u.id, name: u.name };
+    await audit(ctx, 'partner_vorlaeufiges_passwort_genutzt', 'partner', u.id, null);
+  }
+  if (!ok) {
     const f = (u.failed_logins || 0) + 1, lock = f >= 5 ? isoOf(nowMs() + 15 * 60e3) : null;
     await DB.run(ctx.db, `UPDATE ${table} SET failed_logins = ?, locked_until = COALESCE(?, locked_until) WHERE id = ?`, lock ? 0 : f, lock, u.id);
     ctx.actor = { type: table === 'users' ? 'staff' : 'partner', id: u.id, name: u.name };

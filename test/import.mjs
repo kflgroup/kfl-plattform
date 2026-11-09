@@ -13,7 +13,7 @@ o.exec(`CREATE TABLE requests (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT N
 const hash = (pw, salt) => pbkdf2Sync(pw, salt, 100000, 32, 'sha256').toString('hex');
 const t = '2026-10-20T10:00:00.000Z';
 o.prepare('INSERT INTO users (email, name, role_key, pass_hash, pass_salt, created_at) VALUES (?,?,?,?,?,?)').run('chef@kfl.de', 'Tobias Alt', 'admin', hash('AltesPasswort1', 'a164aa'), 'a164aa', t);
-o.prepare('INSERT INTO users (email, name, role_key, pass_hash, pass_salt, created_at) VALUES (?,?,?,?,?,?)').run('ankauf@kfl.de', 'Team Ankauf', 'team_ankauf', hash('Ankauf123456', '5754bb'), '5754bb', t);
+o.prepare('INSERT INTO users (email, name, role_key, pass_hash, pass_salt, created_at) VALUES (?,?,?,?,?,?)').run('ankauf@kfl.de', 'Team Ankauf', 'team_ankauf', hash('Ankauf123456!', '5754bb'), '5754bb', t);
 const deal = { _form: 'deal', Formular: 'TRAUMWAGEN-DEAL', Zustand: 'Neuwagen', Marke: 'Audi', Modell: 'A3', Bezahlart: 'leasen', Vorname: 'Ina', name: 'Alt', email: 'ina@alt.de', phone: '0170 1', PLZ: '49451', Ort: 'Holdorf' };
 o.prepare('INSERT INTO requests (type, status, customer_name, email, phone, brand, model, vehicle, summary, customer_account, data, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run('deal', 'angebot_gesendet', 'Ina Alt', 'ina@alt.de', '0170 1', 'Audi', 'A3', 'Audi A3', 'Leasen', '11134009573715', JSON.stringify(deal), t, t);
 o.prepare('INSERT INTO requests (type, status, customer_name, email, phone, brand, model, vehicle, summary, data, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run('sell', 'abgelehnt', 'Udo Alt', 'udo@alt.de', '', 'VW', 'Golf', 'VW Golf', 'Verkauf', JSON.stringify({ _form: 'sell', Marke: 'Volkswagen', Modell: 'Golf', PLZ: '49074', Vorname: 'Udo', name: 'Alt', email: 'udo@alt.de' }), t, t);
@@ -29,7 +29,7 @@ check(r.needsSetup === false, 'Keine Ersteinrichtung nötig – Konten übernomm
 r = await c.post('/api/login', { email: 'chef@kfl.de', password: 'AltesPasswort1' }, { who: 'admin' });
 check(r.ok, 'Admin meldet sich mit dem bisherigen Passwort an', r);
 r = await c.get('/api/session', { who: 'admin' }); check(r.user && r.user.role === 'admin', 'Rolle Admin übernommen');
-r = await c.post('/api/login', { email: 'ankauf@kfl.de', password: 'Ankauf123456' }, { who: 'vt' });
+r = await c.post('/api/login', { email: 'ankauf@kfl.de', password: 'Ankauf123456!' }, { who: 'vt' });
 r = await c.get('/api/session', { who: 'vt' }); check(r.user && r.user.role === 'vertrieb', 'team_ankauf → Vertrieb', r.user && r.user.role);
 r = await c.get('/api/requests', { view: 'alle' }, { who: 'admin' });
 r = await c.get('/api/requests?view=alle', { who: 'admin' });

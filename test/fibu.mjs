@@ -8,12 +8,12 @@ const env = { DB: makeD1(), FILES: makeR2(), FORM_SECRET: SECRET, SETUP_TOKEN: '
 const sq = env.DB._sq, c = client(worker, env), q1 = (sql, ...a) => sq.prepare(sql).get(...a), qa = (sql, ...a) => sq.prepare(sql).all(...a);
 const pdfB64 = (txt) => Buffer.from(`%PDF-1.4\n1 0 obj << >> stream\nBT /F1 10 Tf 50 700 Td (${txt}) Tj ET\nendstream endobj\n%%EOF`).toString('base64');
 const pdf = (name, txt = 'Beleg') => ({ name, type: 'application/pdf', base64: pdfB64(txt) });
-await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123' }, { who: 'admin' });
+await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123!' }, { who: 'admin' });
 for (const [key, role, name] of [['gf', 'gf', 'Greta GF'], ['bh', 'buchhaltung', 'Berta BH'], ['vt', 'vertrieb', 'Vera VT']]) {
   const r = await c.post('/api/users', { email: key + '@kfl.de', name, role_key: role }, { who: 'admin' });
-  await c.post('/api/invite/accept', { token: r.invite.split('/').pop(), password: 'Passwort1234' }, { who: key });
+  await c.post('/api/invite/accept', { token: r.invite.split('/').pop(), password: 'Passwort1234!' }, { who: key });
 }
-const relogin = async () => { await c.post('/api/login', { email: 'admin@kfl.de', password: 'AdminPass123' }, { who: 'admin' }); for (const k of ['gf', 'bh', 'vt']) await c.post('/api/login', { email: k + '@kfl.de', password: 'Passwort1234' }, { who: k }); };
+const relogin = async () => { await c.post('/api/login', { email: 'admin@kfl.de', password: 'AdminPass123!' }, { who: 'admin' }); for (const k of ['gf', 'bh', 'vt']) await c.post('/api/login', { email: k + '@kfl.de', password: 'Passwort1234!' }, { who: k }); };
 const acc = (number) => q1('SELECT * FROM fibu_accounts WHERE number = ?', number);
 const saldo = async (number, who = 'bh') => (await c.get('/api/fibu/accounts', { who })).accounts.find((a) => a.number === number).saldo;
 

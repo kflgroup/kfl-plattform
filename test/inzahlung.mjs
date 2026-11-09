@@ -6,14 +6,14 @@ setNow('2026-11-03T09:00:00Z');
 const env = { DB: makeD1(), FILES: makeR2(), FORM_SECRET: SECRET, SETUP_TOKEN: 'setup-123', BREVO_API_KEY: 'test-brevo' };
 const sq = env.DB._sq, c = client(worker, env), q1 = (sql, ...a) => sq.prepare(sql).get(...a), qa = (sql, ...a) => sq.prepare(sql).all(...a);
 const lastMailTo = (email) => [...mails].reverse().find((m) => m.to.some((t) => t.email === email));
-await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123' }, { who: 'admin' });
+await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123!' }, { who: 'admin' });
 const org = {}, pu = {};
 for (const [k, o] of [['A', { name: 'Autohaus Alpha', kind: 'einzel', zip: '49074', email: 'a@a.de', brands: ['Audi'], accepts: ['deal'] }], ['O', { name: 'Opel Ankauf Nord', kind: 'einzel', zip: '49451', email: 'o@o.de', brands: ['Opel'], accepts: ['sell'] }]]) {
   org[k] = (await c.post('/api/orgs', o, { who: 'admin' })).id;
   await c.patch(`/api/orgs/${org[k]}`, { accepts: o.accepts }, { who: 'admin' });
   const u = await c.post(`/api/orgs/${org[k]}/users`, { email: k.toLowerCase() + '@partner.de', name: 'Partner ' + k, role: 'gf' }, { who: 'admin' }); pu[k] = u.id;
   const inv = await c.post(`/api/orgs/${org[k]}/users/${u.id}/invite`, {}, { who: 'admin' });
-  await c.post('/papi/invite/accept', { token: inv.link.split('/').pop(), password: 'Partner12345', agb: true, privacy: true }, { who: k });
+  await c.post('/papi/invite/accept', { token: inv.link.split('/').pop(), password: 'Partner12345!', agb: true, privacy: true }, { who: k });
 }
 const kid = '11134009573715';
 const deal = (extra = {}) => { const ts = nowSec(); return { _form: 'deal', _kid: kid, _ts: ts, _sig: sig(`${kid}.${ts}.deal`), _page: 'https://kfl-group.com/pages/traumwagen-deal', Formular: 'TRAUMWAGEN-DEAL', Kundennummer: kid,

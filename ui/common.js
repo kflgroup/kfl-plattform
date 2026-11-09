@@ -277,7 +277,7 @@ function copyText(t) { return navigator.clipboard ? navigator.clipboard.writeTex
 ACT.copy = (b) => copyText(b.dataset.text);
 ACT.closeModal = () => closeModal();
 function pwStrength(pw) { let s = 0; if ((pw || '').length >= 10) s++; if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) s++; if (/\d/.test(pw)) s++; if (/[^A-Za-z0-9]/.test(pw) || (pw || '').length >= 14) s++; return s; }
-const PW_HINT = 'Mindestens 10 Zeichen mit Buchstaben und Zahlen.';
+const PW_HINT = 'Mindestens 10 Zeichen mit mindestens einer Zahl, einem Großbuchstaben und einem Sonderzeichen (z. B. ! ? # %).';
 
 /* ---------- Angebote ---------- */
 const OFFER_KIND = { kauf: 'Kauf', leasing: 'Leasing', finanzierung: 'Finanzierung', ankauf: 'Ankauf' };

@@ -5,10 +5,10 @@ setNow('2026-11-02T09:00:00Z');
 const worker = (await import('./wk.mjs')).default;
 const env = { DB: makeD1(), FILES: makeR2(), FORM_SECRET: SECRET, SETUP_TOKEN: 'setup-123', BREVO_API_KEY: 'test-brevo' };
 const sq = env.DB._sq, c = client(worker, env), q1 = (sql, ...a) => sq.prepare(sql).get(...a);
-await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123' }, { who: 'admin' });
+await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123!' }, { who: 'admin' });
 for (const [key, role, name] of [['gf', 'gf', 'Greta GF'], ['bh', 'buchhaltung', 'Berta BH'], ['vt', 'vertrieb', 'Vera Vertrieb']]) {
   const r = await c.post('/api/users', { email: key + '@kfl.de', name, role_key: role }, { who: 'admin' });
-  await c.post('/api/invite/accept', { token: r.invite.split('/').pop(), password: 'Passwort1234' }, { who: key });
+  await c.post('/api/invite/accept', { token: r.invite.split('/').pop(), password: 'Passwort1234!' }, { who: key });
 }
 const org = (await c.post('/api/orgs', { name: 'Notiz GmbH', kind: 'einzel', zip: '49451', email: 'info@notiz.de', brands: ['Audi'] }, { who: 'admin' })).id;
 sq.prepare("INSERT INTO requests (type, status, customer_name, brand, model, vehicle, data, created_at, updated_at) VALUES ('deal', 'kontaktdaten_versendet', 'Kim Kunde', 'Audi', 'A3', 'Audi A3', '{}', '2026-11-01T10:00:00Z', '2026-11-01T10:00:00Z')").run();

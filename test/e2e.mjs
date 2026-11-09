@@ -13,22 +13,22 @@ setNow('2026-11-03T09:00:00Z'); // Dienstag 10:00 Uhr Berlin
 // Sitzungen laufen nach 12 h ab – nach Zeitsprüngen alle neu anmelden
 async function relogin() {
   for (const who of Object.keys(c.jar)) {
-    if (who === 'admin') await c.post('/api/login', { email: 'admin@kfl.de', password: 'AdminPass123' }, { who });
-    else if (/^(a_|b_|c_)/.test(who)) await c.post('/papi/login', { email: who + '@partner.de', password: 'Partner12345' }, { who });
-    else await c.post('/api/login', { email: who + '@kfl.de', password: 'Passwort1234' }, { who });
+    if (who === 'admin') await c.post('/api/login', { email: 'admin@kfl.de', password: 'AdminPass123!' }, { who });
+    else if (/^(a_|b_|c_)/.test(who)) await c.post('/papi/login', { email: who + '@partner.de', password: 'Partner12345!' }, { who });
+    else await c.post('/api/login', { email: who + '@kfl.de', password: 'Passwort1234!' }, { who });
   }
 }
 
 console.log('1) Einrichtung, Mitarbeiter, Rollen');
 let r = await c.get('/api/session');
 check(r.needsSetup === true, 'Ersteinrichtung nötig');
-r = await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123' }, { who: 'admin' });
+r = await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123!' }, { who: 'admin' });
 check(r.ok, 'Admin angelegt', r);
 const staff = {};
 for (const [key, role, by] of [['gf', 'gf', 'admin'], ['tl', 'teamleitung', 'admin'], ['vt', 'vertrieb', 'admin'], ['bh', 'buchhaltung', 'admin']]) {
   r = await c.post('/api/users', { email: key + '@kfl.de', name: key.toUpperCase() + ' Mitarbeiter', role_key: role }, { who: by });
   check(r.ok && r.invite, `Mitarbeiter ${role} angelegt`, r);
-  const acc = await c.post('/api/invite/accept', { token: tokenFrom(r.invite), password: 'Passwort1234' }, { who: key });
+  const acc = await c.post('/api/invite/accept', { token: tokenFrom(r.invite), password: 'Passwort1234!' }, { who: key });
   check(acc.ok, `${role}: Passwort gesetzt`, acc);
   staff[key] = r.id;
 }
@@ -38,7 +38,7 @@ r = await c.post('/api/users', { email: 'x2@kfl.de', name: 'X2', role_key: 'gf' 
 check(r.status === 403, 'GF darf keine Geschäftsführung anlegen');
 r = await c.post('/api/users', { email: 'vt2@kfl.de', name: 'VT Zwei', role_key: 'vertrieb' }, { who: 'tl' });
 check(r.ok, 'Teamleitung legt Vertrieb an'); staff.vt2 = r.id;
-await c.post('/api/invite/accept', { token: tokenFrom(r.invite), password: 'Passwort1234' }, { who: 'vt2' });
+await c.post('/api/invite/accept', { token: tokenFrom(r.invite), password: 'Passwort1234!' }, { who: 'vt2' });
 r = await c.post('/api/users', { email: 'bh2@kfl.de', name: 'BH Zwei', role_key: 'buchhaltung' }, { who: 'tl' });
 check(r.status === 403, 'Teamleitung darf keine Buchhaltung anlegen');
 r = await c.patch('/api/users/' + staff.vt2, { locked: true }, { who: 'gf' });
@@ -70,7 +70,7 @@ const pu = {};
 for (const [k, o, role] of [['a_gf', 'A', 'gf'], ['a_vl', 'A', 'vl'], ['a_vt1', 'A', 'vt'], ['a_vt2', 'A', 'vt'], ['b_gf', 'B', 'gf'], ['c_vt', 'C', 'vt']]) {
   r = await c.post(`/api/orgs/${org[o]}/users`, { email: k + '@partner.de', name: 'Partner ' + k, role }, { who: 'gf' }); check(r.ok, `Partnerkonto ${k}`, r); pu[k] = r.id;
   r = await c.post(`/api/orgs/${org[o]}/users/${pu[k]}/invite`, {}, { who: 'gf' }); check(r.ok && r.mail === 'gesendet', `Einladung ${k} versendet`, r);
-  const acc = await c.post('/papi/invite/accept', { token: tokenFrom(r.link), password: 'Partner12345', agb: true, privacy: true }, { who: k });
+  const acc = await c.post('/papi/invite/accept', { token: tokenFrom(r.link), password: 'Partner12345!', agb: true, privacy: true }, { who: k });
   check(acc.ok, `${k}: Passwort + Zustimmungen`, acc);
 }
 r = await c.post(`/api/orgs/${org.A}/users/${pu.a_vt1}/reset`, { mode: 'link' }, { who: 'gf' }); check(r.status === 403, 'Nur Admin setzt Partner-Passwörter zurück');
@@ -252,19 +252,19 @@ r = await c.get('/api/audit', { who: 'gf' }); check(r.status === 403, 'Geschäft
 r = await c.post('/api/area/unlock', { password: 'falsch' }, { who: 'admin' }); check(r.status === 403, 'Falsches Bereichspasswort abgelehnt');
 r = await c.post('/api/area/unlock', { password: 'Test-Bereich-2026' }, { who: 'admin' }); check(r.ok, 'Bereichspasswort funktioniert');
 r = await c.get('/api/audit?q=angebot', { who: 'admin' }); check(r.ok && r.total > 0, 'Protokoll durchsuchbar', r.total);
-r = await c.post('/api/backups/password', { password: 'BackupGeheim2026' }, { who: 'admin' }); check(r.ok, 'Backup-Passwort festgelegt');
+r = await c.post('/api/backups/password', { password: 'BackupGeheim2026!' }, { who: 'admin' }); check(r.ok, 'Backup-Passwort festgelegt');
 r = await c.post('/api/backups', {}, { who: 'admin' }); check(r.ok, 'Backup erstellt');
 res = await c.call('GET', `/api/backups/${r.id}/download`, null, { who: 'admin', raw: true });
 const boxTxt = await res.text(); const box = JSON.parse(boxTxt);
 const { webcrypto } = await import('node:crypto'); const subtle = webcrypto.subtle;
 const ub = (s) => Uint8Array.from(Buffer.from(s, 'base64'));
-const base = await subtle.importKey('raw', new TextEncoder().encode('BackupGeheim2026'), 'PBKDF2', false, ['deriveKey']);
+const base = await subtle.importKey('raw', new TextEncoder().encode('BackupGeheim2026!'), 'PBKDF2', false, ['deriveKey']);
 check(box.alg === 'AES-256-GCM/PBKDF2-SHA256-100000', 'Backup-Verschlüsselung mit 100.000 Runden (Cloudflare-Grenze)');
 const key = await subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: ub(box.salt), iterations: +box.alg.split('-').pop() }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
 const plain = new Uint8Array(await subtle.decrypt({ name: 'AES-GCM', iv: ub(box.iv) }, key, ub(box.data)));
 const json = JSON.parse((await import('node:zlib')).gunzipSync(plain).toString());
 check(json.tables.requests.length >= 4 && json.tables.users.every((u) => u.pass_hash === '[geschützt]' || u.pass_hash === null) && json.security_report, 'Backup entschlüsselbar, Passwörter geschützt, Sicherheitsbericht enthalten');
-r = await c.post('/api/settings/area-password', { current: 'Test-Bereich-2026', next: 'NeuesBereich2026' }, { who: 'admin' }); check(r.ok, 'Admin ändert Bereichspasswort');
+r = await c.post('/api/settings/area-password', { current: 'Test-Bereich-2026', next: 'NeuesBereich2026!' }, { who: 'admin' }); check(r.ok, 'Admin ändert Bereichspasswort');
 
 console.log('15) News, Chat, Vertretung');
 r = await c.post('/api/news', { title: 'Neue Abläufe ab Montag', body: 'Bitte lesen.', audience: { type: 'roles', values: ['vertrieb'] } }, { who: 'gf' }); check(r.ok, 'GF veröffentlicht News für den Vertrieb');

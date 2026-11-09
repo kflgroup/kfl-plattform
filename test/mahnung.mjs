@@ -19,10 +19,10 @@ console.log('Konditionen bei bestehenden Partnern nachtragen (Live-Datenbank)');
 const worker = (await import('./wk.mjs')).default;
 const env = { DB: makeD1(), FILES: makeR2(), FORM_SECRET: SECRET, SETUP_TOKEN: 'setup-123', BREVO_API_KEY: 'test-brevo' };
 const sq = env.DB._sq, c = client(worker, env), q1 = (sql, ...a) => sq.prepare(sql).get(...a);
-await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123' }, { who: 'admin' });
+await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123!' }, { who: 'admin' });
 for (const [key, role] of [['gf', 'gf'], ['bh', 'buchhaltung'], ['tl', 'teamleitung']]) {
   const r = await c.post('/api/users', { email: key + '@kfl.de', name: key.toUpperCase(), role_key: role }, { who: 'admin' });
-  await c.post('/api/invite/accept', { token: r.invite.split('/').pop(), password: 'Passwort1234' }, { who: key });
+  await c.post('/api/invite/accept', { token: r.invite.split('/').pop(), password: 'Passwort1234!' }, { who: key });
 }
 console.log('Neuer Geschäftspartner');
 const org = (await c.post('/api/orgs', { name: 'Neu GmbH', kind: 'einzel', zip: '49451', email: 'info@neu.de', brands: ['Audi'] }, { who: 'gf' })).id;
@@ -56,6 +56,6 @@ inv = await day('2026-12-04T10:00:00Z');
 d = q1('SELECT * FROM dunnings WHERE invoice_id = ? ORDER BY id DESC', id);
 check(inv.dunning_level === 3 && d.fee === 79.8 && d.due_date === '2026-12-11' && Math.round(inv.fees * 100) === 8470, '2. Mahnung: 79,80 € Gebühr, Frist 7 Tage (11.12.)', d);
 inv = await day('2026-12-20T10:00:00Z'); check(inv.dunning_level === 3, 'Keine weitere Mahnstufe nach der 2. Mahnung');
-await c.post('/api/login', { email: 'bh@kfl.de', password: 'Passwort1234' }, { who: 'bh' });
+await c.post('/api/login', { email: 'bh@kfl.de', password: 'Passwort1234!' }, { who: 'bh' });
 r = await c.post(`/api/acc/invoices/${id}/dunning`, {}, { who: 'bh' }); check(r.status === 409 && /Inkasso/.test(r.error), 'Manuell: Hinweis auf Inkasso / gerichtliches Mahnverfahren');
 console.log(check.fails ? `\n${check.fails} FEHLER` : '\nMAHNWESEN-TEST BESTANDEN');

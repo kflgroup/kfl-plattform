@@ -542,6 +542,7 @@ async function handleStaffApi(ctx, url) {
   if (path.startsWith('/acc/')) return handleAccounting(ctx, u, path.slice(4), method, body, q, url);
 
   /* ---------- Statistik ---------- */
+  if (path === '/search' && method === 'GET') return out({ ok: true, ...(await globalSearch(ctx, u, q.q)) });
   if (path === '/stats/overview' && method === 'GET') { requirePerm(u, 'stats_view'); return out({ ok: true, ...(await statsOverview(ctx, q)) }); }
   if (path === '/stats/staff' && method === 'GET') { need(can(u, 'stats_view') || can(u, 'team_stats'), 403, 'Dafür fehlt dir die Berechtigung.'); return out({ ok: true, staff: await staffPerformance(ctx, q, !can(u, 'stats_view')) }); }
   if (path === '/stats/partners' && method === 'GET') { need(can(u, 'stats_view') || can(u, 'partner_stats'), 403, 'Dafür fehlt dir die Berechtigung.'); return out({ ok: true, partners: await partnerPerformance(ctx, q) }); }
@@ -594,7 +595,17 @@ async function handleStaffApi(ctx, url) {
     need(can(u, 'support_view') || own, 403, 'Dafür fehlt dir die Berechtigung.');
     if (!m[2] && method === 'GET') {
       const msgs = await DB.all(db, `SELECT * FROM ticket_messages WHERE ticket_id = ? ${can(u, 'support_view') ? '' : 'AND internal = 0'} ORDER BY id`, tk.id);
-      return out({ ok: true, ticket: { ...tk, payload: jparse(tk.payload, null) }, messages: msgs });
+      // Geschäftspartner zur E-Mail des Anfragenden (auch bei Tickets über die Webseite)
+      let partner = null;
+      if (can(u, 'partner_view')) {
+        if (tk.org_id) {
+          const o = await DB.one(db, 'SELECT id, name, city, active FROM orgs WHERE id = ?', tk.org_id);
+          const pu = tk.requester_type === 'partner' && tk.requester_id ? await DB.one(db, 'SELECT id, name, role, active FROM partner_users WHERE id = ? AND org_id = ?', tk.requester_id, tk.org_id) : null;
+          if (o) partner = { org_id: o.id, org_name: o.name, city: o.city || '', active: !!o.active, via: pu ? 'konto' : 'zuordnung', user: pu ? { id: pu.id, name: pu.name, role: pu.role, active: !!pu.active } : null };
+        }
+        if (!partner) partner = await partnerByEmail(ctx, tk.requester_email);
+      }
+      return out({ ok: true, ticket: { ...tk, payload: jparse(tk.payload, null) }, messages: msgs, partner });
     }
     if (m[2] === 'reply' && method === 'POST') {
       if (!own) requirePerm(u, 'support_manage');

@@ -137,7 +137,7 @@ npm run serve      # lokaler Testserver mit Beispieldaten: http://localhost:8787
 npm run test:ui    # Klicktests beider Oberflächen (Playwright, Testserver muss laufen)
 ```
 
-Testzugänge des lokalen Servers (nur lokal): `admin@kfl.de` / `AdminPass123`, Mitarbeiter `gf|tl|vt|bh@kfl.de` / `Passwort1234`, Partner `a_gf|a_vl|a_vt1@partner.de` / `Partner12345`.
+Testzugänge des lokalen Servers (nur lokal): `admin@kfl.de` / `AdminPass123!`, Mitarbeiter `gf|tl|vt|bh@kfl.de` / `Passwort1234!`, Partner `a_gf|a_vl|a_vt1@partner.de` / `Partner12345!`.
 
 ## Noch offen / später
 

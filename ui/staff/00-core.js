@@ -42,7 +42,7 @@ function shell(active) {
       <div class="content">
         <header class="topbar" id="stop"><button class="icon-btn tb-menu" data-act="toggleNav" aria-label="Menü">${icon('menu')}</button><a href="#/" class="tb-logo" aria-label="Zu Home">${LOGO}</a>
           <div class="tb-crumb" id="scrumb"></div>
-          ${can('req_view') ? html`<form class="tb-search" data-submit="globalSearch" role="search"><label>${icon('search')}<input name="q" placeholder="Anfrage suchen: Nummer, Name, Marke, PLZ" aria-label="Anfragen durchsuchen" autocomplete="off"></label></form>` : html`<span class="spacer"></span>`}
+          ${canAny('req_view', 'partner_view', 'customers_view', 'acc_view', 'support_view', 'users_view') ? html`<form class="tb-search" data-submit="globalSearch" role="search"><label>${icon('search')}<input name="q" placeholder="Suchen: Name, E-Mail, Anfragenummer, PLZ …" aria-label="Alles durchsuchen" autocomplete="off"></label></form>` : html`<span class="spacer"></span>`}
           <span class="tb-chip">${icon('calendar')}${fDate(new Date())} · KW ${isoWeekOf().week}</span><span id="sbell"></span></header>
         <main class="main" id="main" tabindex="-1"></main></div></div>`);
   }
@@ -62,7 +62,8 @@ function renderNav() {
   render('#scrumb', html`<span>KFL</span><span class="sep">/</span><b>${CRUMB[S.active] || ''}</b>`);
   render('#sbell', html`<a class="tb-bell" href="#/news" aria-label="News${S.unread ? ` (${S.unread} ungelesen)` : ''}" title="News">${icon('bell')}${S.unread ? html`<span class="count">${S.unread > 99 ? '99+' : S.unread}</span>` : ''}</a>`);
 }
-SUBMIT.globalSearch = (d, f) => { const q = String(d.q || '').trim(); if (!q) return; f.reset(); const n = q.replace(/^#/, ''); location.hash = /^#\d{3,}$|^\d{4}$/.test(q) ? '#/anfragen/' + n : '#/anfragen' + qs({ view: 'alle', q }); };
+// Anfragenummer → direkt zur Anfrage, sonst Suche über alle Bereiche (E-Mail-Adressen von Kunden, Partnern, Mitarbeitern, Lieferanten …)
+SUBMIT.globalSearch = (d, f) => { const q = String(d.q || '').trim(); if (!q) return; if (f.closest('.topbar')) f.reset(); const n = q.replace(/^#/, ''); location.hash = can('req_view') && (/^#\d{3,}$|^\d{4}$/.test(q)) ? '#/anfragen/' + n : '#/suche' + qs({ q }); };
 window.addEventListener('scroll', () => { const t = $('#stop'); if (t) t.classList.toggle('scrolled', window.scrollY > 4); }, { passive: true });
 ACT.toggleNav = () => document.body.classList.toggle('nav-open');
 

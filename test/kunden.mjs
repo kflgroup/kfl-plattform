@@ -39,10 +39,10 @@ globalThis.fetch = async (input, init = {}) => {
 const worker = (await import('./wk.mjs')).default;
 const env = { DB: makeD1(), FILES: makeR2(), FORM_SECRET: SECRET, SETUP_TOKEN: 'setup-123' };
 const sq = env.DB._sq, c = client(worker, env), qa = (sql, ...a) => sq.prepare(sql).all(...a);
-await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123' }, { who: 'admin' });
+await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123!' }, { who: 'admin' });
 for (const [key, role, name] of [['gf', 'gf', 'Greta GF'], ['bh', 'buchhaltung', 'Berta BH'], ['vt', 'vertrieb', 'Vera Vertrieb']]) {
   const r = await c.post('/api/users', { email: key + '@kfl.de', name, role_key: role }, { who: 'admin' });
-  await c.post('/api/invite/accept', { token: r.invite.split('/').pop(), password: 'Passwort1234' }, { who: key });
+  await c.post('/api/invite/accept', { token: r.invite.split('/').pop(), password: 'Passwort1234!' }, { who: key });
 }
 // Anfrage desselben Kunden mit Einwilligungen (wie vom Formular der Webseite)
 sq.prepare("INSERT INTO requests (type, status, customer_name, email, brand, model, vehicle, customer_account, data, created_at, updated_at) VALUES ('deal', 'eingang', 'Max Muster', 'max@kunde.test', 'Audi', 'A4', 'Audi A4', '11134009573715', ?, '2026-11-01T10:00:00Z', '2026-11-01T10:00:00Z')")

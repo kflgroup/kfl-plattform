@@ -118,6 +118,30 @@ async function handlePartnerApi(ctx, url) {
     const sess = await createSessionRow(db, 'partner_sessions', u.id);
     return out({ ok: true }, 200, { 'Set-Cookie': cookieHeader(PARTNER_COOKIE, sess.token, sess.maxAge) });
   }
+  // „Passwort vergessen“: neues vorläufiges Passwort per E-Mail – Antwort immer gleich, damit niemand prüfen kann, welche Adressen ein Konto haben
+  if (path === '/forgot' && method === 'POST') {
+    const email = str(body.email, 200).toLowerCase().trim();
+    need(emailOk(email), 400, 'Bitte gib deine E-Mail-Adresse ein.');
+    const done = out({ ok: true, message: 'Wenn diese E-Mail-Adresse bei uns hinterlegt ist, bekommst du in wenigen Minuten ein neues Passwort per E-Mail.' });
+    need((await DB.val(db, "SELECT COUNT(*) FROM audit WHERE action = 'partner_passwort_vergessen' AND ip = ? AND at >= ?", ctx.ipHash || '-', isoOf(nowMs() - 3600e3))) < 5, 429, 'Zu viele Anfragen. Bitte versuche es später erneut.');
+    const u = await DB.one(db, 'SELECT u.*, o.active AS org_active, o.deleted AS org_deleted FROM partner_users u JOIN orgs o ON o.id = u.org_id WHERE lower(u.email) = ?', email);
+    ctx.actor = { type: 'web', name: email };
+    if (!u || !u.active || !u.org_active || u.org_deleted || (u.locked_until && u.locked_until > '9000')) { await audit(ctx, 'partner_passwort_vergessen', 'partnerkonto', u ? u.id : null, { ergebnis: 'kein aktives Konto' }); return done; }
+    // höchstens alle 10 Minuten ein neues Passwort je Konto
+    if (u.temp_pw_at && nowMs() - msOf(u.temp_pw_at) < 10 * 60e3) { await audit(ctx, 'partner_passwort_vergessen', 'partnerkonto', u.id, { ergebnis: 'bereits gesendet' }); return done; }
+    if (!u.pass_hash) {
+      // Konto noch nicht aktiviert → neue Einladung statt Passwort
+      const inv = await newInvite(); await DB.update(db, 'partner_users', u.id, { invite_hash: inv.hash, invite_expires: inv.expires, temp_pw_at: nowIso() });
+      const r = await sendPartnerInvite(ctx, u.id, inv.token);
+      await audit(ctx, 'partner_passwort_vergessen', 'partnerkonto', u.id, { ergebnis: 'Einladung erneut gesendet', mail: r.status });
+      return done;
+    }
+    const pw = randomPassword(12), h = await hashPassword(pw);
+    await DB.update(db, 'partner_users', u.id, { temp_pw_hash: h.hash, temp_pw_salt: h.salt, temp_pw_expires: isoOf(nowMs() + 24 * 3600e3), temp_pw_at: nowIso() });
+    const r = await sendPartnerInvite(ctx, u.id, null, { tempPassword: pw, forgot: true });
+    await audit(ctx, 'partner_passwort_vergessen', 'partnerkonto', u.id, { ergebnis: 'vorläufiges Passwort gesendet', mail: r.status });
+    return done;
+  }
   if (path === '/support-public' && method === 'POST') {
     if (body.website) return out({ ok: true });
     const name = str(body.name, 80), email = str(body.email, 200).toLowerCase(), message = str(body.message, 4000);

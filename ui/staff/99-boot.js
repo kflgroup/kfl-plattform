@@ -17,6 +17,7 @@ Router
   .on(/^#\/news\/?([a-z]*)/, (sub) => pageNews(sub))
   .on(/^#\/verwaltung\/?([a-z]*)/, (t) => pageAdmin(t))
   .on(/^#\/einstellungen/, () => pageAdmin('einstellungen'))
+  .on(/^#\/suche(\?.*)?$/, () => pageSearch())
   .on(/^#\/backup/, () => pageBackup())
   .on(/^#\/protokoll/, () => pageAudit());
 Router.fallback = () => { location.hash = '#/'; };

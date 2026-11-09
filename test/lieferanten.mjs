@@ -5,10 +5,10 @@ setNow('2026-11-08T09:00:00Z');
 const worker = (await import('./wk.mjs')).default;
 const env = { DB: makeD1(), FILES: makeR2(), FORM_SECRET: SECRET, SETUP_TOKEN: 'setup-123', BREVO_API_KEY: 'test-brevo' };
 const sq = env.DB._sq, c = client(worker, env), q1 = (sql, ...a) => sq.prepare(sql).get(...a), qa = (sql, ...a) => sq.prepare(sql).all(...a);
-await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123' }, { who: 'admin' });
+await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123!' }, { who: 'admin' });
 for (const [key, role, name] of [['bh', 'buchhaltung', 'Berta BH'], ['tl', 'teamleitung', 'Theo TL']]) {
   const r = await c.post('/api/users', { email: key + '@kfl.de', name, role_key: role }, { who: 'admin' });
-  await c.post('/api/invite/accept', { token: r.invite.split('/').pop(), password: 'Passwort1234' }, { who: key });
+  await c.post('/api/invite/accept', { token: r.invite.split('/').pop(), password: 'Passwort1234!' }, { who: key });
 }
 const sup = (orgId) => q1('SELECT * FROM suppliers WHERE org_id = ?', orgId);
 
@@ -81,7 +81,7 @@ const ostOrg = q1("SELECT id FROM orgs WHERE name = 'Altpartner Ost'").id, mitte
 sq.prepare("UPDATE suppliers SET org_id = NULL WHERE org_id IN (?, ?)").run(ostOrg, mitteOrg);
 sq.prepare("DELETE FROM settings WHERE key IN ('_org_suppliers_v1', '_schema_v')").run();
 const worker2 = (await import('./wk.mjs?neu')).default, c2 = client(worker2, env);
-await c2.post('/api/login', { email: 'bh@kfl.de', password: 'Passwort1234' }, { who: 'bh' });
+await c2.post('/api/login', { email: 'bh@kfl.de', password: 'Passwort1234!' }, { who: 'bh' });
 list = await c2.get('/api/acc/suppliers', { who: 'bh' });
 const ost = qa('SELECT * FROM suppliers WHERE org_id = ?', ostOrg);
 check(list.ok && ost.length === 1 && ost[0].iban === 'DE89370400440532013000', 'Altpartner mit gleichnamigem Lieferanten verknüpft (ältester, mit IBAN)');
@@ -92,6 +92,6 @@ check(!sup(wegOrg), 'Gelöschter Altpartner wird nicht übernommen');
 const before = q1('SELECT COUNT(*) AS n FROM suppliers').n;
 sq.prepare("DELETE FROM settings WHERE key = '_schema_v'").run();
 const worker3 = (await import('./wk.mjs?neu2')).default, c3 = client(worker3, env);
-await c3.post('/api/login', { email: 'bh@kfl.de', password: 'Passwort1234' }, { who: 'bh' });
+await c3.post('/api/login', { email: 'bh@kfl.de', password: 'Passwort1234!' }, { who: 'bh' });
 await c3.get('/api/acc/suppliers', { who: 'bh' });
 check(q1('SELECT COUNT(*) AS n FROM suppliers').n === before, 'Übernahme läuft nur einmal');

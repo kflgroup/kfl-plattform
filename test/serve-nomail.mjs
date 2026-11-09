@@ -10,11 +10,11 @@ const tok = (l) => l.split('/').pop();
 const ok = (r, m) => { if (r.ok === false || (r.status && r.status >= 400)) { console.error('Seed-Fehler', m, r); } return r; };
 
 if (!process.env.EMPTY) {
-  ok(await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Krusch', password: 'AdminPass123' }, { who: 'admin' }), 'setup');
+  ok(await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Krusch', password: 'AdminPass123!' }, { who: 'admin' }), 'setup');
   const staff = {};
   for (const [k, name, role] of [['gf', 'Anna Lindner', 'gf'], ['tl', 'Jonas Becker', 'teamleitung'], ['vt', 'Mia Schröder', 'vertrieb'], ['vt2', 'Lukas Wagner', 'vertrieb'], ['bh', 'Sophie Hartmann', 'buchhaltung']]) {
     const r = ok(await c.post('/api/users', { email: k + '@kfl.de', name, role_key: role, department: role === 'buchhaltung' ? 'Finanzen' : 'Vertrieb' }, { who: 'admin' }), 'user');
-    await c.post('/api/invite/accept', { token: tok(r.invite), password: 'Passwort1234' }, { who: k }); staff[k] = r.id;
+    await c.post('/api/invite/accept', { token: tok(r.invite), password: 'Passwort1234!' }, { who: k }); staff[k] = r.id;
   }
   await c.patch('/api/settings', { lead_price_deal: 49, lead_price_sell: 39, company_iban: 'DE02120300000000202051', company_tax_no: '64/123/45678', company_owners: 'Tobias Krusch' }, { who: 'admin' });
   const org = {};
@@ -27,7 +27,7 @@ if (!process.env.EMPTY) {
   for (const [k, o, role, name] of [['a_gf', 'A', 'gf', 'Markus Alpha'], ['a_vl', 'A', 'vl', 'Petra Vogel'], ['a_vt1', 'A', 'vt', 'Kevin Brandt'], ['a_vt2', 'A', 'vt', 'Laura Meyer'], ['b_gf', 'B', 'gf', 'Henrik Bremer'], ['c_vt', 'C', 'vt', 'Ole Janssen'], ['c_gf', 'C', 'gf', 'Frauke Janssen']]) {
     const r = ok(await c.post(`/api/orgs/${org[o]}/users`, { email: k + '@partner.de', name, role }, { who: 'admin' }), 'pu');
     const inv = await c.post(`/api/orgs/${org[o]}/users/${r.id}/invite`, {}, { who: 'admin' });
-    if (k !== 'c_gf') await c.post('/papi/invite/accept', { token: tok(inv.link), password: 'Partner12345', agb: true, privacy: true }, { who: k });
+    if (k !== 'c_gf') await c.post('/papi/invite/accept', { token: tok(inv.link), password: 'Partner12345!', agb: true, privacy: true }, { who: k });
   }
   await c.post(`/api/orgs/${org.A}/training`, { done: true }, { who: 'admin' });
   const kid = '11134009573715';

@@ -6,7 +6,7 @@ const env = { DB: makeD1(), FILES: makeR2(), FORM_SECRET: SECRET, SETUP_TOKEN: '
 const c = client(worker, env); const q1 = (sql, ...a) => env.DB._sq.prepare(sql).get(...a);
 console.log('Automatische Jobs');
 setNow('2026-11-01T00:10:00Z'); // 1:10 Uhr Berliner Zeit
-await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123' }, { who: 'admin' });
+await c.post('/api/setup', { token: 'setup-123', email: 'admin@kfl.de', name: 'Tobias Admin', password: 'AdminPass123!' }, { who: 'admin' });
 env.DB._sq.prepare("INSERT OR REPLACE INTO jobs (key, last_run, last_result) VALUES ('backup', '2026-10-31', ?)").run(JSON.stringify('läuft seit 2026-10-31T23:30:00.000Z'));
 await cron(worker, env);
 const b = q1("SELECT * FROM jobs WHERE key = 'backup'");
