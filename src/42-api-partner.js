@@ -83,12 +83,98 @@ function offerSuggestions(text) {
     transfer_cost: find([new RegExp('(?:Überführung|Ueberfuehrung|Bereitstellung|Zulassung)[^0-9]{0,60}' + amount, 'i')]),
     term_months: find([/(?:Laufzeit|Vertragslaufzeit)[^0-9]{0,30}([0-9]{2})\s*(?:Monate|Mon)/i, /([0-9]{2})\s*Monate/i]),
     km_per_year: find([/([0-9]{1,3}[.\s]?[0-9]{3})\s*km\s*(?:\/|pro|p\.)\s*(?:Jahr|a)/i, /(?:Fahrleistung|Laufleistung)[^0-9]{0,30}([0-9]{1,3}[.\s]?[0-9]{3})/i]),
+    buy_price: find([new RegExp('(?:Ankaufs?preis|Inzahlungnahme(?:preis|wert)?|Ankaufswert|Ankaufangebot)[^0-9]{0,40}' + amount, 'i')]),
     upe: find([new RegExp('(?:UPE|Listenpreis|unverbindliche Preisempfehlung)[^0-9]{0,40}' + amount, 'i')]),
     mileage: find([/(?:Kilometerstand|km-Stand|Laufleistung)[^0-9]{0,20}([0-9]{1,3}[.\s]?[0-9]{3})\s*km/i])
   };
   const herst = text.match(/(?:Konfigurationscode|Konfigurations-?Nr|Code)[:\s]*([A-Z0-9-]{6,20})/i);
   if (herst) sug.herstellercode = herst[1];
   return Object.fromEntries(Object.entries(sug).filter(([, v]) => v !== null && v !== undefined));
+}
+
+/* ---------- Angebots-PDF des Partners auslesen (Kauf, Finanzierung, Leasing, Ankauf) ----------
+   1. Text: Cloudflare Workers AI (toMarkdown) – liest auch PDFs mit eingebetteten Schriften zuverlässig; Ersatz: eigener Textleser
+   2. Eckdaten: KI mit festem JSON-Schema je Angebotsart; Ersatz/Ergänzung: Muster-Erkennung (offerSuggestions)
+   3. Beträge werden auf die im Formular geforderte Basis (brutto/netto) umgerechnet und auf Plausibilität geprüft */
+const OFFER_PDF_FIELDS = {
+  kauf: ['price', 'transfer_cost', 'service_cost', 'insurance_cost', 'delivery', 'valid_until', 'herstellercode', 'first_registration', 'mileage', 'upe', 'owners', 'accident_free'],
+  finanzierung: ['price', 'monthly_rate', 'final_rate', 'term_months', 'down_payment', 'transfer_cost', 'service_cost', 'insurance_cost', 'delivery', 'valid_until', 'herstellercode', 'first_registration', 'mileage', 'upe', 'owners', 'accident_free'],
+  leasing: ['monthly_rate', 'km_per_year', 'term_months', 'down_payment', 'transfer_cost', 'service_cost', 'insurance_cost', 'delivery', 'valid_until', 'herstellercode', 'upe', 'first_registration', 'mileage'],
+  ankauf: ['buy_price', 'pickup', 'valid_until']
+};
+const OFFER_MONEY = ['price', 'monthly_rate', 'final_rate', 'down_payment', 'transfer_cost', 'service_cost', 'insurance_cost', 'buy_price', 'upe'];
+const OFFER_PDF_SCHEMA = { type: 'object', properties: {
+  vehicle: { type: 'string', description: 'Marke, Modell und Variante, z. B. "Audi A3 Sportback 35 TFSI S line"' },
+  price_basis: { type: 'string', enum: ['brutto', 'netto'], description: 'Sind die Beträge inkl. MwSt. (brutto) oder zzgl. MwSt. (netto)?' },
+  price: { type: 'number', description: 'Kaufpreis / Hauspreis / Barpreis des Fahrzeugs (nach Rabatt), ohne Überführung' },
+  upe: { type: 'number', description: 'UPE / Listenpreis / Neupreis' },
+  monthly_rate: { type: 'number', description: 'monatliche Leasing- oder Finanzierungsrate ohne Service/Versicherung' },
+  final_rate: { type: 'number', description: 'Schlussrate / Restrate (Finanzierung, Ballon)' },
+  term_months: { type: 'number', description: 'Laufzeit in Monaten' },
+  km_per_year: { type: 'number', description: 'Fahrleistung in km pro Jahr' },
+  down_payment: { type: 'number', description: 'Anzahlung bzw. Leasingsonderzahlung' },
+  transfer_cost: { type: 'number', description: 'Überführungs- und Zulassungskosten zusammen' },
+  service_cost: { type: 'number', description: 'Servicepaket Wartung & Inspektion pro Monat' },
+  insurance_cost: { type: 'number', description: 'Versicherung / Kasko pro Monat' },
+  buy_price: { type: 'number', description: 'Ankaufpreis für das Fahrzeug des Kunden' },
+  delivery: { type: 'string', description: 'Lieferzeit / Verfügbarkeit, z. B. "sofort" oder "ca. 8 Wochen" oder "KW 12/2027"' },
+  valid_until: { type: 'string', description: 'Angebot gültig bis, YYYY-MM-DD' },
+  herstellercode: { type: 'string', description: 'Konfigurations-, Bestell- oder Herstellercode' },
+  first_registration: { type: 'string', description: 'Erstzulassung MM/JJJJ' },
+  mileage: { type: 'number', description: 'Kilometerstand' },
+  owners: { type: 'number', description: 'Anzahl Vorbesitzer' },
+  accident_free: { type: 'boolean' },
+  pickup: { type: 'string', description: 'Abholung / Übergabe des Ankauffahrzeugs' } } };
+const OFFER_KIND_TEXT = { kauf: 'Kaufangebot (Barkauf)', finanzierung: 'Finanzierungsangebot', leasing: 'Leasingangebot', ankauf: 'Ankaufangebot für das Fahrzeug des Kunden (Inzahlungnahme/Ankauf)' };
+async function extractOfferPdf(ctx, bytes, kind, vat) {
+  const env = ctx.env; let text = '', ai = null, method = 'keine';
+  if (env.AI) {
+    try {
+      const res = await env.AI.toMarkdown({ name: 'angebot.pdf', blob: new Blob([bytes], { type: 'application/pdf' }) }, { conversionOptions: { output: { format: 'text' } } });
+      const one = Array.isArray(res) ? res[0] : res; if (one && one.format !== 'error') text = String(one.data || '');
+    } catch (e) { console.log('Angebots-PDF toMarkdown', e.message); }
+  }
+  if (!text.trim()) text = await pdfText(bytes);
+  if (env.AI && text.trim().length > 20) {
+    try {
+      const res = await env.AI.run(INBOX_MODEL, { max_tokens: 600, response_format: { type: 'json_schema', json_schema: OFFER_PDF_SCHEMA }, messages: [
+        { role: 'system', content: `Du liest ein ${OFFER_KIND_TEXT[kind] || 'Fahrzeugangebot'} eines Autohauses aus. Antworte nur mit JSON nach Schema. Beträge als Zahl in Euro (z. B. 34990.5), Laufzeit in Monaten, Datum als YYYY-MM-DD. Nur Werte übernehmen, die eindeutig im Dokument stehen – nichts schätzen oder berechnen; fehlende Werte weglassen. Bei Leasing ist monthly_rate die Leasingrate ohne Service- und Versicherungspakete.` },
+        { role: 'user', content: text.slice(0, 14000) }] });
+      ai = typeof res.response === 'string' ? JSON.parse(res.response) : res.response;
+      if (ai && typeof ai === 'object') method = 'ki'; else ai = null;
+    } catch (e) { console.log('Angebots-PDF KI', e.message); }
+  }
+  if (method !== 'ki' && text.trim()) method = 'text';
+  const rx = text.trim() ? offerSuggestions(text) : {};
+  const allowed = OFFER_PDF_FIELDS[kind] || OFFER_PDF_FIELDS.kauf, out = {};
+  // Netto/Brutto: KI-Angabe, sonst Hinweise im Text
+  const basis = (ai && ai.price_basis) || (/zzgl\.?\s*(?:\d{1,2}\s*%\s*)?(?:MwSt|USt|Mehrwertsteuer)|netto/i.test(text) && !/inkl\.?\s*(?:\d{1,2}\s*%\s*)?(?:MwSt|USt|Mehrwertsteuer)/i.test(text) ? 'netto' : 'brutto');
+  const factor = vat === 'netto' && basis === 'brutto' ? 1 / 1.19 : vat === 'brutto' && basis === 'netto' ? 1.19 : 1;
+  // Schutz vor erfundenen Werten: jede Zahl der KI muss so auch im Dokument stehen
+  const digits = text.replace(/(\d)[.\s'](?=\d{3}\b)/g, '$1');
+  const inDoc = (n) => new RegExp('(^|[^0-9])' + Math.floor(n) + '([^0-9]|$)').test(digits);
+  for (const k of allowed) {
+    const fromAi = ai && ai[k] !== undefined && ai[k] !== null && ai[k] !== '';
+    let v = fromAi ? ai[k] : rx[k];
+    if (v === undefined || v === null || v === '') continue;
+    if (OFFER_MONEY.includes(k) || ['term_months', 'km_per_year', 'mileage', 'owners'].includes(k)) {
+      v = typeof v === 'number' ? v : inNum(v); if (v === null || !(v > 0)) continue;
+      if (fromAi && k !== 'owners' && !inDoc(v)) { if (rx[k] === undefined) continue; v = rx[k]; }
+    }
+    if (OFFER_MONEY.includes(k) && k !== 'upe') v = round2(v * factor);
+    if (k === 'term_months') { v = Math.round(v); if (v < 6 || v > 120) continue; }
+    if (k === 'km_per_year') { v = Math.round(v); if (v < 2500 || v > 100000) continue; }
+    if (k === 'monthly_rate' && v > 20000) continue;
+    if (['price', 'buy_price'].includes(k) && (v < 500 || v > 2e6)) continue;
+    if (k === 'mileage' || k === 'owners') v = Math.round(v);
+    if (k === 'owners' && v > 20) continue;
+    if (k === 'valid_until') { v = inDate(v); if (!v || v < berlinDate(nowMs())) continue; }
+    if (k === 'first_registration') { const m = String(v).match(/(\d{1,2})[./-](\d{4})/) || String(v).match(/(\d{4})-(\d{2})/); if (!m) continue; v = m[1].length === 4 ? `${m[2]}/${m[1]}` : `${m[1].padStart(2, '0')}/${m[2]}`; }
+    if (k === 'accident_free') { if (typeof v !== 'boolean') continue; v = v ? 'ja' : 'nein'; }
+    if (typeof v === 'string') v = v.trim().slice(0, 120);
+    out[k] = v;
+  }
+  return { suggestions: out, vehicle: ai && typeof ai.vehicle === 'string' ? ai.vehicle.trim().slice(0, 120) : '', basis, converted: factor !== 1, method, textFound: text.trim().length > 20 };
 }
 
 async function handlePartnerApi(ctx, url) {
@@ -272,8 +358,11 @@ async function handlePartnerApi(ctx, url) {
     if (sub === 'parse-pdf' && method === 'POST') {
       need(a.taken_by === p.id, 403, 'Bitte übernimm die Anfrage zuerst.');
       need(body.base64, 400, 'Bitte eine PDF-Datei auswählen.');
-      const text = await pdfText(unb64(body.base64));
-      return out({ ok: true, suggestions: offerSuggestions(text), textFound: text.length > 20 });
+      const req = await DB.one(db, 'SELECT type, pay_kind FROM requests WHERE id = ?', a.request_id);
+      const kind = req.type === 'sell' ? 'ankauf' : ({ kaufen: 'kauf', finanzieren: 'finanzierung', leasen: 'leasing' }[req.pay_kind] || 'kauf');
+      const r = await extractOfferPdf(ctx, unb64(body.base64), kind, body.vat === 'netto' ? 'netto' : 'brutto');
+      await audit(ctx, 'partner_angebot_pdf_gelesen', 'zuordnung', a.id, { art: kind, verfahren: r.method, felder: Object.keys(r.suggestions).length });
+      return out({ ok: true, kind, ...r });
     }
   }
 

@@ -116,8 +116,8 @@ function offerFields(a, px = '') {
   const n = (x) => px + x;
   const money = (name, label, req, hint) => field(`${label}${req ? ' *' : ''} (${vat})`, inp(n(name), '', { req, ph: '0,00', attrs: 'inputmode="decimal"' }), hint);
   const seg = (name, opts, req) => html`<div class="seg">${opts.map(([v, l], i) => html`<label><input type="radio" name="${n(name)}" value="${v}" ${req && i === 0 ? raw('required') : ''}><span>${l}</span></label>`)}</div>`;
-  return html`<div class="pdf-drop"><b>Angebot als PDF hochladen</b><span class="small muted">Optional. Wir lesen die Eckdaten aus und tragen sie unten ein – bitte prüfen. Der Kunde sieht das Angebot neutral ohne deine Firmendaten.</span>
-      <input type="file" name="${n('pdf')}" accept="application/pdf" data-change="pparsePdf" data-aid="${a.id}" data-px="${px}"><div id="${n('sugg')}"></div></div>
+  return html`<div class="pdf-drop"><b>Angebot als PDF hochladen</b><span class="small muted">Empfohlen. Wir lesen Preis, Rate, Laufzeit und weitere Eckdaten automatisch aus und tragen sie unten ein – bitte prüfen. Der Kunde sieht das Angebot neutral ohne deine Firmendaten.</span>
+      <input type="file" name="${n('pdf')}" accept="application/pdf" data-change="pparsePdf" data-aid="${a.id}" data-px="${px}" data-vat="${vat}"><div id="${n('sugg')}"></div></div>
     ${kind !== 'ankauf' ? html`<div class="field"><span class="field-label">Konfiguration *</span><div class="seg"><label><input type="radio" name="${n('config')}" value="gleich" checked data-change="pconfig" data-px="${px}"><span>Wie angefragt</span></label><label><input type="radio" name="${n('config')}" value="alternativ" data-change="pconfig" data-px="${px}"><span>Alternative</span></label></div></div>
       <div id="${n('altBox')}" class="stack hide">${field('Herstellercode / Konfigurationscode', inp(n('herstellercode'), '', { ph: 'z. B. AUDI-A4-XYZ123' }))}${field('Exposé (PDF)', raw(`<input type="file" name="${n('expose')}" accept="application/pdf">`))}</div>` : ''}
     <div class="field"><span class="field-label">${kind === 'ankauf' ? 'Entsprechen die Fahrzeugangaben deiner Einschätzung? *' : 'Entspricht die Ausstattung der Anfrage? *'}</span>${seg('equipment_match', [['ja', 'Ja'], ['nein', 'Nein']], true)}</div>
@@ -160,14 +160,26 @@ function comboForm(a) {
       <div class="sticky-submit"><button class="btn btn-primary btn-block" type="submit">${icon('send')}${both ? 'Beide Angebote senden' : tradeOpen ? 'Inzahlungnahme-Angebot senden' : 'Angebot senden'}</button></div>` : ''}</div></form>`;
 }
 CHANGE.pconfig = (el) => { $('#' + (el.dataset.px || '') + 'altBox').classList.toggle('hide', el.value !== 'alternativ'); };
+const PDF_LABELS = { price: 'Kaufpreis', monthly_rate: 'Rate', final_rate: 'Schlussrate', term_months: 'Laufzeit', km_per_year: 'km/Jahr', down_payment: 'Anzahlung', transfer_cost: 'Überführung', service_cost: 'Service', insurance_cost: 'Versicherung', delivery: 'Lieferzeit', valid_until: 'Gültigkeit', herstellercode: 'Herstellercode', first_registration: 'Erstzulassung', mileage: 'Kilometerstand', upe: 'UPE', owners: 'Vorbesitzer', accident_free: 'Unfallfrei', buy_price: 'Ankaufpreis', pickup: 'Abholung' };
 CHANGE.pparsePdf = async (el) => {
   const file = await fileField(el, { max: 8 }); if (!file) return;
-  const px = el.dataset.px || '', box = '#' + px + 'sugg';
-  render(box, html`<div class="sugg">Wird ausgelesen …</div>`);
-  const r = await POST(`/requests/${el.dataset.aid || PA.id}/parse-pdf`, { base64: file.base64 });
-  const s = r.suggestions || {}, form = el.form; let n = 0;
-  for (const [k, v] of Object.entries(s)) { const i = form.elements[px + k]; if (i && !i.value) { i.value = typeof v === 'number' && !['km_per_year', 'term_months', 'mileage'].includes(k) ? v.toFixed(2).replace('.', ',') : v; n++; } }
-  render(box, html`<div class="sugg">${n ? `${plural(n, 'Feld', 'Felder')} aus der PDF übernommen – bitte prüfen.` : r.textFound ? 'Keine Eckdaten erkannt – bitte manuell eintragen.' : 'Die PDF enthält keinen lesbaren Text (z. B. Scan). Bitte Eckdaten manuell eintragen.'}</div>`);
+  const px = el.dataset.px || '', box = '#' + px + 'sugg', form = el.form;
+  const vat = el.dataset.vat === 'netto' ? 'netto' : 'brutto';
+  render(box, html`<div class="sugg is-busy"><span class="spinner"></span>Angebot wird ausgelesen …</div>`);
+  let r;
+  try { r = await POST(`/requests/${el.dataset.aid || PA.id}/parse-pdf`, { base64: file.base64, vat }); } catch (e) { render(box, html`<div class="sugg">Die PDF konnte nicht ausgelesen werden – bitte Eckdaten manuell eintragen.</div>`); return; }
+  const s = r.suggestions || {}, done = [];
+  for (const [k, v] of Object.entries(s)) {
+    const i = form.elements[px + k]; if (!i) continue;
+    if (i instanceof RadioNodeList) { if (!i.value) { i.value = v; if (i.value === v) done.push(k); } continue; }
+    // Leere oder unveränderte (vorbelegte) Felder übernehmen – eigene Eingaben bleiben
+    if (i.value && i.value !== i.defaultValue) continue;
+    const val = typeof v === 'number' && !['km_per_year', 'term_months', 'mileage', 'owners'].includes(k) ? v.toFixed(2).replace('.', ',') : String(v);
+    if (i.value === val) continue;
+    i.value = val; i.classList.add('is-filled'); done.push(k);
+  }
+  render(box, html`<div class="sugg ${done.length ? 'ok' : ''}">${done.length ? html`<b>${icon('check')}${plural(done.length, 'Feld', 'Felder')} aus deinem Angebot übernommen</b>${r.vehicle ? html`<span>Erkannt: ${r.vehicle}</span>` : ''}<span class="tiny">${done.map((k) => PDF_LABELS[k] || k).join(' · ')}${r.converted ? ` · Beträge in ${vat} umgerechnet` : ''} – bitte prüfen.</span>`
+    : r.textFound ? 'Keine passenden Eckdaten erkannt – bitte manuell eintragen.' : 'Die PDF enthält keinen lesbaren Text (z. B. ein Scan). Bitte Eckdaten manuell eintragen.'}</div>`);
 };
 const kmTermConfirm = (d, fields) => ({ km_confirmed: d.km_per_year ? String(d.km_per_year) === String(numOf(fields['Kilometer pro Jahr'])) : undefined, term_confirmed: d.term_months ? String(d.term_months) === String(numOf(fields.Laufzeit)) : undefined });
 SUBMIT.psendCombo = async (d, f) => {
