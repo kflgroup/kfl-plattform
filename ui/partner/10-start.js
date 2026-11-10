@@ -35,7 +35,7 @@ function focusSteps(d) {
   return out.sort((x, y) => x.due - y.due).slice(0, 4);
 }
 function focusBlock(d) {
-  const steps = focusSteps(d); if (!steps.some((x) => x.tone !== 'new')) return '';
+  const steps = focusSteps(d); if (!steps.length) return '';
   return html`<section class="block focus"><div class="block-head"><h2><span class="h-ic">${icon('flag')}</span>Deine nächsten Schritte</h2><span class="tiny muted">nach Dringlichkeit</span></div>
     <ol class="focus-list">${steps.map((x, i) => html`<li class="fx-${x.tone}"><span class="fx-n">${i + 1}</span><span class="fx-ic">${icon(x.ic)}</span><a class="fx-main" href="${x.href}"><b>${x.what}</b><span>${rqTitle(x.a)} · #${x.a.request.number} · ${x.why}</span></a>
       ${x.take ? html`<button class="btn btn-primary btn-sm" data-act="ptake" data-id="${x.a.id}">${icon('bolt')}${x.cta}</button>` : html`<a class="btn btn-sm ${x.tone === 'new' ? 'btn-primary' : 'btn-dark'}" href="${x.href}">${x.cta}${icon('arrow')}</a>`}</li>`)}</ol></section>`;
@@ -56,9 +56,9 @@ async function pStart() {
     <div class="ph-goal"><span class="ring-wrap">${ring(pct, { size: 88, stroke: 9, label: 'Wochenziel' })}<span class="ring-c">${Math.min(100, Math.round(pct * 100))} %</span></span><div><b>${s.weekOffers} / ${s.weekGoal}</b><span>Angebote diese Woche<br>Dein Wochenziel · KW ${d.week}</span></div></div></section>
 ${d.won.length ? html`<section class="urgent-card mt"><h2>${icon('phone')}${plural(d.won.length, 'Kunde wartet', 'Kunden warten')} auf deinen Anruf</h2><p class="uc-sub">Gewonnen! Melde dich innerhalb der Kontaktfrist – so wird aus dem Angebot ein Abschluss.</p>
         <div class="uc-list">${d.won.map((a) => html`<a class="uc-item" href="#/anfragen/${a.id}"><div><b>${rqTitle(a)} · #${a.request.number}</b><span>${a.contact_due_at ? 'Kontakt bis ' + fDT(a.contact_due_at) : a.statusLabel}</span></div><span class="uc-cta">${icon('phone')}Kontaktdaten</span></a>`)}</div></section>` : ''}
+    <div class="mt">${focusBlock(d)}</div>
     ${partnerPipeline({ neu: d.newRequests, mine: d.mine, waiting: d.waiting, won: d.won }, s)}
     <div class="p-grid"><div class="stack">
-      ${focusBlock(d)}
 
       <section class="block"><div class="block-head"><h2><span class="h-ic">${icon('bolt')}</span>Neue Anfragen ${d.newRequests.length ? html`<span class="count hot">${d.newRequests.length}</span>` : ''}</h2><a class="more-link" href="#/anfragen?tab=neu">Alle${icon('arrow')}</a></div>
         ${d.newRequests.length ? rqList(d.newRequests.slice(0, 6)) : html`<div class="block-body">${empty('Gerade keine neuen Anfragen', 'Sobald ein Kunde in deiner Region anfragt, erscheint die Anfrage hier – und du bekommst eine E-Mail.')}</div>`}

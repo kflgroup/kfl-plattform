@@ -28,7 +28,7 @@ function pshell(active) {
           <div class="ps-me">${avatar(P.user.name, 'alt')}<div class="ps-me-txt"><b>${P.user.name}</b><span>${roleLabel()}</span></div><button class="icon-btn" data-act="plogout" aria-label="Abmelden" title="Abmelden">${icon('logout')}</button></div></div></aside>
       <div class="p-body"><header class="p-topbar" id="ptop"><div class="p-topbar-in"><a href="#/" class="pt-logo" aria-label="Zur Übersicht">${LOGO}</a><div class="pt-crumb" id="pcrumb"></div>
         <div class="pt-right"><span class="pt-chip">${icon('calendar')}${fDate(new Date())} · KW ${isoWeekOf().week}</span><span id="pbell"></span><span class="pt-me">${avatar(P.user.name, 'alt')}</span></div></div></header>
-        <main class="p-main" id="pmain" tabindex="-1"></main></div>
+        <div id="plive" class="p-live-wrap" aria-live="polite"></div><main class="p-main" id="pmain" tabindex="-1"></main></div>
       <nav class="p-tabbar" id="ptab" aria-label="Navigation"></nav></div>`);
   }
   P.active = active; pnav();
@@ -37,6 +37,7 @@ function pnav() {
   const items = PNAV(); let g = '';
   render('#pnav', items.map((n) => { const head = n.group !== g ? html`<div class="ps-group">${n.group}</div>` : ''; g = n.group; return html`${head}<a href="${n.href}" class="${P.active === n.key ? 'on' : ''}" title="${n.label}" ${P.active === n.key ? raw('aria-current="page"') : ''}>${icon(n.icon)}<span class="lbl">${n.label}</span>${n.count ? html`<span class="count">${n.count}</span>` : ''}</a>`; }));
   render('#pcta', P.newCount ? html`<a class="ps-cta" href="#/anfragen?tab=neu" title="Neue Anfragen">${icon('bolt')}<span class="lbl">Neue Anfragen</span><span class="count">${P.newCount}</span></a>` : '');
+  plive();
   render('#pcrumb', html`<span>${P.user.org.name}</span><span class="sep">/</span><b>${PCRUMB[P.active] || ''}</b>`);
   render('#pbell', html`<a class="pt-bell" href="#/news" aria-label="News${P.unread ? ` (${P.unread} ungelesen)` : ''}" title="News">${icon('bell')}${P.unread ? html`<span class="count">${P.unread}</span>` : ''}</a>`);
   const main = items.filter((n) => ['start', 'anfragen', 'news', 'support'].includes(n.key));
@@ -117,8 +118,24 @@ function pforcePw() {
       <button class="btn btn-primary btn-block" type="submit">Speichern</button></form>`);
 }
 SUBMIT.pforcePw = async (d) => { if (d.next !== d.next2) throw new Error('Die Passwörter stimmen nicht überein.'); await POST('/password', d); plastPw = ''; await pboot(); };
+// Live-Leiste: zeigt auf jeder Seite (außer Übersicht) den wichtigsten nächsten Schritt und was neu ist
+function plive() {
+  const d = P.start; if (!$('#plive')) return;
+  if (!d || P.active === 'start') return render('#plive', '');
+  const steps = typeof focusSteps === 'function' ? focusSteps(d) : [], top = steps[0];
+  const due = d.mine.filter((a) => a.deadline_at && toDate(a.deadline_at) - Date.now() < 6 * 3600e3).length;
+  const chips = [d.won.length && [d.won.length + (d.won.length === 1 ? ' Kunde wartet' : ' Kunden warten'), '#/anfragen?tab=gewonnen', 'win'], d.newRequests.length && [d.newRequests.length + ' neu', '#/anfragen?tab=neu', 'hot'], due && [due + ' Angebot' + (due === 1 ? '' : 'e') + ' bald fällig', '#/anfragen?tab=meine', 'warn'], P.unread && [P.unread + ' News', '#/news', '']].filter(Boolean);
+  if (!top && !chips.length) return render('#plive', '');
+  render('#plive', html`<div class="p-live">${top ? html`<a class="pl-main fx-${top.tone}" href="${top.href}"><span class="pl-dot"></span><b>Jetzt wichtig:</b><span>${top.what} – ${rqTitle(top.a)} · #${top.a.request.number} · ${top.why}</span><span class="pl-go">${top.cta}${icon('arrow')}</span></a>` : ''}
+    ${chips.length ? html`<div class="pl-chips">${chips.map(([l, h, t]) => html`<a class="pl-chip ${t}" href="${h}">${l}</a>`)}</div>` : ''}</div>`);
+}
+let PLAST_NEW = null;
 async function pcounts() {
-  try { const d = await GET('/start'); P.start = d; P.newCount = d.newRequests.length; P.unread = d.news.notifications.filter((n) => !n.read).length + d.news.posts.filter((p) => !p.read).length; if ($('#pnav')) pnav(); return d; } catch (e) { return null; }
+  try { const d = await GET('/start'); P.start = d;
+    // Neue Anfragen seit dem letzten Abruf: Hinweis und Zähler im Browser-Tab
+    if (PLAST_NEW !== null && d.newRequests.length > PLAST_NEW) toast(d.newRequests.length - PLAST_NEW === 1 ? 'Neue Anfrage in deiner Nähe – jetzt ansehen.' : `${d.newRequests.length - PLAST_NEW} neue Anfragen in deiner Nähe.`);
+    PLAST_NEW = d.newRequests.length;
+    document.title = (d.newRequests.length + d.won.length ? `(${d.newRequests.length + d.won.length}) ` : '') + 'KFL Partner-Dashboard'; P.newCount = d.newRequests.length; P.unread = d.news.notifications.filter((n) => !n.read).length + d.news.posts.filter((p) => !p.read).length; if ($('#pnav')) pnav(); return d; } catch (e) { return null; }
 }
 async function pboot() {
   const s = await ploadSession();
