@@ -487,3 +487,17 @@ input.is-filled{background:#f3fbf6;border-color:#9fd3b3}
 .rq-take{white-space:nowrap}
 .offer-form.flash{box-shadow:0 0 0 3px rgba(255,108,1,.45);transition:box-shadow .4s}
 @media (max-width:640px){.rq-take{padding:0 10px}}
+/* Fokus: nächste Schritte für Vertriebler */
+.focus .block-head .tiny{white-space:nowrap}
+.focus-list{list-style:none;margin:0;padding:6px 10px 10px;display:flex;flex-direction:column;gap:6px}
+.focus-list li{display:grid;grid-template-columns:22px 36px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 12px;border-radius:14px;background:var(--sunken);border:1px solid var(--line-2)}
+.fx-n{font:italic 800 15px/1 var(--font);color:var(--steel-2);text-align:center}
+.fx-ic{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;background:var(--ink);color:#fff}
+.fx-ic .ic{width:17px;height:17px}
+.fx-win .fx-ic{background:var(--green)}.fx-hot .fx-ic{background:var(--orange)}.fx-new .fx-ic{background:var(--orange-wash);color:var(--orange-ink)}
+.fx-win{background:var(--green-light-wash);border-color:#cfeedd}
+.fx-main{min-width:0;text-decoration:none;display:flex;flex-direction:column;gap:1px}
+.fx-main b{font-size:14.5px}
+.fx-main span{font-size:12.5px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fx-main:hover b{text-decoration:underline}
+@media (max-width:560px){.focus-list li{grid-template-columns:36px minmax(0,1fr);row-gap:8px}.fx-n{display:none}.focus-list li>.btn{grid-column:1/-1;justify-content:center}}

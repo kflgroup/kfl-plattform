@@ -1,5 +1,5 @@
 /* ===== Startseite, News, Chat, Vertretung ===== */
-function greeting() { const h = +new Intl.DateTimeFormat('de-DE', { timeZone: TZ, hour: 'numeric', hour12: false }).format(new Date()); return h < 11 ? 'Guten Morgen' : h < 18 ? 'Hallo' : 'Guten Abend'; }
+function greeting() { const h = berlinHour(); return h < 11 ? 'Guten Morgen' : h < 18 ? 'Hallo' : 'Guten Abend'; }
 const NOTE_ICON = { anfrage: 'inbox', kundennotiz: 'note', support: 'support', vertretung: 'users', spam: 'flag', buchhaltung: 'euro', chat: 'chat', partner: 'partner', backup: 'shield', system: 'gear' };
 
 function feedItems(news, filter = 'alle') {

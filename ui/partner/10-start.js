@@ -1,5 +1,5 @@
 /* ===== Start und News ===== */
-function pgreet() { const h = +new Intl.DateTimeFormat('de-DE', { timeZone: TZ, hour: 'numeric', hour12: false }).format(new Date()); return h < 11 ? 'Guten Morgen' : h < 18 ? 'Hallo' : 'Guten Abend'; }
+function pgreet() { const h = berlinHour(); return h < 11 ? 'Guten Morgen' : h < 18 ? 'Hallo' : 'Guten Abend'; }
 function motivation(d) {
   const s = d.stats, left = Math.max(0, s.weekGoal - s.weekOffers);
   if (d.newRequests.length) return `${plural(d.newRequests.length, 'neue Anfrage wartet', 'neue Anfragen warten')} auf dich. Wer zuerst ein starkes Angebot abgibt, hat die besten Chancen.`;
@@ -26,6 +26,20 @@ function partnerPipeline(L, s, active = null) {
     { key: 'gewonnen', label: 'Gewonnen', value: L.won.length, sub: L.won.length ? (nc ? 'anrufen bis ' + fDT(nc) : 'Kunden anrufen') : `${fNum(s.won)} insgesamt · ${s.winRate} % Quote`, href: '#/anfragen?tab=gewonnen', tone: 'win' }
   ], { active, caption: 'Deine Pipeline' });
 }
+// Fokus-Liste für Vertriebler: die nächsten Schritte nach Dringlichkeit (Kontaktfrist, Angebotsfrist, Übernahmefrist)
+function focusSteps(d) {
+  const at = (x) => (x ? toDate(x).getTime() : Infinity), out = [];
+  for (const a of d.won) out.push({ due: at(a.contact_due_at) - 864e5, a, ic: 'phone', tone: 'win', what: a.status === 'nicht_erreicht' ? 'Erneut anrufen' : 'Kunde anrufen', why: a.contact_due_at ? 'Kontakt bis ' + fDT(a.contact_due_at) : 'Zusage erhalten', cta: 'Kontaktdaten', href: `#/anfragen/${a.id}` });
+  for (const a of d.mine) out.push({ due: at(a.deadline_at), a, ic: 'send', tone: 'hot', what: 'Angebot abgeben', why: a.deadline_at ? 'Frist ' + fLeft(a.deadline_at).replace('noch ', 'noch ') : 'in Bearbeitung', cta: 'Zum Angebot', href: `#/anfragen/${a.id}` });
+  for (const a of d.newRequests) out.push({ due: at(a.deadline_at) + 1, a, ic: 'bolt', tone: 'new', what: 'Übernehmen', why: a.deadline_at ? fLeft(a.deadline_at) + ' zum Übernehmen' : 'neu', cta: 'Übernehmen', take: a.level === 'teaser', href: `#/anfragen/${a.id}` });
+  return out.sort((x, y) => x.due - y.due).slice(0, 4);
+}
+function focusBlock(d) {
+  const steps = focusSteps(d); if (!steps.some((x) => x.tone !== 'new')) return '';
+  return html`<section class="block focus"><div class="block-head"><h2><span class="h-ic">${icon('flag')}</span>Deine nächsten Schritte</h2><span class="tiny muted">nach Dringlichkeit</span></div>
+    <ol class="focus-list">${steps.map((x, i) => html`<li class="fx-${x.tone}"><span class="fx-n">${i + 1}</span><span class="fx-ic">${icon(x.ic)}</span><a class="fx-main" href="${x.href}"><b>${x.what}</b><span>${rqTitle(x.a)} · #${x.a.request.number} · ${x.why}</span></a>
+      ${x.take ? html`<button class="btn btn-primary btn-sm" data-act="ptake" data-id="${x.a.id}">${icon('bolt')}${x.cta}</button>` : html`<a class="btn btn-sm ${x.tone === 'new' ? 'btn-primary' : 'btn-dark'}" href="${x.href}">${x.cta}${icon('arrow')}</a>`}</li>`)}</ol></section>`;
+}
 let PSTART_SEG = 'mine';
 async function pStart() {
   const V = ppage('start');
@@ -44,6 +58,7 @@ ${d.won.length ? html`<section class="urgent-card mt"><h2>${icon('phone')}${plur
         <div class="uc-list">${d.won.map((a) => html`<a class="uc-item" href="#/anfragen/${a.id}"><div><b>${rqTitle(a)} · #${a.request.number}</b><span>${a.contact_due_at ? 'Kontakt bis ' + fDT(a.contact_due_at) : a.statusLabel}</span></div><span class="uc-cta">${icon('phone')}Kontaktdaten</span></a>`)}</div></section>` : ''}
     ${partnerPipeline({ neu: d.newRequests, mine: d.mine, waiting: d.waiting, won: d.won }, s)}
     <div class="p-grid"><div class="stack">
+      ${focusBlock(d)}
 
       <section class="block"><div class="block-head"><h2><span class="h-ic">${icon('bolt')}</span>Neue Anfragen ${d.newRequests.length ? html`<span class="count hot">${d.newRequests.length}</span>` : ''}</h2><a class="more-link" href="#/anfragen?tab=neu">Alle${icon('arrow')}</a></div>
         ${d.newRequests.length ? rqList(d.newRequests.slice(0, 6)) : html`<div class="block-body">${empty('Gerade keine neuen Anfragen', 'Sobald ein Kunde in deiner Region anfragt, erscheint die Anfrage hier – und du bekommst eine E-Mail.')}</div>`}

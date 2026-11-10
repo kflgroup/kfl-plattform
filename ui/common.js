@@ -35,6 +35,8 @@ const fileUrl = (p, q) => App.base + p + qs(q);
 
 /* ---------- Format ---------- */
 const TZ = 'Europe/Berlin';
+// Stunde in Berlin als Zahl (de-DE formatiert sonst „05 Uhr“)
+const berlinHour = (d = new Date()) => parseInt(new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', hourCycle: 'h23' }).format(d), 10);
 const dtf = new Intl.DateTimeFormat('de-DE', { timeZone: TZ, day: '2-digit', month: '2-digit', year: 'numeric' });
 const dtfT = new Intl.DateTimeFormat('de-DE', { timeZone: TZ, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const dtfH = new Intl.DateTimeFormat('de-DE', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });

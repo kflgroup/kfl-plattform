@@ -297,3 +297,14 @@ a.pipe-st:hover{background:var(--sunken)}
   .pipe-n{font-size:24px}
 }
 @media (prefers-reduced-motion:no-preference){.pipe-bar i{transition:width .6s var(--ease)}}
+/* Pipeline auf dem Smartphone: kompakte, wischbare Leiste statt hoher Kachelwand */
+@media (max-width:640px){
+  .pipe{grid-auto-flow:column;grid-template-columns:none;grid-auto-columns:minmax(42%,1fr);overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .pipe::-webkit-scrollbar{display:none}
+  .pipe-st{scroll-snap-align:start;border-top:0!important;padding:12px 14px 14px}
+  .pipe-st + .pipe-st{border-left:1px solid var(--line-2)}
+  .pipe-dark .pipe-st + .pipe-st{border-left-color:#2d3035}
+  .pipe-st:last-child:nth-child(odd){grid-column:auto}
+  .pipe-n{font-size:22px}
+  .pipe-s{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+}
