@@ -85,3 +85,43 @@ input:focus,select:focus,textarea:focus{border-color:#191919;box-shadow:0 0 0 3p
 }
 @keyframes k27-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes k27-pop{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+
+/* ===== Partner-Dashboard 2027 (Awwwards-Stil): hell, aufgeräumt, große Typografie, Schnellzugriff ===== */
+.p-app{background:#e4e4e4}
+.p-main{max-width:1320px}
+/* Begrüßung: kein dunkles Banner mehr – große ruhige Typografie auf Grau */
+.p-app .p-hero{background:transparent;color:var(--ink);padding:18px 2px 6px;border-radius:0;grid-template-columns:minmax(0,1fr) auto}
+.p-app .p-hero::after{display:none}
+.p-app .ph-kicker{color:var(--steel);letter-spacing:.12em;font-size:12px}
+.p-app .p-hero h1{font-size:clamp(36px,4.6vw,64px);line-height:.98;letter-spacing:-.045em;font-weight:700;margin-top:10px}
+.p-app .p-hero .push{color:var(--steel);font-size:16px;max-width:620px;margin-top:12px}
+.p-app .btn-glass{background:#fff;border-color:var(--line);color:var(--ink)}
+.p-app .btn-glass:hover{background:#f6f6f6;border-color:#bdbdbd}
+.p-app .ph-goal{background:#fff;border:1px solid var(--line);border-radius:var(--r-l);color:var(--ink)}
+.p-app .ph-goal .ring-bg{stroke:#e4e4e4}
+.p-app .ph-goal div > span{color:var(--steel)}
+/* Pipeline als vier große Einstiegs-Kacheln */
+.p-app .pipe{background:transparent;border:0;gap:10px;overflow:visible}
+.p-app .pipe-st{background:#fff;border:1px solid var(--line);border-radius:var(--r-l);padding:18px 20px 20px}
+.p-app .pipe-st + .pipe-st::before{display:none}
+.p-app a.pipe-st:hover{background:#fff;border-color:#191919}
+.p-app .pipe-n{font-size:clamp(34px,3.4vw,48px);font-weight:700;letter-spacing:-.05em}
+.p-app .pipe-l{font-size:15px}
+.p-app .pipe-st.on::after{display:none}
+@media (max-width:820px){.p-app .pipe{grid-template-columns:1fr 1fr}.p-app .pipe-st{border-top:1px solid var(--line)}}
+@media (max-width:640px){.p-app .pipe{grid-auto-flow:row;grid-template-columns:1fr 1fr;overflow:visible}}
+/* Karten und Listen: flach, weiß, klare Köpfe */
+.p-app .block{border-radius:var(--r-l)}
+.p-app .block-head{padding-top:16px;padding-bottom:14px}
+.p-app .block-head h2{font-size:17px;letter-spacing:-.02em}
+.p-app .h-ic{background:#f1f1f1;border-radius:var(--r-s)}
+.p-app .rq{border-radius:0}
+.p-app .rq:hover{background:#f7f7f7}
+.p-app .urgent-card{background:#191919;box-shadow:none;border-radius:var(--r-l)}
+.p-app .urgent-card .uc-sub{color:#bdbdbd}
+/* Seitenleiste: tiefes Schwarz, ruhiger */
+.p-app .p-side{background:#111}
+.p-app .ps-cta{border-radius:var(--r-m);box-shadow:none;color:#191919}
+/* Live-Leiste passend */
+.p-app .p-live{padding-top:14px}
+@media (max-width:900px){.p-app .p-hero{grid-template-columns:minmax(0,1fr)}.p-app .ph-goal{justify-self:stretch}.p-app .p-hero h1{font-size:34px}}
