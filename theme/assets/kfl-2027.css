@@ -73,3 +73,13 @@ body.kfl :focus-visible{outline:2px solid var(--k-orange);outline-offset:2px;bor
 }
 @keyframes k27-marquee{to{transform:translateX(-50%)}}
 @keyframes k27-rise{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:none}}
+
+/* Kacheln mit Foto: Text immer gut lesbar (gleichmäßige Abdunklung hinter dem Text), Foto etwas heller und lebendiger */
+.k-tile--dark .k-tile__img::after{background:linear-gradient(180deg,rgba(0,0,0,.84) 0%,rgba(0,0,0,.66) 48%,rgba(0,0,0,.28) 72%,rgba(0,0,0,.6) 100%)}
+.k-tile__img img{filter:brightness(1.18) saturate(1.08) contrast(1.02);object-position:50% 70%}
+.k-tile__body p{font-size:1.8rem;line-height:1.5;color:rgba(255,255,255,.92)}
+.k-tile--light .k-tile__body p{color:var(--k-ink)}
+@media (prefers-reduced-motion:no-preference){
+  .k-tile .k-tile__img img{transition:transform .8s cubic-bezier(.16,1,.3,1)}
+  .k-tile:hover .k-tile__img img{transform:scale(1.04)}
+}
