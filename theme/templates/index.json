@@ -63,7 +63,7 @@
         "t2": {
           "type": "tile",
           "settings": {
-            "style": "light",
+            "style": "dark",
             "image": "shopify://shop_images/photo-1600112218627-1a108bf83e1a.jpg",
             "kicker": "Mein Auto verkaufen",
             "title": "Dein Auto ist mehr wert, als du denkst.",
