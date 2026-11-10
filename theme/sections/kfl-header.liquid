@@ -1,0 +1,142 @@
+{%- liquid
+  assign menu = linklists[section.settings.menu]
+  if customer
+    assign account_url = routes.account_url
+  else
+    assign account_url = routes.storefront_login_url | default: routes.account_login_url
+  endif
+  assign k_is_partner = false
+  if customer
+    for t in customer.tags
+      assign tl = t | downcase | strip
+      if tl == 'partner'
+        assign k_is_partner = true
+      endif
+    endfor
+  endif
+  assign k_ticker = section.settings.ticker_text | split: '|'
+-%}
+{{ 'kfl-2027.css' | asset_url | stylesheet_tag }}
+<div class="k-header-wrap">
+  {%- if section.settings.ticker_on and section.settings.ticker_text != blank -%}
+    <div class="k-ticker" aria-label="Vorteile">
+      <div class="k-ticker__track">
+        {%- for t in k_ticker -%}<span>{{ t | strip }}</span>{%- endfor -%}
+        {%- for t in k_ticker -%}<span aria-hidden="true">{{ t | strip }}</span>{%- endfor -%}
+        {%- for t in k_ticker -%}<span aria-hidden="true">{{ t | strip }}</span>{%- endfor -%}
+        {%- for t in k_ticker -%}<span aria-hidden="true">{{ t | strip }}</span>{%- endfor -%}
+      </div>
+    </div>
+  {%- endif -%}
+  <header class="k-header" role="banner">
+    <div class="k-header__inner">
+      <a href="{{ routes.root_url }}" class="k-logo" aria-label="{{ shop.name }} – Startseite">
+        {%- if settings.logo != blank -%}
+          {{ settings.logo | image_url: width: 240 | image_tag: alt: shop.name, width: 60, height: 60, loading: 'eager' }}
+        {%- else -%}
+          <span class="k-logo__mark" aria-hidden="true">KFL</span>
+        {%- endif -%}
+      </a>
+
+      <nav class="k-nav" aria-label="Hauptnavigation">
+        {%- for link in menu.links -%}
+          <a href="{{ link.url }}"{% if link.current or link.child_active %} aria-current="page"{% endif %}>{{ link.title }}</a>
+        {%- endfor -%}
+      </nav>
+
+      <div class="k-header__tools">
+        {%- if shop.customer_accounts_enabled -%}
+          <a href="{{ account_url }}" class="k-icon-btn" rel="nofollow" aria-label="{% if customer %}Mein Konto{% else %}Anmelden{% endif %}">
+            {% render 'kfl-icon', name: 'account' %}
+          </a>
+        {%- endif -%}
+        <a href="{{ routes.cart_url }}" class="k-icon-btn" aria-label="Warenkorb, {{ cart.item_count }} Artikel">
+          {% render 'kfl-icon', name: 'cart' %}
+          {%- if cart.item_count > 0 -%}<span class="k-cart-count" aria-hidden="true">{{ cart.item_count }}</span>{%- endif -%}
+        </a>
+        <button type="button" class="k-icon-btn k-burger" data-menu-open aria-controls="k-menu" aria-expanded="false" aria-label="Menü öffnen">
+          {% render 'kfl-icon', name: 'menu' %}
+        </button>
+        {%- if section.settings.cta_label != blank -%}
+          <a href="{{ section.settings.cta_link | default: '/pages/traumwagen-deal' }}" class="k-btn k-btn--primary k-btn--sm k-header__cta">{{ section.settings.cta_label }}</a>
+        {%- endif -%}
+      </div>
+    </div>
+  </header>
+</div>
+
+<div class="k-menu" id="k-menu" data-open="false" role="dialog" aria-modal="true" aria-label="Menü">
+  <div class="k-menu__top">
+    <a href="{{ routes.root_url }}" class="k-logo" aria-label="{{ shop.name }} – Startseite">
+      {%- if settings.logo != blank -%}{{ settings.logo | image_url: width: 240 | image_tag: alt: shop.name, width: 60, height: 60 }}{%- else -%}<span class="k-logo__mark">KFL</span>{%- endif -%}
+    </a>
+    <button type="button" class="k-icon-btn" data-menu-close aria-label="Menü schließen">{% render 'kfl-icon', name: 'close' %}</button>
+  </div>
+  <ul class="k-menu__list">
+    {%- for link in menu.links -%}
+      <li><a href="{{ link.url }}">{{ link.title }}</a></li>
+    {%- endfor -%}
+  </ul>
+  <div class="k-menu__foot">
+    {%- if section.settings.cta_label != blank -%}
+      <a href="{{ section.settings.cta_link | default: '/pages/traumwagen-deal' }}" class="k-btn k-btn--primary k-btn--block">{{ section.settings.cta_label }}</a>
+    {%- endif -%}
+    {%- if customer -%}
+      <a href="/pages/meine-anfragen" class="k-btn k-btn--dark k-btn--block" rel="nofollow">Meine Anfragen</a>
+    {%- endif -%}
+    <a href="{{ account_url }}" class="k-btn k-btn--ghost k-btn--block" rel="nofollow">{% if customer %}Mein Konto{% else %}Anmelden oder Konto erstellen{% endif %}</a>
+    <a href="/pages/partner" class="k-menu__partner" rel="nofollow">{% render 'kfl-icon', name: 'shield' %}{% if k_is_partner %}Partnerbereich{% else %}Partner-Login{% endif %}</a>
+  </div>
+</div>
+
+{% stylesheet %}
+  .k-menu__partner { display: inline-flex; align-items: center; justify-content: center; gap: .8rem; min-height: 44px; margin-top: .4rem; font-size: 1.5rem; font-weight: 700; color: var(--k-steel); text-decoration: none; border-top: 1px solid var(--k-silver-2); padding-top: 1.6rem; }
+  .k-menu__partner svg { width: 18px; height: 18px; color: var(--k-orange-deep); }
+
+  /* Logo 1,5-fach (vorher 40px, jetzt 60px) – gilt für Header, mobiles Menü und Footer */
+  body.kfl .k-header { height: 76px; }
+  body.kfl .k-menu__top { height: 76px; }
+  body.kfl .k-logo img { height: 60px; width: auto; }
+  body.kfl .k-logo__mark { width: 60px; height: 60px; font-size: 2.85rem; border-radius: 6px; }
+{% endstylesheet %}
+
+{% javascript %}
+  /* Herkunft des Besuchs für die KFL-Statistik (Marketing): erste Quelle der Sitzung, nur mit Einwilligung (Statistik). Wird mit Anfragen als _src gesendet. */
+  (() => {
+    const q = new URLSearchParams(location.search);
+    const utm = q.get('utm_source') || '', camp = q.get('utm_campaign') || '';
+    let ref = '';
+    try { const h = document.referrer ? new URL(document.referrer).hostname.replace(/^www\./, '') : ''; if (h && h !== location.hostname.replace(/^www\./, '') && !/myshopify|shopify\.com|kfl-group/.test(h)) ref = h; } catch (e) {}
+    const capture = () => {
+      try {
+        if (sessionStorage.getItem('kfl_src')) return true;
+        const cp = window.Shopify && window.Shopify.customerPrivacy;
+        if (!cp || typeof cp.analyticsProcessingAllowed !== 'function' || !cp.analyticsProcessingAllowed()) return false;
+        const src = utm || ref; if (!src) return true;
+        const map = [[/google/i, 'Google'], [/insta/i, 'Instagram'], [/facebook|^fb$|fb\./i, 'Facebook'], [/tiktok/i, 'TikTok'], [/youtube/i, 'YouTube'], [/bing/i, 'Bing'], [/linkedin/i, 'LinkedIn'], [/whatsapp|wa\.me/i, 'WhatsApp'], [/newsletter|mail/i, 'Newsletter']];
+        const hit = map.find(([re]) => re.test(src));
+        sessionStorage.setItem('kfl_src', ((hit ? hit[1] : src.slice(0, 40)) + (camp ? ' · ' + camp.slice(0, 50) : '')));
+        return true;
+      } catch (e) { return true; }
+    };
+    if (!capture()) {
+      document.addEventListener('visitorConsentCollected', capture);
+      window.addEventListener('load', () => setTimeout(capture, 1500));
+    }
+  })();
+{% endjavascript %}
+
+{% schema %}
+{
+  "name": "KFL Header",
+  "class": "k-header-section",
+  "settings": [
+    { "type": "link_list", "id": "menu", "label": "Menü", "default": "main-menu" },
+    { "type": "text", "id": "cta_label", "label": "Button-Text", "default": "Deal anfragen" },
+    { "type": "url", "id": "cta_link", "label": "Button-Link" },
+    { "type": "header", "content": "Laufband" },
+    { "type": "checkbox", "id": "ticker_on", "label": "Laufband über der Kopfzeile zeigen", "default": true },
+    { "type": "textarea", "id": "ticker_text", "label": "Texte (mit | trennen)", "default": "Kostenlos & unverbindlich | Antwort in 24 Std. (werktags) | Kontaktdaten erst nach deiner Zusage | Inzahlungnahme gleich mit anfragen" }
+  ]
+}
+{% endschema %}

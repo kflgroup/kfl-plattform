@@ -1,0 +1,75 @@
+/* ===== KFL 2027 – Design-Ebene für den Webshop =====
+   Awwwards-Stil (helle Grauflächen, Inter, große Typografie, 1-px-Linien, kleine Radien) mit KFL-Orange als Handlungsfarbe.
+   Überschreibt nur Gestaltung aus kfl.css – alle Funktionen, Formulare und Inhalte bleiben unverändert. */
+:root{
+  --k-silver:#efefef; --k-silver-2:#dcdcdc; --k-line:#d4d4d4; --k-steel:#565656;
+  --k-ink:#191919; --k-graphite:#2f2e30; --k-black:#111111;
+  --k-radius-l:9px; --k-radius-m:8px; --k-radius-s:7px;
+  --k-ease:cubic-bezier(.16,1,.3,1);
+  --k-base:#e4e4e4;
+}
+body.kfl{background:var(--k-base);font-weight:500;font-feature-settings:"cv11","ss01"}
+body.kfl h1,body.kfl h2,body.kfl h3{text-wrap:balance}
+body.kfl p{text-wrap:pretty}
+body.kfl :focus-visible{outline:2px solid var(--k-orange);outline-offset:2px;border-radius:var(--k-radius-s)}
+
+/* Typografie: groß, schwer, eng */
+.k-display{font-size:clamp(5rem,8.4vw,12.7rem);line-height:.9;font-weight:800}
+.k-h1{font-size:clamp(4.4rem,6.6vw,9.6rem);line-height:.94;font-weight:800}
+.k-h2{font-size:clamp(3.6rem,5.2vw,7.2rem);line-height:.98;font-weight:800}
+.k-h3{font-weight:700}
+.k-kicker{font-size:1.3rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--k-orange-deep)}
+.k-lead{color:var(--k-steel)}
+.k-bg-black .k-lead{color:#a1a1a6}
+
+/* Flächen: Grau als Raum, Weiß als Bühne, Schwarz als Akzent */
+.k-bg-silver{background:#ffffff}
+.k-card,.k-panel,.k-check__panel,.k-tile--light,.k-topic,.k-review,.k-post,.k-cart__box{background:#ffffff;border:1px solid var(--k-line);border-radius:var(--k-radius-l)}
+.k-bg-silver .k-card,.k-bg-silver .k-topic,.k-bg-silver .k-review{background:#f4f4f4}
+.k-tile,.k-tile__img,.k-card__media,.k-gallery__item,.k-founders img{border-radius:var(--k-radius-l)}
+.k-bg-black,.k-tile--dark,.k-footer{background:#191919}
+.k-step{border-top-width:1px}
+.k-faq details{border-bottom-color:var(--k-line)}
+
+/* Buttons: 8 px Radius, schnelle Rückmeldung */
+.k-btn{border-radius:var(--k-radius-m);font-weight:700;transition:background-color .15s ease-out,color .15s ease-out,border-color .15s ease-out,transform .15s ease-out}
+.k-btn:hover{transform:translateY(-1px)}
+.k-btn:active{transform:translateY(0) scale(.99)}
+.k-btn--dark{background:#191919}
+.k-btn--dark:hover{background:#2f2e30}
+.k-btn--ghost{border-width:1px}
+.k-chip,.k-badge{border-radius:var(--k-radius-s)}
+.k-switch{border-radius:var(--k-radius-m)}
+.k-switch button,.k-switch__thumb{border-radius:var(--k-radius-s)!important}
+
+/* Formulare */
+.k-input,.k-select,.k-textarea{background:#ffffff;border:1px solid var(--k-line);border-radius:var(--k-radius-s)}
+.k-bg-silver .k-input,.k-bg-silver .k-select,.k-bg-silver .k-textarea,.k-panel .k-input,.k-panel .k-select,.k-panel .k-textarea,.k-check__panel .k-input{background:#f6f6f6}
+.k-input:focus,.k-select:focus,.k-textarea:focus{border-color:#191919;box-shadow:0 0 0 3px rgba(255,108,1,.25)}
+.k-choice,.k-consent,.k-progress,.k-stepper,.k-note,.k-voucher,.k-summary{border-radius:var(--k-radius-m)}
+
+/* Kopfzeile */
+.k-header{background:rgba(228,228,228,.82);border-bottom-color:rgba(0,0,0,.08)}
+.k-nav a{position:relative}
+.k-nav a::after{content:"";position:absolute;left:0;right:0;bottom:-6px;height:2px;background:var(--k-orange);transform:scaleX(0);transform-origin:left;transition:transform .2s ease-out}
+.k-nav a:hover::after,.k-nav a[aria-current]::after{transform:scaleX(1)}
+
+/* Laufband (Vertrauen) */
+.k-ticker{overflow:hidden;white-space:nowrap;background:#191919;color:#f2f2f2;font-size:1.25rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;height:34px;display:flex;align-items:center}
+.k-ticker__track{display:inline-flex;gap:4rem;padding-right:4rem;will-change:transform}
+.k-ticker__track span{display:inline-flex;align-items:center;gap:1.2rem}
+.k-ticker__track span::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--k-orange)}
+
+/* Bewegung: nur transform/opacity, Einstieg weich, Rücksicht auf „Bewegung reduzieren“ */
+@media (prefers-reduced-motion:no-preference){
+  .k-ticker__track{animation:k27-marquee 32s linear infinite}
+  .k-card,.k-tile,.k-topic{transition:transform .2s ease-out}
+  .k-card:hover,.k-tile:hover,.k-topic:hover{transform:translateY(-4px)}
+  @supports (animation-timeline: view()){
+    .k-section .k-h2:not(.k-reveal),.k-section .k-kicker:not(.k-reveal),.k-tile:not(.k-reveal),.k-card:not(.k-reveal),.k-step:not(.k-reveal),.k-faq details:not(.k-reveal),.k-topic:not(.k-reveal),.k-review:not(.k-reveal),.k-timeline__body:not(.k-reveal){
+      animation:k27-rise linear both;animation-timeline:view();animation-range:entry 0% cover 24%
+    }
+  }
+}
+@keyframes k27-marquee{to{transform:translateX(-50%)}}
+@keyframes k27-rise{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:none}}

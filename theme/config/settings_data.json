@@ -1,0 +1,144 @@
+{
+  "current": {
+    "logo": "shopify://shop_images/KFL_-_Logo.png",
+    "logo_width": 80,
+    "favicon": "shopify://shop_images/KFL_-_Logo.png",
+    "type_header_font": "inter_n8",
+    "heading_scale": 100,
+    "type_body_font": "inter_n5",
+    "body_scale": 100,
+    "page_width": 1200,
+    "spacing_sections": 0,
+    "spacing_grid_horizontal": 16,
+    "spacing_grid_vertical": 16,
+    "animations_reveal_on_scroll": false,
+    "animations_hover_elements": "none",
+    "buttons_border_thickness": 0,
+    "buttons_border_opacity": 100,
+    "buttons_radius": 8,
+    "buttons_shadow_opacity": 0,
+    "inputs_border_thickness": 1,
+    "inputs_border_opacity": 20,
+    "inputs_radius": 7,
+    "variant_pills_radius": 8,
+    "card_style": "standard",
+    "card_corner_radius": 9,
+    "card_color_scheme": "scheme-2",
+    "collection_card_style": "standard",
+    "collection_card_corner_radius": 9,
+    "collection_card_color_scheme": "scheme-2",
+    "blog_card_style": "standard",
+    "blog_card_corner_radius": 9,
+    "blog_card_color_scheme": "scheme-2",
+    "media_border_thickness": 0,
+    "media_radius": 9,
+    "popup_corner_radius": 8,
+    "badge_corner_radius": 7,
+    "sale_badge_color_scheme": "scheme-5",
+    "sold_out_badge_color_scheme": "scheme-3",
+    "brand_headline": "Kaufen. Finanzieren. Leasen.",
+    "brand_image": "shopify://shop_images/KFL_-_Logo.png",
+    "brand_image_width": 50,
+    "social_instagram_link": "https://www.instagram.com/kflgroup/",
+    "predictive_search_enabled": false,
+    "currency_code_enabled": false,
+    "cart_type": "page",
+    "show_vendor": false,
+    "show_cart_note": false,
+    "cart_color_scheme": "scheme-1",
+    "sections": {
+      "main-password-header": {
+        "type": "main-password-header",
+        "settings": {
+          "color_scheme": "scheme-3"
+        }
+      },
+      "main-password-footer": {
+        "type": "main-password-footer",
+        "settings": {
+          "color_scheme": "scheme-3"
+        }
+      }
+    },
+    "content_for_index": [],
+    "color_schemes": {
+      "scheme-1": {
+        "settings": {
+          "background": "#ffffff",
+          "background_gradient": "",
+          "text": "#191919",
+          "button": "#ff6c01",
+          "button_label": "#000000",
+          "secondary_button_label": "#191919",
+          "shadow": "#000000"
+        }
+      },
+      "scheme-2": {
+        "settings": {
+          "background": "#e4e4e4",
+          "background_gradient": "",
+          "text": "#191919",
+          "button": "#ff6c01",
+          "button_label": "#000000",
+          "secondary_button_label": "#191919",
+          "shadow": "#000000"
+        }
+      },
+      "scheme-3": {
+        "settings": {
+          "background": "#191919",
+          "background_gradient": "",
+          "text": "#ffffff",
+          "button": "#ff6c01",
+          "button_label": "#000000",
+          "secondary_button_label": "#ffffff",
+          "shadow": "#000000"
+        }
+      },
+      "scheme-4": {
+        "settings": {
+          "background": "#ffffff",
+          "background_gradient": "",
+          "text": "#000000",
+          "button": "#000000",
+          "button_label": "#ffffff",
+          "secondary_button_label": "#000000",
+          "shadow": "#000000"
+        }
+      },
+      "scheme-5": {
+        "settings": {
+          "background": "#ff6c01",
+          "background_gradient": "",
+          "text": "#000000",
+          "button": "#000000",
+          "button_label": "#ffffff",
+          "secondary_button_label": "#000000",
+          "shadow": "#000000"
+        }
+      },
+      "scheme-fcfb8c35-73af-489a-a819-1a6d426efee9": {
+        "settings": {
+          "background": "#ff6c01",
+          "background_gradient": "",
+          "text": "#000000",
+          "button": "#000000",
+          "button_label": "#ffffff",
+          "secondary_button_label": "#000000",
+          "shadow": "#000000"
+        }
+      },
+      "scheme-abb02880-4765-42f2-9138-cbaeb9dc2212": {
+        "settings": {
+          "background": "#0a7d3b",
+          "background_gradient": "",
+          "text": "#ffffff",
+          "button": "#ffffff",
+          "button_label": "#000000",
+          "secondary_button_label": "#ffffff",
+          "shadow": "#000000"
+        }
+      }
+    }
+  }
+}
