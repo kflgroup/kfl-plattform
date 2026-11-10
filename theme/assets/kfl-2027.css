@@ -138,3 +138,26 @@ body.kfl :focus-visible{outline:2px solid var(--k-orange);outline-offset:2px;bor
     .k-usp .k-usp__row:not(.k-usp__row--head) > [role="rowheader"],.k-usp .k-usp__row:not(.k-usp__row--head) > .k-usp__alone{animation:k27-row linear both;animation-timeline:view();animation-range:entry 0% cover 22%}
   }
 }
+
+/* Vergleich – endgültig: eine echte Tabelle mit gemeinsamen Spalten. Die KFL-Spalte ist eine lückenlose Fläche,
+   alle Zeilen stehen exakt untereinander, keine Bewegung einzelner Zellen (kein Versatz). */
+.k-usp .k-usp__table{display:grid;grid-template-columns:minmax(0,.75fr) minmax(0,1fr) minmax(0,1.5fr);column-gap:2.4rem;row-gap:0}
+.k-usp .k-usp__row{display:contents}
+.k-usp .k-usp__row > *{display:flex;align-items:center;margin:0;padding:2.2rem 0;border-top:0;animation:none!important;transform:none!important;opacity:1!important}
+.k-usp .k-usp__row > [role="rowheader"]{padding-left:2.4rem}
+.k-usp .k-usp__row:not(.k-usp__row--head) > [role="rowheader"],.k-usp .k-usp__row:not(.k-usp__row--head) > .k-usp__alone{border-top:1px solid rgba(255,255,255,.1)}
+.k-usp .k-usp__row:not(.k-usp__row--head):hover > [role="rowheader"]{color:#fff}
+.k-usp .k-usp__row:not(.k-usp__row--head):hover > .k-usp__alone{color:#8e8e93}
+.k-usp .k-usp__row > .k-usp__kfl{padding:2.2rem 2.4rem;gap:1rem;background:rgba(255,108,1,.14);border:0;border-radius:0}
+.k-usp .k-usp__row--head > .k-usp__kfl{border-radius:14px 14px 0 0;padding-top:2.4rem;padding-bottom:2rem}
+.k-usp .k-usp__row:last-child > .k-usp__kfl{border-radius:0 0 14px 14px}
+.k-usp .k-usp__kfl svg{animation:none!important;opacity:1!important;transform:none!important}
+@media (max-width:640px){
+  .k-usp .k-usp__table{grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);column-gap:1.2rem}
+  .k-usp .k-usp__row > *{padding:1.2rem 0}
+  .k-usp .k-usp__row > [role="rowheader"]{grid-column:1 / -1;padding:1.6rem 0 .2rem 1.2rem;border-top:1px solid rgba(255,255,255,.1)}
+  .k-usp .k-usp__row:not(.k-usp__row--head) > .k-usp__alone{border-top:0;padding-left:1.2rem}
+  .k-usp .k-usp__row--head > [role="columnheader"]:first-child{display:none}
+  .k-usp .k-usp__row--head > [role="columnheader"]:nth-child(2){padding-left:1.2rem}
+  .k-usp .k-usp__row > .k-usp__kfl{padding:1.2rem;border-radius:10px;margin:.4rem 0}
+}
