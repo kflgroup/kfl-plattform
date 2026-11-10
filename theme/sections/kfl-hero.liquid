@@ -1,0 +1,99 @@
+{%- liquid
+  assign deal = section.settings.deal_link | default: '/pages/traumwagen-deal'
+-%}
+<section class="k-hero" aria-labelledby="k-hero-title-{{ section.id }}">
+  <div class="k-hero__media" aria-hidden="true">
+    {%- if section.settings.video != blank -%}
+      {{ section.settings.video | video_tag: autoplay: true, loop: true, muted: true, playsinline: true, controls: false, preload: 'metadata', image_size: '1920x' }}
+    {%- elsif section.settings.image != blank -%}
+      {{ section.settings.image | image_url: width: 2400 | image_tag: loading: 'eager', fetchpriority: 'high', sizes: '100vw', widths: '800, 1200, 1600, 2000, 2400' }}
+    {%- else -%}
+      <canvas id="k-road"></canvas>
+    {%- endif -%}
+  </div>
+
+  <div class="k-hero__content">
+    <div class="k-wrap">
+      <div class="k-switch" data-target="#k-hero-{{ section.id }}" data-autoplay="true" role="group" aria-label="Was hast du vor?">
+        <span class="k-switch__thumb" aria-hidden="true"></span>
+        <button type="button" data-value="kaufen" aria-pressed="false">Kaufen</button>
+        <button type="button" data-value="finanzieren" aria-pressed="false">Finanzieren</button>
+        <button type="button" data-value="leasen" aria-pressed="true">Leasen</button>
+      </div>
+
+      <div id="k-hero-{{ section.id }}">
+        <h1 class="k-display k-hero__title" id="k-hero-title-{{ section.id }}">
+          <span>{{ section.settings.title }}</span>
+          <span class="k-hero__swap" aria-live="polite">
+            <span data-mode="kaufen">{{ section.settings.line_kaufen }}</span>
+            <span data-mode="finanzieren">{{ section.settings.line_finanzieren }}</span>
+            <span data-mode="leasen" class="is-active">{{ section.settings.line_leasen }}</span>
+          </span>
+        </h1>
+        <p class="k-lead k-hero__lead">{{ section.settings.lead }}</p>
+        <div class="k-actions k-hero__actions">
+          <a href="{{ deal }}?art=leasen" class="k-btn k-btn--primary" data-mode-link>{{ section.settings.cta_1 }}</a>
+          {%- if section.settings.cta_2 != blank -%}
+            <a href="{{ section.settings.cta_2_link | default: '/pages/auto-verkaufen' }}" class="k-btn k-btn--ghost" style="color:#fff">{{ section.settings.cta_2 }}</a>
+          {%- endif -%}
+        </div>
+        {%- if section.settings.micro != blank -%}<p class="k-hero__micro">{{ section.settings.micro }}</p>{%- endif -%}
+      </div>
+
+      <ul class="k-hero__facts">
+        {%- for block in section.blocks -%}
+          <li {{ block.shopify_attributes }}>{% render 'kfl-icon', name: block.settings.icon %}{{ block.settings.text }}</li>
+        {%- endfor -%}
+      </ul>
+    </div>
+  </div>
+</section>
+<script>document.body.classList.add('kfl-dark-top');</script>
+
+{% stylesheet %}
+  .k-hero .k-hero__micro { margin: 1.4rem 0 0; color: rgba(255, 255, 255, .62); font-size: 1.35rem; }
+  /* Smartphone: Überschrift kompakter, beide Buttons und die Vorteile direkt sichtbar */
+  @media (max-width: 749px) {
+    .k-hero .k-hero__title { font-size: clamp(3.4rem, 10.6vw, 4.6rem); line-height: 1.04; letter-spacing: -.03em; }
+    .k-hero .k-hero__lead { margin-top: 1.4rem; font-size: 1.6rem; line-height: 1.5; }
+    .k-hero .k-hero__actions { display: grid; grid-template-columns: 1fr; gap: .9rem; margin-top: 2.2rem; }
+    .k-hero .k-hero__actions .k-btn { width: 100%; justify-content: center; min-height: 52px; }
+    .k-hero .k-hero__micro { text-align: center; }
+    .k-hero .k-hero__facts { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 2.2rem; padding-top: 0; border-top: 0; }
+    .k-hero .k-hero__facts li { display: inline-flex; align-items: center; gap: .5rem; padding: .6rem 1.1rem; border-radius: 999px; background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .12); font-size: 1.25rem; white-space: nowrap; }
+    .k-hero .k-hero__facts li svg { width: 14px; height: 14px; }
+  }
+{% endstylesheet %}
+
+{% schema %}
+{
+  "name": "KFL Hero",
+  "settings": [
+    { "type": "text", "id": "title", "label": "Überschrift Zeile 1", "default": "Dein Traumwagen." },
+    { "type": "text", "id": "line_kaufen", "label": "Zeile 2 – Kaufen", "default": "Gekauft zum besten Preis." },
+    { "type": "text", "id": "line_finanzieren", "label": "Zeile 2 – Finanzieren", "default": "Finanziert ohne Zinsfalle." },
+    { "type": "text", "id": "line_leasen", "label": "Zeile 2 – Leasen", "default": "Geleast für weniger im Monat." },
+    { "type": "textarea", "id": "lead", "label": "Text", "default": "Sag uns, welches Auto du suchst. Wir holen Angebote bei Autohäusern, Banken und Leasinggesellschaften ein und melden uns innerhalb von 24 Stunden. Für dich kostenlos und unverbindlich." },
+    { "type": "text", "id": "cta_1", "label": "Button 1", "default": "Traumwagen-DEAL anfragen" },
+    { "type": "url", "id": "deal_link", "label": "Link Button 1" },
+    { "type": "text", "id": "cta_2", "label": "Button 2", "default": "Mein Auto verkaufen" },
+    { "type": "url", "id": "cta_2_link", "label": "Link Button 2" },
+    { "type": "text", "id": "micro", "label": "Hinweis unter den Buttons (optional)", "default": "In rund 3 Minuten angefragt · keine Werbeanrufe" },
+    { "type": "video", "id": "video", "label": "Hintergrundvideo (optional)", "info": "Ohne Video und Bild läuft die animierte Nachtstraße." },
+    { "type": "image_picker", "id": "image", "label": "Hintergrundbild (optional)" }
+  ],
+  "blocks": [
+    { "type": "fact", "name": "Vorteil", "limit": 4, "settings": [
+      { "type": "select", "id": "icon", "label": "Symbol", "default": "check", "options": [
+        { "value": "check", "label": "Haken" }, { "value": "clock", "label": "Uhr" }, { "value": "euro", "label": "Euro" }, { "value": "shield", "label": "Schild" }
+      ] },
+      { "type": "text", "id": "text", "label": "Text", "default": "Vorteil" }
+    ] }
+  ],
+  "presets": [{ "name": "KFL Hero", "blocks": [
+    { "type": "fact", "settings": { "icon": "euro", "text": "Für dich kostenlos" } },
+    { "type": "fact", "settings": { "icon": "clock", "text": "Antwort in 24 Std. (werktags)" } },
+    { "type": "fact", "settings": { "icon": "shield", "text": "Unverbindlich, du entscheidest" } }
+  ] }]
+}
+{% endschema %}
