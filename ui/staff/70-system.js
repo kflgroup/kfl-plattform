@@ -19,14 +19,30 @@ async function pageBackup() {
       <section class="panel"><div class="panel-head"><h2>Sicherheitsbericht</h2>${r.ok ? badge('Keine kritischen Punkte', 'ok') : badge('Handlungsbedarf', 'err')}</div><div class="panel-body">
         ${r.issues.length ? r.issues.map((i) => html`<div class="sec-issue"><span class="level">${badge(...(LEVEL[i.level] || [i.level]))}</span><span>${i.text}</span></div>`) : html`<p class="muted">Keine Auffälligkeiten.</p>`}
         <p class="tiny muted mt">Stand ${fDT(r.created_at)} · Version ${r.version}</p></div></section></div>
-    <section class="panel mt"><div class="panel-head"><h2>Archiv</h2><div class="row">${[['', 'Alle'], ['ticket', 'Support'], ['sysissue', 'Systemfehler']].map(([k, l]) => html`<button class="btn btn-sm btn-ghost" data-act="archList" data-kind="${k}">${l}</button>`)}</div></div><div id="arch" class="panel-body">${loading()}</div></section>`);
+    <section class="panel mt"><div class="panel-head"><h2>Archiv</h2><div class="row">${[['', 'Alle'], ['sicherheitstest', 'Sicherheitstests'], ['ticket', 'Support'], ['sysissue', 'Systemfehler']].map(([k, l]) => html`<button class="btn btn-sm btn-ghost" data-act="archList" data-kind="${k}">${l}</button>`)}${isAdmin() ? html`<button class="btn btn-sm" data-act="secTestUpload">${icon('upload')}Sicherheitstest ablegen</button>` : ''}</div></div><div id="arch" class="panel-body">${loading()}</div></section>`);
   ACT.archList({ dataset: { kind: '' } });
 }
+const ARCH_KIND = { sicherheitstest: ['Sicherheitstest', 'ok'], ticket: ['Support', ''], sysissue: ['Systemfehler', 'warn'] };
 ACT.archList = async (b) => {
   const d = await GET('/archive', { kind: b.dataset.kind });
-  render('#arch', d.items.length ? html`<table class="table"><thead><tr><th>Art</th><th>Titel</th><th>Archiviert</th><th>Aufbewahrt bis</th><th></th></tr></thead><tbody>${d.items.map((a) => html`<tr><td>${a.kind}</td><td>${a.title}</td><td>${fDate(a.archived_at)}</td><td>${fDate(a.expires_at)}</td><td class="r"><button class="btn btn-sm btn-ghost" data-act="archOpen" data-id="${a.id}">Ansehen</button></td></tr>`)}</tbody></table>` : empty('Das Archiv ist leer'));
+  render('#arch', d.items.length ? html`<table class="table"><thead><tr><th>Art</th><th>Titel</th><th>Archiviert</th><th>Aufbewahrt bis</th><th></th></tr></thead><tbody>${d.items.map((a) => html`<tr><td>${badge(...(ARCH_KIND[a.kind] || [a.kind, '']))}</td><td>${a.title}</td><td>${fDate(a.archived_at)}</td><td>${fDate(a.expires_at)}</td><td class="r nowrap">${a.kind === 'sicherheitstest' ? html`<a class="btn btn-sm" href="${fileUrl('/archive/' + a.id + '/file')}" target="_blank" rel="noopener">${icon('file')}PDF öffnen</a> ` : ''}<button class="btn btn-sm btn-ghost" data-act="archOpen" data-id="${a.id}">Ansehen</button></td></tr>`)}</tbody></table>` : empty(b.dataset.kind === 'sicherheitstest' ? 'Noch keine Sicherheitstests archiviert' : 'Das Archiv ist leer'));
 };
-ACT.archOpen = async (b) => { const d = await GET('/archive/' + b.dataset.id); modal({ title: d.item.title, wide: true, body: html`<pre class="pre small">${JSON.stringify(d.item.data, null, 2)}</pre>` }); };
+ACT.archOpen = async (b) => {
+  const d = await GET('/archive/' + b.dataset.id), a = d.item, x = a.data || {};
+  if (a.kind === 'sicherheitstest') return modal({ title: a.title, wide: true, body: html`<div class="stack">
+    <dl class="kv"><dt>Archiviert</dt><dd>${fDT(a.archived_at)}</dd><dt>Aufbewahrt bis</dt><dd>${fDate(a.expires_at)} (365 Tage, danach automatisch gelöscht)</dd><dt>Kennung</dt><dd>${x.ref || '–'}</dd><dt>Datei</dt><dd>${x.file_name || 'PDF'} · ${fBytes(x.size)}</dd></dl>
+    ${x.summary ? html`<p>${x.summary}</p>` : ''}
+    <div class="row"><a class="btn btn-primary" href="${fileUrl('/archive/' + a.id + '/file')}" target="_blank" rel="noopener">${icon('file')}PDF öffnen</a><a class="btn" href="${fileUrl('/archive/' + a.id + '/file', { download: 1 })}">${icon('download')}Herunterladen</a></div></div>` });
+  modal({ title: a.title, wide: true, body: html`<pre class="pre small">${JSON.stringify(x, null, 2)}</pre>` });
+};
+ACT.secTestUpload = async () => {
+  const d = await ask({ title: 'Sicherheitstest ablegen', text: 'Der Bericht wird als PDF im Archiv gespeichert und nach 365 Tagen automatisch gelöscht.', ok: 'Ablegen',
+    fields: html`${field('Titel', inp('title', 'Sicherheitstest ' + new Date().toLocaleDateString('de-DE'), { req: true }))}${field('Kurzfassung (optional)', area('summary', '', { rows: 3 }))}${field('Bericht (PDF) *', raw('<input type="file" name="file" accept="application/pdf" required>'))}` });
+  if (!d) return;
+  const file = await fileField(d._form.elements.file, { max: 8 });
+  if (!file) throw new Error('Bitte eine PDF-Datei auswählen.');
+  await POST('/archive/security-report', { title: d.title, summary: d.summary, file }); toast('Sicherheitstest archiviert.'); ACT.archList({ dataset: { kind: 'sicherheitstest' } });
+};
 ACT.backupNow = async () => { await POST('/backups'); toast('Backup erstellt.'); reload(); };
 ACT.backupPw = async () => {
   const d = await ask({ title: 'Backup-Passwort festlegen', text: 'Mit diesem Passwort werden alle künftigen Backups verschlüsselt. Bewahre es sicher auf – ohne Passwort lassen sich Backups nicht öffnen.', ok: 'Speichern',
@@ -163,9 +179,9 @@ async function admSettings(P, tab) {
     <section class="panel mt"><div class="panel-head"><h2>Verbindungen</h2></div><div class="panel-body row">${[['r2', 'Dateispeicher (R2)'], ['shopify', 'Shopify-Statistik'], ['oldDb', 'Alte Datenbank (Import)']].map(([k, l]) => badge(`${l}: ${d.env[k] ? 'verbunden' : 'nicht eingerichtet'}`, d.env[k] ? 'ok' : 'muted'))}</div></section>` : ''}
     <form class="stack mt" data-submit="settingsSave">${groups.map(([title, list]) => html`<section class="panel"><div class="panel-head"><h2>${title}</h2><button class="btn btn-sm btn-dark" type="submit">Speichern</button></div><div class="panel-body grid-2">${list.map(([k, l]) => input(k, l))}</div></section>`)}</form>
     ${isAdmin() ? html`<section class="panel mt"><div class="panel-head"><h2>Bereichspasswort (Protokoll und Backup)</h2></div><form class="panel-body inline-form" data-submit="areaPw">
-      ${field('Aktuelles Bereichspasswort', inp('current', '', { type: 'password', req: true, attrs: 'autocomplete="off"' }))}${field('Neues Bereichspasswort', inp('next', '', { type: 'password', req: true, attrs: 'minlength="10" autocomplete="new-password"' }))}<button class="btn btn-dark" type="submit">Ändern</button></form></section>
+      ${field('Aktuelles Bereichspasswort', inp('current', '', { type: 'password', req: true, attrs: 'autocomplete="off"' }), 'Noch keins festgelegt? Dann dein Anmeldepasswort.')}${field('Neues Bereichspasswort', inp('next', '', { type: 'password', req: true, attrs: 'minlength="10" autocomplete="new-password"' }))}<button class="btn btn-dark" type="submit">Ändern</button></form></section>
       <section class="panel mt" id="scoringPw"><div class="panel-head"><h2>Freigabepasswort (Angebotsauswahl)</h2></div><form class="panel-body inline-form" data-submit="scoringPw">
-      ${field('Aktuelles Freigabepasswort', inp('current', '', { type: 'password', req: true, attrs: 'autocomplete="off"' }))}${field('Neues Freigabepasswort', inp('next', '', { type: 'password', req: true, attrs: 'minlength="10" autocomplete="new-password"' }))}<button class="btn btn-dark" type="submit">Ändern</button></form></section>` : ''}`);
+      ${field('Aktuelles Freigabepasswort', inp('current', '', { type: 'password', req: true, attrs: 'autocomplete="off"' }), 'Noch keins festgelegt? Dann dein Anmeldepasswort.')}${field('Neues Freigabepasswort', inp('next', '', { type: 'password', req: true, attrs: 'minlength="10" autocomplete="new-password"' }))}<button class="btn btn-dark" type="submit">Ändern</button></form></section>` : ''}`);
   S.settingsTypes = s;
 }
 SUBMIT.mailTest = async (d) => { const r = await POST('/mail/test', d); if (r.status === 'gesendet') toast(`Test-E-Mail an ${d.to} gesendet.`); else toast(r.error ? `Nicht gesendet: ${r.error}` : 'Kein E-Mail-Versand eingerichtet – die E-Mail liegt nur im Postausgang.', 'err'); };
@@ -215,7 +231,7 @@ async function admScoring(P, tab) {
           <label class="score-v"><input type="number" min="0" max="100" step="1" name="w_${f.key}" value="${d.weights[f.key]}" data-score-num="${f.key}" inputmode="numeric" aria-label="${f.label} in Prozent"><span>%</span></label></div>`)}
         <div class="score-bar" id="scoreBar">${d.factors.map((f, i) => html`<i class="sc-${i}" data-w="${d.weights[f.key]}" title="${f.label}: ${d.weights[f.key]} %"></i>`)}</div>
         <div class="grid-2">${field('Anzahl Angebote, die der Kunde sieht', sel('presented_count', [['3', 'Die 3 besten Angebote'], ['2', 'Die 2 besten Angebote'], ['1', 'Nur das beste Angebot']], String(d.presented_count)), 'Sind weniger Angebote eingegangen, sieht der Kunde alle.')}
-          ${field('Freigabepasswort', inp('password', '', { type: 'password', req: true, attrs: 'autocomplete="off"' }), 'Zum Speichern erforderlich')}</div>
+          ${field('Freigabepasswort', inp('password', '', { type: 'password', req: true, attrs: 'autocomplete="off"' }), 'Zum Speichern erforderlich (noch keins festgelegt: dein Anmeldepasswort)')}</div>
         <div class="row"><button class="btn btn-primary" type="submit" id="scoreSave" ${sum === 100 ? '' : raw('disabled')}>${icon('check')}Gewichtung speichern</button><button class="btn btn-ghost" type="button" data-act="scoringEven">Gleichmäßig verteilen</button><span class="small muted" id="scoreHint">${sum === 100 ? '' : 'Die Faktoren müssen zusammen genau 100 % ergeben.'}</span></div></div></form>
     <div class="stack"><section class="panel"><div class="panel-head"><h2>So funktioniert die Auswahl</h2></div><div class="panel-body stack-s small">
       <p>1. Nach Ablauf der Angebotsfrist bewertet das System alle eingegangenen Angebote.</p><p>2. Die ${d.presented_count} besten Angebote werden dem Kunden unter „Meine Anfragen“ vorgestellt – sortiert nach Punkten, das beste zuerst.</p>

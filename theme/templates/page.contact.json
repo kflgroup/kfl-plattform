@@ -1,0 +1,88 @@
+{
+  "sections": {
+    "main": {
+      "type": "main-page",
+      "disabled": true,
+      "settings": {
+        "padding_top": 8,
+        "padding_bottom": 0
+      }
+    },
+    "image_banner_PW9FhP": {
+      "type": "image-banner",
+      "name": "t:sections.image-banner.presets.name",
+      "settings": {
+        "image": "shopify://shop_images/erstelle-bitte-ein-bild-wo-eine-person-in-einem-raum-sitzt-im-autohaus-dieser-r-um-ist-der-raum-wo-kunden-beraten-erden-wo-viele-leder-und-farbmuster-f-r-fahrzeuge-sind-der-bildblick.png",
+        "image_overlay_opacity": 0,
+        "image_height": "medium",
+        "image_behavior": "none",
+        "desktop_content_position": "middle-center",
+        "desktop_content_alignment": "center",
+        "show_text_box": true,
+        "color_scheme": "",
+        "stack_images_on_mobile": true,
+        "mobile_content_alignment": "center",
+        "show_text_below": true
+      }
+    },
+    "multicolumn_AbWapB": {
+      "type": "multicolumn",
+      "blocks": {
+        "column_DwpxUK": {
+          "type": "column",
+          "settings": {
+            "title": "Kontakt",
+            "text": "<p>Direkte Anfragen und persönlicher Kontakt zu unserem Team.</p>",
+            "link_label": "Kontakt",
+            "link": "shopify://pages/kontakt-direkt"
+          }
+        },
+        "column_tGRKFG": {
+          "type": "column",
+          "settings": {
+            "title": "Support",
+            "text": "<p>Hilfe bei Bestellungen, technischen Fragen und Problemen.</p>",
+            "link_label": "Support",
+            "link": "shopify://pages/support"
+          }
+        },
+        "column_Aip73p": {
+          "type": "column",
+          "settings": {
+            "title": "Dein Auto-DEAL",
+            "text": "<p>Sag uns, welches Auto du suchst – wir holen die Angebote für dich ein.</p>",
+            "link_label": "Jetzt anfragen",
+            "link": "shopify://pages/traumwagen-deal"
+          }
+        }
+      },
+      "block_order": [
+        "column_DwpxUK",
+        "column_tGRKFG",
+        "column_Aip73p"
+      ],
+      "name": "t:sections.multicolumn.presets.name",
+      "settings": {
+        "title": "Wir helfen Dir weiter",
+        "heading_size": "h1",
+        "image_width": "full",
+        "image_ratio": "adapt",
+        "button_label": "",
+        "button_link": "",
+        "columns_desktop": 3,
+        "column_alignment": "center",
+        "background_style": "primary",
+        "color_scheme": "scheme-4",
+        "columns_mobile": "1",
+        "swipe_on_mobile": false,
+        "padding_top": 36,
+        "padding_bottom": 36
+      }
+    }
+  },
+  "order": [
+    "main",
+    "image_banner_PW9FhP",
+    "multicolumn_AbWapB"
+  ]
+}

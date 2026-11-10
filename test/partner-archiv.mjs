@@ -38,7 +38,7 @@ check(tk.partner_hidden_at && tk.archived_at, 'Nach 30 Tagen beim Partner entfer
 r = await c.get('/papi/tickets', { who: 'p' }); check(!r.tickets.some((t) => t.id === t1) && r.tickets.some((t) => t.id === t2), 'Partner-Liste ohne das alte Ticket, offenes bleibt');
 r = await c.get('/papi/tickets/' + t1, { who: 'p' }); check(r.status === 404, 'Detail für den Partner nicht mehr abrufbar');
 const arch = q1("SELECT * FROM archive WHERE kind = 'ticket' AND ref_id = ?", t1), data = JSON.parse(arch.data);
-check(q1("SELECT COUNT(*) AS n FROM archive WHERE kind = 'ticket' AND ref_id = ?", t1).n === 1 && data.messages.length >= 2 && data.ticket.partner_hidden_at && !arch.expires_at, 'Intern dauerhaft im Backup-Archiv mit vollem Verlauf');
+check(q1("SELECT COUNT(*) AS n FROM archive WHERE kind = 'ticket' AND ref_id = ?", t1).n === 1 && data.messages.length >= 2 && data.ticket.partner_hidden_at && arch.expires_at && Math.abs((Date.parse(arch.expires_at) - globalThis.__KFL_NOW) / 86400e3 / 365 - 3) < 0.2, 'Intern im Backup-Archiv mit vollem Verlauf (Löschung nach 3 Jahren, Verjährungsfrist)', arch.expires_at);
 
 // Ticket, das nie ins interne Archiv lief (z. B. längere interne Frist) → wird spätestens jetzt gesichert
 await c.patch('/api/settings', { support_archive_days: 60 }, { who: 'admin' });

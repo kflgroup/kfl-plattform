@@ -56,22 +56,26 @@ function requirePerm(u, perm) { need(u, 401, 'Bitte melde dich an.'); need(can(u
 const areaUnlocked = (u) => !!u && !!u.areaUntil && u.areaUntil > nowIso();
 function requireArea(u, perm) { requirePerm(u, perm); need(areaUnlocked(u), 423, 'Dieser Bereich ist zusätzlich geschützt. Bitte gib das Bereichspasswort ein.'); }
 
-// Bereichspasswort (Protokoll/Backup). Standard laut Vorgabe, als Hash gespeichert, vom Admin änderbar.
-// Startwert laut Vorgabe – nur als PBKDF2-Hash hinterlegt
-const DEFAULT_AREA_HASH = { salt: 'kfl-area-2026-10', hash: 'ee1cf79402a417ca96f3f99861cefb748e01c56be773ee20dd7b89489dc44a3e' };
-async function areaPasswordOk(ctx, password) {
+// Bereichspasswort (Protokoll/Backup) und Freigabepasswort (Angebotsauswahl): vom Admin festgelegt, nur als PBKDF2-Hash gespeichert.
+// Solange keins festgelegt ist, gilt das eigene Anmeldepasswort der Person (erneute Anmeldung) – es gibt keinen Standardwert im Quellcode.
+async function ownPasswordOk(ctx, u, password) {
+  if (!u || !u.id || !password) return false;
+  const row = await DB.one(ctx.db, 'SELECT pass_hash, pass_salt FROM users WHERE id = ? AND active = 1', u.id);
+  return !!(row && row.pass_hash && await verifyPassword(String(password), row.pass_hash, row.pass_salt));
+}
+async function areaPasswordOk(ctx, password, u) {
+  if (!password) return false;
   const raw = await rawSetting(ctx.db, '_area_pw');
   if (raw) { const o = jparse(raw, {}); return verifyPassword(password, o.hash, o.salt); }
   if (ctx.env.AREA_PASSWORD) return safeEqual(String(password || ''), String(ctx.env.AREA_PASSWORD));
-  return verifyPassword(password, DEFAULT_AREA_HASH.hash, DEFAULT_AREA_HASH.salt);
+  return ownPasswordOk(ctx, u, password);
 }
-// Freigabepasswort für die Angebotsauswahl (Startwert laut Vorgabe, nur als Hash hinterlegt)
-async function scoringPasswordOk(ctx, password) {
+async function scoringPasswordOk(ctx, password, u) {
   if (!password) return false;
   const raw = await rawSetting(ctx.db, '_scoring_pw');
   if (raw) { const o = jparse(raw, {}); return verifyPassword(password, o.hash, o.salt); }
   if (ctx.env.SCORING_PASSWORD) return safeEqual(String(password), String(ctx.env.SCORING_PASSWORD));
-  return verifyPassword(password, DEFAULT_AREA_HASH.hash, DEFAULT_AREA_HASH.salt);
+  return ownPasswordOk(ctx, u, password);
 }
 async function setAreaPassword(ctx, password) { const h = await hashPassword(password); await setRawSetting(ctx.db, '_area_pw', JSON.stringify(h)); }
 

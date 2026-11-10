@@ -144,7 +144,7 @@ async function handleStaffApi(ctx, url) {
   if (path === '/area/unlock' && method === 'POST') {
     need(can(u, 'audit_view') || can(u, 'backup_view'), 403, 'Dafür fehlt dir die Berechtigung.');
     need(!(await secondPasswordThrottled(ctx, 'bereich_passwort_falsch')), 429, 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.');
-    const ok = await areaPasswordOk(ctx, body.password);
+    const ok = await areaPasswordOk(ctx, body.password, u);
     await audit(ctx, ok ? 'bereich_entsperrt' : 'bereich_passwort_falsch', 'bereich', null, null);
     need(ok, 403, 'Das Bereichspasswort ist falsch.');
     await DB.run(db, 'UPDATE sessions SET area_until = ? WHERE token_hash = ?', isoOf(nowMs() + AREA_MINUTES * 60e3), u.tokenHash);
@@ -198,8 +198,8 @@ async function handleStaffApi(ctx, url) {
       const keys = new Set((await DB.all(db, "SELECT key FROM settings WHERE key IN ('_area_pw', '_scoring_pw')")).map((r) => r.key));
       security = [
         { key: 'app_secret', ok: !!env.APP_SECRET, label: 'Eigener Server-Schlüssel (APP_SECRET)', hint: 'Cloudflare → Worker → Einstellungen → Variablen und Geheimnisse → APP_SECRET als „Geheimnis“ mit einem langen Zufallswert anlegen.' },
-        { key: 'area_pw', ok: keys.has('_area_pw') || !!env.AREA_PASSWORD, label: 'Eigenes Bereichspasswort (Protokoll, Backup)', hint: 'Verwaltung → Einstellungen → Bereichspasswort ändern. Der Startwert ist nur ein Platzhalter.' },
-        { key: 'scoring_pw', ok: keys.has('_scoring_pw') || !!env.SCORING_PASSWORD, label: 'Eigenes Freigabepasswort (Angebotsauswahl)', hint: 'Verwaltung → Angebotsauswahl → Freigabepasswort ändern.' }
+        { key: 'area_pw', ok: keys.has('_area_pw') || !!env.AREA_PASSWORD, label: 'Eigenes Bereichspasswort (Protokoll, Backup)', hint: 'Verwaltung → Einstellungen → Bereichspasswort festlegen. Solange keins festgelegt ist, gilt das eigene Anmeldepasswort.' },
+        { key: 'scoring_pw', ok: keys.has('_scoring_pw') || !!env.SCORING_PASSWORD, label: 'Eigenes Freigabepasswort (Angebotsauswahl)', hint: 'Verwaltung → Angebotsauswahl → Freigabepasswort festlegen. Solange keins festgelegt ist, gilt das eigene Anmeldepasswort.' }
       ];
       const no2fa = await DB.all(db, "SELECT name FROM users WHERE active = 1 AND pass_hash IS NOT NULL AND totp_on = 0 AND role_key IN ('admin','gf','buchhaltung') ORDER BY name");
       security.push({ key: 'twofa', ok: !no2fa.length, label: 'Zwei-Faktor-Anmeldung für Admin, Geschäftsführung und Buchhaltung', hint: `Unten links auf das Schild-Symbol klicken und mit einer Authenticator-App einrichten.${no2fa.length ? ' Noch ohne: ' + no2fa.map((x) => x.name).join(', ') + '.' : ''}` });
@@ -688,6 +688,21 @@ async function handleStaffApi(ctx, url) {
     return out({ ok: true });
   }
   if (path === '/archive' && method === 'GET') { requireArea(u, 'backup_view'); return out({ ok: true, items: await DB.all(db, `SELECT id, kind, ref_id, title, archived_at, expires_at FROM archive ${q.kind ? 'WHERE kind = ?' : ''} ORDER BY id DESC LIMIT 500`, ...(q.kind ? [q.kind] : [])) }); }
+  if ((m = path.match(/^\/archive\/(\d+)\/file$/)) && method === 'GET') {
+    requireArea(u, 'backup_view');
+    const a = await DB.one(db, 'SELECT * FROM archive WHERE id = ?', +m[1]); need(a, 404, 'Nicht gefunden.');
+    const d = jparse(a.data, {}); need(d.file_id, 404, 'Zu diesem Eintrag gibt es keine Datei.');
+    await audit(ctx, 'archiv_datei_geoeffnet', 'archiv', a.id, { art: a.kind });
+    return fileResponse(await getFile(ctx, d.file_id), q.download === '1');
+  }
+  if (path === '/archive/security-report' && method === 'POST') {
+    requireArea(u, 'backup_view'); need(u.role === 'admin', 403, 'Nur der Admin kann Sicherheitsberichte ablegen.');
+    need(body.file && body.file.base64, 400, 'Bitte den Bericht als PDF auswählen.');
+    const bytes = unb64(body.file.base64); need(bytes.length < 8e6, 413, 'Die Datei ist zu groß (max. 8 MB).');
+    need(sniffMime(bytes, 'application/pdf') === 'application/pdf', 400, 'Bitte eine PDF-Datei hochladen.');
+    const id = await archiveSecurityTest(ctx, { title: str(body.title, 200) || 'Sicherheitstest ' + berlinDate(nowMs()), pdf: bytes, summary: str(body.summary, 2000) || null, ref: 'upload-' + berlinDate(nowMs()), source: 'Upload ' + u.name });
+    return out({ ok: true, id });
+  }
   if ((m = path.match(/^\/archive\/(\d+)$/)) && method === 'GET') { requireArea(u, 'backup_view'); const a = await DB.one(db, 'SELECT * FROM archive WHERE id = ?', +m[1]); need(a, 404, 'Nicht gefunden.'); return out({ ok: true, item: { ...a, data: jparse(a.data, {}) } }); }
 
   /* ---------- Protokoll (Admin + Bereichspasswort) ---------- */
@@ -850,8 +865,8 @@ async function handleStaffApi(ctx, url) {
   if (path === '/scoring' && method === 'POST') {
     need(u.role === 'admin', 403, 'Die Angebotsauswahl kann nur der Admin ändern.');
     need(!(await secondPasswordThrottled(ctx, 'freigabe_passwort_falsch')), 429, 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.');
-    if (!(await scoringPasswordOk(ctx, body.password))) await audit(ctx, 'freigabe_passwort_falsch', 'einstellungen', null, null);
-    need(await scoringPasswordOk(ctx, body.password), 403, 'Das Freigabepasswort ist falsch. Die Einstellungen wurden nicht gespeichert.');
+    if (!(await scoringPasswordOk(ctx, body.password, u))) await audit(ctx, 'freigabe_passwort_falsch', 'einstellungen', null, null);
+    need(await scoringPasswordOk(ctx, body.password, u), 403, 'Das Freigabepasswort ist falsch. Die Einstellungen wurden nicht gespeichert.');
     const upd = {}; let sum = 0;
     for (const f of SCORE_FACTORS) {
       const v = toInt(body.weights && body.weights[f.key], NaN);
@@ -868,7 +883,7 @@ async function handleStaffApi(ctx, url) {
   if (path === '/settings/area-password' && method === 'POST') {
     need(u.role === 'admin', 403, 'Nur der Admin kann das Bereichspasswort ändern.');
     need(!(await secondPasswordThrottled(ctx, 'bereich_passwort_falsch')), 429, 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.');
-    if (!(await areaPasswordOk(ctx, body.current))) { await audit(ctx, 'bereich_passwort_falsch', 'bereich', null, null); need(false, 403, 'Das aktuelle Bereichspasswort ist falsch.'); }
+    if (!(await areaPasswordOk(ctx, body.current, u))) { await audit(ctx, 'bereich_passwort_falsch', 'bereich', null, null); need(false, 403, 'Das aktuelle Bereichspasswort ist falsch.'); }
     const p = passwordProblem(body.next); need(!p, 400, p);
     await setAreaPassword(ctx, body.next);
     await audit(ctx, 'bereichspasswort_geaendert', 'einstellungen', null, null);
@@ -878,7 +893,7 @@ async function handleStaffApi(ctx, url) {
   if (path === '/settings/scoring-password' && method === 'POST') {
     need(u.role === 'admin', 403, 'Nur der Admin kann das Freigabepasswort ändern.');
     need(!(await secondPasswordThrottled(ctx, 'freigabe_passwort_falsch')), 429, 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.');
-    if (!(await scoringPasswordOk(ctx, body.current))) { await audit(ctx, 'freigabe_passwort_falsch', 'einstellungen', null, null); need(false, 403, 'Das aktuelle Freigabepasswort ist falsch.'); }
+    if (!(await scoringPasswordOk(ctx, body.current, u))) { await audit(ctx, 'freigabe_passwort_falsch', 'einstellungen', null, null); need(false, 403, 'Das aktuelle Freigabepasswort ist falsch.'); }
     const p = passwordProblem(body.next); need(!p, 400, p);
     await setRawSetting(db, '_scoring_pw', JSON.stringify(await hashPassword(body.next)));
     await audit(ctx, 'freigabepasswort_geaendert', 'einstellungen', null, null);

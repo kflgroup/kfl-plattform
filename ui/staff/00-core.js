@@ -235,7 +235,7 @@ ACT.newTicket = async () => {
 /* ---------- Geschützte Bereiche (Protokoll, Backup) ---------- */
 function lockScreen(title, what) {
   return html`${head(title)}<div class="lockscreen"><div class="mark">${icon('lock')}</div><h2>${title} ist zusätzlich geschützt</h2>
-    <p class="muted">${what} Gib das Bereichspasswort ein. Der Bereich bleibt danach 30 Minuten entsperrt.</p>
+    <p class="muted">${what} Gib das Bereichspasswort ein (solange der Admin noch keins festgelegt hat: dein eigenes Anmeldepasswort). Der Bereich bleibt danach 30 Minuten entsperrt.</p>
     <form data-submit="areaUnlock">${field('Bereichspasswort', inp('password', '', { type: 'password', req: true, attrs: 'autocomplete="off"' }))}<button class="btn btn-dark btn-block" type="submit">Entsperren</button></form></div>`;
 }
 SUBMIT.areaUnlock = async (d) => { await POST('/area/unlock', d); await loadSession(); toast('Bereich entsperrt.'); reload(); };

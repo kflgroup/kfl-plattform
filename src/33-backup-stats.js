@@ -25,7 +25,7 @@ async function securityReport(ctx) {
   const mailErr = await DB.val(ctx.db, "SELECT COUNT(*) FROM mail_outbox WHERE status = 'fehler' AND created_at >= ?", since);
   if (mailErr) issues.push({ level: 'hoch', text: `${mailErr} E-Mails konnten in 24 Stunden nicht zugestellt werden.` });
   if (!mailProvider(await mailEnv(ctx))) issues.push({ level: 'hoch', text: 'Kein E-Mail-Versand eingerichtet (SMTP_USER/SMTP_PASS oder BREVO_API_KEY) – E-Mails werden nur im Postausgang protokolliert.' });
-  if (!(await rawSetting(ctx.db, '_area_pw'))) issues.push({ level: 'hoch', text: 'Das Bereichspasswort für Protokoll und Backup ist noch das Standardpasswort. Bitte ändern.' });
+  if (!(await rawSetting(ctx.db, '_area_pw'))) issues.push({ level: 'hoch', text: 'Für Protokoll und Backup ist noch kein eigenes Bereichspasswort festgelegt (bis dahin gilt das eigene Anmeldepasswort). Bitte unter Verwaltung → Einstellungen festlegen.' });
   if (!(await rawSetting(ctx.db, '_backup_pw'))) issues.push({ level: 'hoch', text: 'Kein eigenes Backup-Passwort festgelegt – Backups sind mit dem Server-Schlüssel verschlüsselt.' });
   if (!ctx.env.FILES) issues.push({ level: 'info', text: 'Kein R2-Dateispeicher verbunden – Dateien und Backups liegen in der Datenbank (Größenlimit beachten).' });
   if (!s.company_iban) issues.push({ level: 'mittel', text: 'Keine Bankverbindung in den Firmendaten – erscheint nicht auf Rechnungen, SEPA-Export nicht möglich.' });

@@ -130,6 +130,7 @@ async function sendPartnerInvite(ctx, uid, token, { reset = false, tempPassword 
   return sendMail(ctx, { category: 'system', to: u.email, toName: u.name, subject: `Deine Einladung zum KFL-Partner-Dashboard – ${u.org_name}`, html, replyTo });
 }
 
+const TICKET_ARCHIVE_DAYS = 3 * 365;
 const partnerArchiveDays = (s) => Math.max(1, Math.min(365, +s.partner_ticket_archive_days || 30));
 // Für Partner sichtbar? Offene Tickets immer, erledigte nur innerhalb der Archivfrist
 const partnerTicketVisible = (tk, s) => !tk.partner_hidden_at && (tk.status !== 'erledigt' || !tk.done_at || msOf(tk.done_at) > nowMs() - partnerArchiveDays(s) * 86400e3);
@@ -165,7 +166,7 @@ async function runSupportJobs(ctx) {
   const arch = isoOf(nowMs() - s.support_archive_days * 86400e3);
   for (const tk of await DB.all(ctx.db, "SELECT * FROM tickets WHERE status = 'erledigt' AND done_at < ? AND archived_at IS NULL", arch)) {
     const msgs = await DB.all(ctx.db, 'SELECT * FROM ticket_messages WHERE ticket_id = ? ORDER BY id', tk.id);
-    await DB.insert(ctx.db, 'archive', { kind: 'ticket', ref_id: tk.id, title: `#${tk.id} ${tk.subject}`, data: JSON.stringify({ ticket: tk, messages: msgs }), archived_at: t, expires_at: null });
+    await DB.insert(ctx.db, 'archive', { kind: 'ticket', ref_id: tk.id, title: `#${tk.id} ${tk.subject}`, data: JSON.stringify({ ticket: tk, messages: msgs }), archived_at: t, expires_at: isoOf(nowMs() + TICKET_ARCHIVE_DAYS * 86400e3) });
     await DB.update(ctx.db, 'tickets', tk.id, { archived_at: t, updated_at: t });
     res.toBackup++;
   }
@@ -174,7 +175,13 @@ async function runSupportJobs(ctx) {
     await DB.insert(ctx.db, 'archive', { kind: 'sysissue', ref_id: si.id, title: si.title, data: JSON.stringify(si), archived_at: t, expires_at: isoOf(msOf(si.done_at) + s.syslist_retention_days * 86400e3) });
     res.sysToBackup++;
   }
-  await DB.run(ctx.db, 'DELETE FROM archive WHERE expires_at IS NOT NULL AND expires_at < ?', t);
+  await purgeExpiredArchiveFiles(ctx);
+  // Speicherbegrenzung (Art. 5 Abs. 1 lit. e DSGVO): archivierte Support-Fälle höchstens drei Jahre (Verjährungsfrist) aufbewahren
+  await DB.run(ctx.db, "UPDATE archive SET expires_at = ? WHERE kind = 'ticket' AND expires_at IS NULL", isoOf(nowMs() + TICKET_ARCHIVE_DAYS * 86400e3));
+  for (const tk of await DB.all(ctx.db, 'SELECT id FROM tickets WHERE archived_at IS NOT NULL AND archived_at < ? LIMIT 20', isoOf(nowMs() - TICKET_ARCHIVE_DAYS * 86400e3))) {
+    await DB.run(ctx.db, 'DELETE FROM ticket_messages WHERE ticket_id = ?', tk.id); await DB.run(ctx.db, 'DELETE FROM tickets WHERE id = ?', tk.id);
+  }
+  await DB.run(ctx.db, "DELETE FROM archive WHERE kind != 'sicherheitstest' AND expires_at IS NOT NULL AND expires_at < ?", t);
   await DB.run(ctx.db, "DELETE FROM sys_issues WHERE status = 'erledigt' AND done_at < ?", isoOf(nowMs() - s.syslist_retention_days * 86400e3));
   return res;
 }

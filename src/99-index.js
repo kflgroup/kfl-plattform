@@ -100,6 +100,8 @@ async function runJobs(ctx, { force } = {}) {
   // Rechnungs-Postfach (alle 10 Minuten, je Lauf eine E-Mail) – nur in Läufen ohne Verteilung oder Tagesjob (Abfragegrenze je Aufruf)
   if (force === 'postfach' || (!force && !heavy)) await safe('postfach', () => runInbox(ctx, s, { force: force === 'postfach' }));
   if (force === 'support' || force === 'partnerarchiv' || (!force && !heavy)) await safe('partnerarchiv', () => runPartnerTicketArchive(ctx));
+  // Vorbereiteter Sicherheitsbericht → PDF ins Archiv (365 Tage)
+  if (force === 'sicherheitstest' || (!force && !heavy)) await safe('sicherheitstest', () => runSecurityTestImport(ctx));
   return res;
 }
 
@@ -157,7 +159,7 @@ async function makeCtx(request, env, url) {
   let origin = url ? url.origin : (env.PUBLIC_ORIGIN || '');
   if (!url && !origin) origin = (await rawSetting(env.DB, '_origin')) || '';
   if (url && !(await rawSetting(env.DB, '_origin'))) await setRawSetting(env.DB, '_origin', url.origin);
-  return { env, db: env.DB, request, origin, ipHash: ip ? (await sha256Hex('kfl-ip:' + ip)).slice(0, 24) : null, actor: null };
+  return { env, db: env.DB, request, origin, ipHash: ip ? (await hmacHex(serverKey(env), 'kfl-ip:' + ip)).slice(0, 24) : null, actor: null };
 }
 
 export default {
@@ -187,9 +189,9 @@ export default {
       if (p === '/partner' || p === '/partner/') return pageResponse(PARTNER_HTML);
       if (p.startsWith('/api/')) return await handleStaffApi(ctx, url);
       if (p.startsWith('/papi/')) return await handlePartnerApi(ctx, url);
-      if (p === '/health') return out({ ok: true, version: APP_VERSION });
+      if (p === '/health') return out({ ok: true });
       if (p === '/') return Response.redirect(url.origin + '/partner', 302);
-      return new Response('Nicht gefunden', { status: 404 });
+      return new Response('Nicht gefunden', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'", 'X-Frame-Options': 'DENY', ...SEC_HEADERS } });
     } catch (e) {
       if (e instanceof HttpError) {
         const origin = request.headers.get('Origin') || '';

@@ -1,0 +1,43 @@
+// Sicherheitstest-Berichte: vorbereiteter Bericht → PDF → Archiv (365 Tage), Abruf nur mit Bereichspasswort, Upload, Löschung nach Ablauf
+// Mit SECTEST_IN=<bericht.json> SECTEST_OUT=<datei.pdf> wird zusätzlich genau das PDF erzeugt, das im Archiv liegt.
+import { readFileSync, writeFileSync } from 'node:fs';
+import { makeD1, installFetch, SECRET, setNow, advance, client, check, cron, ticks } from './harness.mjs';
+const worker = (await import('./wk.mjs')).default;
+installFetch(); setNow('2026-11-10T22:00:00Z');
+const env = { DB: makeD1(), FORM_SECRET: SECRET, APP_SECRET: 'y'.repeat(40), SETUP_TOKEN: 's' };
+const sq = env.DB._sq, c = client(worker, env), q1 = (s, ...a) => sq.prepare(s).get(...a);
+await c.post('/api/setup', { token: 's', email: 'admin@kfl.de', name: 'Admin', password: 'AdminPass123!' }, { who: 'admin' });
+const vt = await c.post('/api/users', { email: 'vt@kfl.de', name: 'Vera', role_key: 'vertrieb' }, { who: 'admin' });
+await c.post('/api/invite/accept', { token: vt.invite.split('/').pop(), password: 'Vertrieb12345!' }, { who: 'vt' });
+const rep = process.env.SECTEST_IN ? JSON.parse(readFileSync(process.env.SECTEST_IN, 'utf8')) : { title: 'Sicherheitstest Test', ref: 'ST-TEST', date: '10.11.2026', summary: 'Kurz', kpis: [['6', 'Angriffe', 'ok']], sections: [{ h: 'Abschnitt', blocks: [{ p: 'Text mit Umlauten äöü ß – „Zitat“ €.' }, { ul: ['Eins', 'Zwei'] }, { note: 'Hinweis', tone: 'warn' }, { table: { cols: ['A', 'B'], widths: [0.3, 0.7], rows: [['Abgewehrt', 'x'], ['Lücke', 'y']] } }, { kv: [['K', 'V']] }] }] };
+console.log('Bericht → Archiv');
+sq.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('_sectest_pending', ?, '2026-11-10')").run(JSON.stringify(rep));
+await ticks(worker, env, 6);
+const a = q1("SELECT * FROM archive WHERE kind = 'sicherheitstest'");
+check(a && a.title === rep.title, 'Bericht liegt im Archiv', a);
+check(!q1("SELECT key FROM settings WHERE key = '_sectest_pending'"), 'Vorbereitete Daten sind danach entfernt');
+const days = (Date.parse(a.expires_at) - Date.parse(a.archived_at)) / 86400e3;
+check(Math.round(days) === 365, 'Aufbewahrung 365 Tage', days);
+const d = JSON.parse(a.data); const f = q1('SELECT * FROM files WHERE id = ?', d.file_id);
+check(f && f.mime === 'application/pdf', 'Datei ist ein PDF', f && f.mime);
+await cron(worker, env); check(q1("SELECT COUNT(*) AS n FROM archive WHERE kind = 'sicherheitstest'").n === 1, 'Kein Doppel bei weiterem Durchlauf');
+sq.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('_sectest_pending', ?, '2026-11-10')").run(JSON.stringify(rep));
+await cron(worker, env); check(q1("SELECT COUNT(*) AS n FROM archive WHERE kind = 'sicherheitstest'").n === 1, 'Gleiche Kennung wird nicht doppelt archiviert');
+console.log('Zugriff');
+let r = await c.call('GET', `/api/archive/${a.id}/file`, null, { who: 'admin', raw: true }); check(r.status === 423, 'Ohne Bereichspasswort gesperrt', r.status);
+await c.post('/api/area/unlock', { password: 'AdminPass123!' }, { who: 'admin' });
+r = await c.call('GET', `/api/archive/${a.id}/file`, null, { who: 'admin', raw: true });
+const bytes = new Uint8Array(await r.arrayBuffer());
+check(r.status === 200 && String.fromCharCode(...bytes.slice(0, 5)) === '%PDF-' && /application\/pdf/.test(r.headers.get('Content-Type')), 'Admin öffnet das PDF nach Entsperren');
+if (process.env.SECTEST_OUT) { writeFileSync(process.env.SECTEST_OUT, bytes); console.log('  · PDF geschrieben:', process.env.SECTEST_OUT, bytes.length, 'Bytes'); }
+r = await c.call('GET', `/api/archive/${a.id}/file`, null, { who: 'vt', raw: true }); check(r.status === 403, 'Vertriebler hat keinen Zugriff', r.status);
+r = await c.get('/api/archive?kind=sicherheitstest', { who: 'admin' }); check(r.items && r.items.length === 1, 'Archivliste filtert Sicherheitstests');
+console.log('Upload');
+r = await c.post('/api/archive/security-report', { title: 'Extern', file: { name: 'x.pdf', base64: Buffer.from('<html>').toString('base64') } }, { who: 'admin' }); check(r.status === 400, 'Kein PDF → abgelehnt', r);
+r = await c.post('/api/archive/security-report', { title: 'Extern', file: { name: 'x.pdf', base64: Buffer.from(bytes).toString('base64') } }, { who: 'admin' }); check(r.ok, 'PDF-Upload durch Admin', r);
+console.log('Ablauf');
+advance(366 * 24); await c.post('/api/login', { email: 'admin@kfl.de', password: 'AdminPass123!' }, { who: 'admin' });
+await c.post('/api/jobs/run', { job: 'support' }, { who: 'admin' });
+check(q1("SELECT COUNT(*) AS n FROM archive WHERE kind = 'sicherheitstest'").n === 0, 'Nach 365 Tagen gelöscht');
+check(!q1('SELECT id FROM files WHERE id = ?', d.file_id), 'Datei ebenfalls gelöscht');
+console.log('fertig');
