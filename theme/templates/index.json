@@ -49,8 +49,8 @@
           "type": "tile",
           "settings": {
             "style": "dark",
-            "image": "shopify://shop_images/Autoabholung_-_Present_-_Kaufen_Finanzieren_leasen.png",
-            "kicker": "Finde deinen Traumwagen-DEAL",
+            "image": "shopify://shop_images/photo-1605026248489-9a36707ad2c1.jpg",
+            "kicker": "Finde deinen Auto Deal",
             "title": "Du sagst, was du willst. Wir verhandeln.",
             "text": "Neu oder gebraucht, kaufen, finanzieren oder leasen: Wir vergleichen Angebote aus unserem Netzwerk und schicken dir die besten.",
             "btn_1": "Deal anfragen",
@@ -64,7 +64,7 @@
           "type": "tile",
           "settings": {
             "style": "light",
-            "image": "shopify://shop_images/long-highway-in-arizona-desert.jpg",
+            "image": "shopify://shop_images/photo-1600112218627-1a108bf83e1a.jpg",
             "kicker": "Mein Auto verkaufen",
             "title": "Dein Auto ist mehr wert, als du denkst.",
             "text": "Ein paar Angaben genügen. Wir holen ein faires Ankaufangebot ein – auch als Inzahlungnahme für deinen nächsten Wagen.",
