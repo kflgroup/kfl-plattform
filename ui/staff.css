@@ -326,3 +326,18 @@ fieldset.fieldset-plain{border:0;padding:0;margin:0;min-width:0}
 .sec-card ul{margin:10px 0 0 34px;padding:0;display:flex;flex-direction:column;gap:8px}
 .sec-card li{font-size:14px}.sec-card li b{display:block}.sec-card li span{color:var(--steel);font-size:13px}
 .tfa-steps{margin:0;padding-left:18px;display:grid;gap:6px}.tfa-key{letter-spacing:.06em;user-select:all;word-break:break-all}
+/* Live-Leiste „Jetzt handeln“ */
+#slive:empty{display:none}
+.s-live{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:6px 32px 10px}
+.sl-main{flex:1 1 420px;min-width:0;display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:var(--r-m);background:#191919;color:#fff;text-decoration:none;font-size:14px}
+.sl-t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#d9d9d9}
+.sl-dot{width:9px;height:9px;border-radius:50%;background:#8a8a8a;flex:none}
+.sl-main.hot .sl-dot{background:var(--orange);animation:sl-pulse 2s ease-in-out infinite}
+.sl-go{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-weight:700;color:var(--orange);white-space:nowrap}
+.sl-go .ic{width:16px;height:16px}
+.sl-chips{display:flex;flex-wrap:wrap;gap:6px}
+.sl-chip{padding:7px 11px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:13px;font-weight:600;text-decoration:none;color:var(--ink);white-space:nowrap}
+.sl-chip.hot{background:var(--orange-wash);border-color:#ffd2b0;color:var(--orange-ink)}
+@keyframes sl-pulse{50%{box-shadow:0 0 0 6px rgba(255,108,1,0)}}
+@media (max-width:960px){.s-live{padding:10px 16px 0}.sl-main{flex-basis:100%}}
+@media (prefers-reduced-motion:reduce){.sl-main.hot .sl-dot{animation:none}}

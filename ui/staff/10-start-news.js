@@ -51,18 +51,7 @@ async function pageStart() {
   NEWS_CACHE = d.news;
   const k = d.kpis || {}, pl = d.pipeline;
   // Aufgaben nach Dringlichkeit: was heute Umsatz sichert oder Kunden warten lässt, steht oben
-  const todo = [
-    k.problems && { ic: 'alert', n: k.problems, t: 'Anfragen mit Fehler oder ohne Angebot', h: 'Partner nachfassen oder manuell zuordnen, bevor der Kunde abspringt.', href: '#/anfragen?view=alle&status=fehler,stoerung,kein_angebot', hot: true },
-    pl && pl.deadlineSoon && { ic: 'clock', n: pl.deadlineSoon, t: 'Angebotsfristen laufen bald ab', h: 'Weniger als 4 Stunden – jetzt die Partner erinnern.', href: '#/anfragen?status=versendet', hot: true },
-    k.notes && { ic: 'note', n: k.notes, t: 'Neue Notizen von Kunden', h: 'Lesen und an die Partner weitergeben.', href: '#/anfragen?notes=1', hot: true },
-    pl && pl.stages.angebote && { ic: 'star', n: pl.stages.angebote, t: 'Angebote liegen vor', h: 'Auswerten und die besten drei dem Kunden vorstellen.', href: '#/anfragen?status=angebot_liegt_vor,angebot_in_bearbeitung' },
-    pl && pl.unassigned && { ic: 'user', n: pl.unassigned, t: 'Neue Eingänge ohne Zuständigen', h: 'Übernehmen oder im Team zuweisen.', href: '#/anfragen?unassigned=1&status=eingang,in_bearbeitung' },
-    k.mine && { ic: 'inbox', n: k.mine, t: 'Mir zugewiesene Anfragen', h: 'Deine offenen Vorgänge.', href: '#/anfragen?mine=1' },
-    k.spam && { ic: 'flag', n: k.spam, t: 'Spam-Meldungen prüfen', h: 'Bestätigen oder wieder freigeben.', href: '#/anfragen?view=spam' },
-    k.tickets && { ic: 'support', n: k.tickets, t: 'Offene Support-Tickets', h: 'Kunden und Partner warten auf Antwort.', href: '#/support' },
-    k.bill && { ic: 'euro', n: k.bill, t: 'Abrechnungsfälle offen', h: 'Vermittlungen abrechnen.', href: '#/buchhaltung/faelle' },
-    k.overdue && { ic: 'alert', n: k.overdue, t: 'Rechnungen überfällig', h: 'Zahlung anmahnen oder klären.', href: '#/buchhaltung/rechnungen?overdue=1', hot: true }
-  ].filter(Boolean);
+  const todo = staffTodo(k, pl);
   const urgent = todo.filter((x) => x.hot).length;
   const m = pl && pl.month, lm = pl && pl.lastMonth;
   const unread = feedItems(d.news, 'ungelesen').length;

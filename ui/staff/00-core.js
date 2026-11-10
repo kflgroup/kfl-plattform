@@ -44,13 +44,41 @@ function shell(active) {
           <div class="tb-crumb" id="scrumb"></div>
           ${canAny('req_view', 'partner_view', 'customers_view', 'acc_view', 'support_view', 'users_view') ? html`<form class="tb-search" data-submit="globalSearch" role="search"><label>${icon('search')}<input name="q" placeholder="Suchen: Name, E-Mail, Anfragenummer, PLZ …  (Strg + K)" aria-label="Alles durchsuchen" autocomplete="off"></label></form>` : html`<span class="spacer"></span>`}
           <span class="tb-chip">${icon('calendar')}${fDate(new Date())} · KW ${isoWeekOf().week}</span><span id="sbell"></span></header>
-        <main class="main" id="main" tabindex="-1"></main></div></div>`);
+        <div id="slive" aria-live="polite"></div><main class="main" id="main" tabindex="-1"></main></div></div>`);
   }
   S.active = active;
   renderNav();
   document.body.classList.remove('nav-open');
 }
+// Handlungsbedarf nach Dringlichkeit (Startseite und Live-Leiste)
+function staffTodo(k, pl) {
+  k = k || {};
+  return [
+    k.problems && { ic: 'alert', n: k.problems, t: 'Anfragen mit Fehler oder ohne Angebot', h: 'Partner nachfassen oder manuell zuordnen, bevor der Kunde abspringt.', href: '#/anfragen?view=alle&status=fehler,stoerung,kein_angebot', hot: true },
+    pl && pl.deadlineSoon && { ic: 'clock', n: pl.deadlineSoon, t: 'Angebotsfristen laufen bald ab', h: 'Weniger als 4 Stunden – jetzt die Partner erinnern.', href: '#/anfragen?status=versendet', hot: true },
+    k.notes && { ic: 'note', n: k.notes, t: 'Neue Notizen von Kunden', h: 'Lesen und an die Partner weitergeben.', href: '#/anfragen?notes=1', hot: true },
+    pl && pl.stages.angebote && { ic: 'star', n: pl.stages.angebote, t: 'Angebote liegen vor', h: 'Auswerten und die besten drei dem Kunden vorstellen.', href: '#/anfragen?status=angebot_liegt_vor,angebot_in_bearbeitung' },
+    pl && pl.unassigned && { ic: 'user', n: pl.unassigned, t: 'Neue Eingänge ohne Zuständigen', h: 'Übernehmen oder im Team zuweisen.', href: '#/anfragen?unassigned=1&status=eingang,in_bearbeitung' },
+    k.mine && { ic: 'inbox', n: k.mine, t: 'Mir zugewiesene Anfragen', h: 'Deine offenen Vorgänge.', href: '#/anfragen?mine=1' },
+    k.spam && { ic: 'flag', n: k.spam, t: 'Spam-Meldungen prüfen', h: 'Bestätigen oder wieder freigeben.', href: '#/anfragen?view=spam' },
+    k.tickets && { ic: 'support', n: k.tickets, t: 'Offene Support-Tickets', h: 'Kunden und Partner warten auf Antwort.', href: '#/support' },
+    k.bill && { ic: 'euro', n: k.bill, t: 'Abrechnungsfälle offen', h: 'Vermittlungen abrechnen.', href: '#/buchhaltung/faelle' },
+    k.overdue && { ic: 'alert', n: k.overdue, t: 'Rechnungen überfällig', h: 'Zahlung anmahnen oder klären.', href: '#/buchhaltung/rechnungen?overdue=1', hot: true }
+  ].filter(Boolean).sort((x, y) => (y.hot ? 1 : 0) - (x.hot ? 1 : 0));
+}
+// Live-Leiste „Jetzt handeln“: auf jeder Seite außer Home der dringendste Punkt und weitere Hinweise
+function renderLive() {
+  if (!$('#slive')) return;
+  const list = can('req_view') ? staffTodo(S.kpis, S.start && S.start.pipeline) : [];
+  const hot = list.filter((x) => x.hot).reduce((a, x) => a + x.n, 0);
+  document.title = (hot ? `(${hot}) ` : '') + 'KFL Dashboard';
+  if (S.active === 'start' || !list.length) return render('#slive', '');
+  const top = list[0], more = list.slice(1, 5);
+  render('#slive', html`<div class="s-live"><a class="sl-main ${top.hot ? 'hot' : ''}" href="${top.href}"><span class="sl-dot"></span><b>Jetzt handeln:</b><span class="sl-t">${top.n} × ${top.t}</span><span class="sl-go">Öffnen${icon('arrow')}</span></a>
+    ${more.length ? html`<div class="sl-chips">${more.map((x) => html`<a class="sl-chip ${x.hot ? 'hot' : ''}" href="${x.href}" title="${x.h}">${x.n} ${x.t}</a>`)}</div>` : ''}</div>`);
+}
 function renderNav() {
+  renderLive();
   const counts = { open: S.kpis.open, bill: S.kpis.bill, tickets: S.kpis.tickets, unread: S.unread };
   const hot = { open: S.kpis.notes > 0 || S.kpis.problems > 0, tickets: false, unread: S.unread > 0, bill: S.kpis.bill > 0 };
   let g = '';
