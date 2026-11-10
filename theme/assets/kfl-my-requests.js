@@ -35,7 +35,7 @@
   };
 
   const FORMS = {
-    deal: { label: 'Traumwagen-DEAL', page: '/pages/traumwagen-deal' },
+    deal: { label: 'Dein Auto-DEAL', page: '/pages/traumwagen-deal' },
     sell: { label: 'Mein Auto verkaufen', page: '/pages/auto-verkaufen' },
     support: { label: 'Support' },
     partner: { label: 'Partner-Anfrage' },
@@ -148,7 +148,7 @@
   const initList = (box) => {
     const render = (list) => {
       if (!list.length) {
-        box.innerHTML = `<div class="k-panel k-my-empty"><h2 class="k-h3">Noch keine Anfragen</h2><p class="k-muted" style="margin:0;max-width:52ch">Sobald du eine Anfrage an uns schickst, findest du sie hier mit allen Angaben und dem aktuellen Stand.</p><div class="k-actions"><a class="k-btn k-btn--primary" href="/pages/traumwagen-deal">Traumwagen-DEAL starten</a><a class="k-btn k-btn--ghost" href="/pages/auto-verkaufen">Mein Auto verkaufen</a></div></div>`;
+        box.innerHTML = `<div class="k-panel k-my-empty"><h2 class="k-h3">Noch keine Anfragen</h2><p class="k-muted" style="margin:0;max-width:52ch">Sobald du eine Anfrage an uns schickst, findest du sie hier mit allen Angaben und dem aktuellen Stand.</p><div class="k-actions"><a class="k-btn k-btn--primary" href="/pages/traumwagen-deal">Dein Auto-DEAL starten</a><a class="k-btn k-btn--ghost" href="/pages/auto-verkaufen">Mein Auto verkaufen</a></div></div>`;
         return;
       }
       box.innerHTML = `<p class="k-my-count">${list.length === 1 ? '1 Anfrage' : list.length + ' Anfragen'}</p>` + list.map(card).join('');

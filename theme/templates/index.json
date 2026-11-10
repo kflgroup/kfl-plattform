@@ -36,7 +36,7 @@
         "line_finanzieren": "Finanziert ohne Zinsfalle.",
         "line_leasen": "Geleast für weniger im Monat.",
         "lead": "Sag uns, welches Auto du suchst. Wir holen Angebote bei Autohäusern, Banken und Leasinggesellschaften ein und melden uns innerhalb von 24 Stunden. Für dich kostenlos und unverbindlich.",
-        "cta_1": "Traumwagen-DEAL anfragen",
+        "cta_1": "Dein Auto-DEAL anfragen",
         "deal_link": "/pages/traumwagen-deal",
         "cta_2": "Mein Auto verkaufen",
         "cta_2_link": "/pages/auto-verkaufen"
@@ -293,7 +293,7 @@
         "q0": {
           "type": "qa",
           "settings": {
-            "q": "Was kostet mich der Traumwagen-DEAL?",
+            "q": "Was kostet mich Dein Auto-DEAL?",
             "a": "<p>Nichts. Die Fahrzeugsuche ist für dich kostenlos und unverbindlich. Wir werden von unseren Partnern – Autohäusern, Banken und Leasinggesellschaften – vergütet, wenn ein Vertrag zustande kommt. Den Vertrag schließt du direkt mit dem jeweiligen Partner.</p>"
           }
         },
@@ -322,7 +322,7 @@
           "type": "qa",
           "settings": {
             "q": "Kann ich mein jetziges Auto in Zahlung geben?",
-            "a": "<p>Ja. Gib im Traumwagen-DEAL einfach an, dass du dein Auto in Zahlung geben möchtest. Du bekommst dann zusätzlich ein Ankaufangebot – auf Wunsch vom selben Partner, damit beide Angebote zusammenpassen.</p>"
+            "a": "<p>Ja. Gib bei deiner Anfrage für Dein Auto-DEAL einfach an, dass du dein Auto in Zahlung geben möchtest. Du bekommst dann zusätzlich ein Ankaufangebot – auf Wunsch vom selben Partner, damit beide Angebote zusammenpassen.</p>"
           }
         },
         "q2": {

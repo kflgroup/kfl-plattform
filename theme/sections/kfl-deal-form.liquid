@@ -1,0 +1,263 @@
+{%- capture endpoint -%}{% render 'kfl-config', key: 'endpoint' %}{%- endcapture -%}{%- assign endpoint = endpoint | strip -%}
+{%- liquid
+ assign voucher = section.settings.voucher_code
+ assign ratgeber = section.settings.ratgeber_link | default: '/collections/ratgeber'
+-%}
+<section class="k-section" style="padding-top:clamp(40px,6vw,88px)" id="deal">
+ <div class="k-wrap">
+  {%- form 'contact', id: 'k-deal-detect', class: 'k-visually-hidden' -%}
+   {%- if form.posted_successfully? -%}
+    {%- assign done = true -%}
+   {%- endif -%}
+  {%- endform -%}
+
+  <div class="k-success k-panel" id="k-deal-success" {% unless done %}hidden{% endunless %} style="max-width:880px">
+   <span class="k-success__icon" aria-hidden="true">{% render 'kfl-icon', name: 'check' %}</span>
+   <h2 class="k-h2" tabindex="-1">{{ section.settings.success_title }}</h2>
+   <p class="k-lead k-muted">{{ section.settings.success_text }}</p>
+   <ol class="k-steps" style="margin-top:2rem">
+    <li class="k-step"><h3 class="k-h3" style="font-size:2rem">Wir prüfen deine Anfrage</h3><p>und melden uns innerhalb von 24 Stunden an Werktagen.</p></li>
+    <li class="k-step"><h3 class="k-h3" style="font-size:2rem">Du bekommst Angebote</h3><p>von Autohäusern, Banken und Leasinggesellschaften – verglichen und erklärt. Gibst du dein Auto in Zahlung, auch dafür.</p></li>
+    <li class="k-step"><h3 class="k-h3" style="font-size:2rem">Du entscheidest</h3><p>Erst wenn ein Angebot passt, geht es weiter. Für dich kostenlos.</p></li>
+   </ol>
+   {%- if voucher != blank -%}
+    <div class="k-voucher">
+     <div style="flex:1 1 260px">
+      <p style="margin:0;font-weight:700;font-size:2rem">{{ section.settings.voucher_title }}</p>
+      <p style="margin:.6rem 0 0;color:#c7c7cc">{{ section.settings.voucher_text }}</p>
+     </div>
+     <span class="k-voucher__code">{{ voucher }}</span>
+     <div class="k-actions">
+      <button type="button" class="k-btn k-btn--light k-btn--sm" data-copy="{{ voucher }}">Code kopieren</button>
+      <a class="k-btn k-btn--primary k-btn--sm" href="/discount/{{ voucher | url_encode }}?redirect={{ ratgeber | url_encode }}">Ratgeber mit 50 % ansehen</a>
+     </div>
+    </div>
+   {%- endif -%}
+  </div>
+
+  {%- unless done -%}
+  <div class="k-form-shell">
+   <aside class="k-form-aside">
+    <p class="k-kicker">{{ section.settings.kicker }}</p>
+    <h1 class="k-h1">{{ section.settings.title }}</h1>
+    <p class="k-lead k-muted" style="margin-top:1.6rem">{{ section.settings.lead }}</p>
+    {%- if customer -%}
+    <ol class="k-progress" data-progress aria-label="Fortschritt">
+     <li aria-current="step">Fahrzeug</li>
+     <li>Bezahlart &amp; Servicepakete</li>
+     <li>Deine Kontaktdaten</li>
+     <li>Prüfen und senden</li>
+    </ol>
+    {%- endif -%}
+    <ul class="k-ticks" style="margin-top:3.2rem">
+     <li>{% render 'kfl-icon', name: 'check' %}<span>Für dich kostenlos – wir werden von unseren Partnern vergütet.</span></li>
+     <li>{% render 'kfl-icon', name: 'check' %}<span>Antwort innerhalb von 24 Stunden an Werktagen.</span></li>
+     <li>{% render 'kfl-icon', name: 'check' %}<span>Auf Wunsch mit Inzahlungnahme deines jetzigen Autos.</span></li>
+     {%- if voucher != blank -%}<li>{% render 'kfl-icon', name: 'check' %}<span>Als Dankeschön: 50 % Rabatt auf unsere Ratgeber.</span></li>{%- endif -%}
+    </ul>
+   </aside>
+
+   <div>
+    {%- unless customer -%}
+     {% render 'kfl-login-gate', title: 'Fast startklar: Melde dich kurz an.', text: 'Für Dein Auto-DEAL brauchst du ein kostenloses KFL-Kundenkonto. Du bekommst einen Anmeldecode per E-Mail – kein Passwort nötig. Neu bei uns? Dann wird dein Konto dabei automatisch angelegt.' %}
+    {%- else -%}
+    <div class="k-panel">
+     {%- form 'contact', id: 'k-deal-form-main', class: 'k-stepper', novalidate: 'novalidate', data-k-form: 'deal', data-success: '#k-deal-success', data-fallback-mail: 'vermittlung@kfl-group.com' -%}
+      {%- if endpoint != blank -%}<script>document.currentScript.closest('form').dataset.endpoint = {{ endpoint | json }};</script>{%- endif -%}
+      {% render 'kfl-form-auth', form_type: 'deal' %}
+      <input type="hidden" name="contact[Formular]" value="DEIN AUTO-DEAL (Fahrzeugsuche) → vermittlung@kfl-group.com">
+      <input type="hidden" name="contact[Kundennummer]" value="{{ customer.id }}">
+      <input type="text" name="contact[Firma2]" class="k-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+
+      {%- if form.errors -%}<div class="k-note k-note--err" role="alert">{{ form.errors | default_errors }}</div>{%- endif -%}
+
+      <div data-step>
+       <h2 class="k-step-title">Welches Auto suchst du?</h2>
+       <fieldset class="k-choices">
+        <legend>Neu oder gebraucht?</legend>
+        <label class="k-choice"><input type="radio" name="contact[Zustand]" value="Neuwagen" required data-sum="Zustand"><span>Neuwagen</span></label>
+        <label class="k-choice"><input type="radio" name="contact[Zustand]" value="Gebrauchtwagen / Jahreswagen" data-sum="Zustand"><span>Gebraucht<small>auch Jahreswagen</small></span></label>
+        <label class="k-choice"><input type="radio" name="contact[Zustand]" value="Egal" data-sum="Zustand"><span>Egal<small>bester Deal zählt</small></span></label>
+       </fieldset>
+       <div class="k-grid-2">
+        {% render 'kfl-car-fields', p: 'd', open: true %}
+        <div class="k-field">
+         <label for="d-fuel">Antrieb</label>
+         <select class="k-select" id="d-fuel" name="contact[Antrieb]" data-sum="Antrieb">
+          <option value="Egal">Egal</option><option>Benzin</option><option>Diesel</option><option>Elektro</option><option>Hybrid</option><option>Plug-in-Hybrid</option>
+         </select>
+        </div>
+        <div class="k-field">
+         <label for="d-when">Wann brauchst du das Auto?</label>
+         <select class="k-select" id="d-when" name="contact[Wunschtermin]" data-sum="Wunschtermin">
+          <option>So schnell wie möglich</option><option>In 1 bis 3 Monaten</option><option>In 3 bis 6 Monaten</option><option>Ich bin flexibel</option>
+         </select>
+        </div>
+        <div class="k-field k-span-2">
+         <label for="d-equip">Ausstattung, Motor, Farbe <span class="k-muted" style="font-weight:400">(optional)</span></label>
+         <textarea class="k-textarea" id="d-equip" name="contact[Ausstattungswünsche]" rows="3" placeholder="z. B. 204 PS, Automatik, Anhängerkupplung, Schwarz" data-sum="Ausstattung"></textarea>
+        </div>
+        <div class="k-field k-span-2">
+         <label for="d-code">Konfigurationscode vom Hersteller <span class="k-muted" style="font-weight:400">(optional)</span></label>
+         <input class="k-input" id="d-code" name="contact[Konfigurationscode]" placeholder="z. B. AUDI-A4-7KX2P" data-sum="Konfigurationscode">
+         <span class="k-hint">Hast du dein Auto im Online-Konfigurator des Herstellers zusammengestellt? Dort bekommst du einen Code oder Link – damit treffen wir deine Ausstattung exakt.</span>
+        </div>
+       </div>
+      </div>
+
+      <div data-step>
+       <h2 class="k-step-title">Wie möchtest du dein Auto bezahlen?</h2>
+       <fieldset class="k-choices">
+        <legend>Bezahlart</legend>
+        <label class="k-choice"><input type="radio" name="contact[Bezahlart]" value="kaufen" data-label="Kaufen" required data-prefill="art" data-sum="Bezahlart"><span>Kaufen<small>Barkauf zum besten Preis</small></span></label>
+        <label class="k-choice"><input type="radio" name="contact[Bezahlart]" value="finanzieren" data-label="Finanzieren" data-prefill="art" data-sum="Bezahlart"><span>Finanzieren<small>Auto gehört am Ende dir</small></span></label>
+        <label class="k-choice"><input type="radio" name="contact[Bezahlart]" value="leasen" data-label="Leasen" data-prefill="art" data-sum="Bezahlart"><span>Leasen<small>feste Rate, Rückgabe am Ende</small></span></label>
+        <span class="k-error-text k-span-all" hidden>Bitte wähle eine Bezahlart.</span>
+       </fieldset>
+
+       <div class="k-cond k-grid-2" data-show-if="contact[Bezahlart]=kaufen">
+        <div class="k-field k-span-2">
+         <label for="d-budget">Dein Budget in € <span class="k-muted" style="font-weight:400">(optional)</span></label>
+         <input class="k-input" id="d-budget" name="contact[Budget]" inputmode="numeric" data-money placeholder="z. B. 35.000" data-sum="Budget">
+        </div>
+       </div>
+
+       <div class="k-cond" data-show-if="contact[Bezahlart]=finanzieren|leasen" style="display:grid;gap:2.4rem">
+        <div class="k-grid-2">
+         <div class="k-field">
+          <label for="d-km">Kilometer pro Jahr</label>
+          <select class="k-select" id="d-km" name="contact[Kilometer pro Jahr]" required data-sum="Kilometer/Jahr">
+           <option value="">Bitte wählen</option><option>5.000 km</option><option>10.000 km</option><option>15.000 km</option><option>20.000 km</option><option>25.000 km</option><option>30.000 km</option><option>Mehr als 30.000 km</option>
+          </select>
+          <span class="k-error-text" hidden>Bitte wähle deine Jahresfahrleistung.</span>
+         </div>
+         <div class="k-field">
+          <label for="d-term">Laufzeit</label>
+          <select class="k-select" id="d-term" name="contact[Laufzeit]" required data-sum="Laufzeit">
+           <option value="">Bitte wählen</option><option>1 Jahr (12 Monate)</option><option>2 Jahre (24 Monate)</option><option>3 Jahre (36 Monate)</option><option>4 Jahre (48 Monate)</option><option>5 Jahre (60 Monate)</option><option>6 Jahre (72 Monate)</option><option>Bin offen für Vorschläge</option>
+          </select>
+          <span class="k-error-text" hidden>Bitte wähle eine Laufzeit.</span>
+         </div>
+         <div class="k-field">
+          <label for="d-rate">Wunschrate pro Monat in € <span class="k-muted" style="font-weight:400">(optional)</span></label>
+          <input class="k-input" id="d-rate" name="contact[Wunschrate]" inputmode="numeric" placeholder="z. B. 350" data-sum="Wunschrate">
+         </div>
+        </div>
+        <fieldset class="k-choices">
+         <legend>Möchtest du eine Anzahlung leisten?</legend>
+         <label class="k-choice"><input type="radio" name="contact[Anzahlung]" value="Ja" required data-sum="Anzahlung"><span>Ja</span></label>
+         <label class="k-choice"><input type="radio" name="contact[Anzahlung]" value="Nein" data-sum="Anzahlung"><span>Nein</span></label>
+         <label class="k-choice"><input type="radio" name="contact[Anzahlung]" value="Weiß ich noch nicht" data-sum="Anzahlung"><span>Weiß noch nicht</span></label>
+         <span class="k-error-text k-span-all" hidden>Bitte wähle eine Antwort.</span>
+        </fieldset>
+        <div class="k-cond k-field" data-show-if="contact[Anzahlung]=Ja">
+         <label for="d-down">Höhe der Anzahlung in €</label>
+         <input class="k-input" id="d-down" name="contact[Anzahlung Höhe]" inputmode="numeric" data-money placeholder="z. B. 5.000" data-sum="Anzahlung in €">
+        </div>
+       </div>
+
+       {% render 'kfl-service-packages', p: 'd' %}
+
+       <fieldset class="k-choices">
+        <legend>Privat oder gewerblich?</legend>
+        <label class="k-choice"><input type="radio" name="contact[Kundenart]" value="Privat" required checked data-sum="Kundenart"><span>Privat</span></label>
+        <label class="k-choice"><input type="radio" name="contact[Kundenart]" value="Gewerblich / Selbstständig" data-sum="Kundenart"><span>Gewerblich<small>Firma oder selbstständig</small></span></label>
+       </fieldset>
+       <fieldset class="k-choices">
+        <legend>Soll dein jetziges Auto in Zahlung gehen?</legend>
+        <label class="k-choice"><input type="radio" name="contact[Inzahlungnahme]" value="Ja" data-sum="Inzahlungnahme"><span>Ja<small>Angebot für mein Auto gleich mit</small></span></label>
+        <label class="k-choice"><input type="radio" name="contact[Inzahlungnahme]" value="Nein" checked data-sum="Inzahlungnahme"><span>Nein</span></label>
+       </fieldset>
+       {% render 'kfl-tradein' %}
+      </div>
+
+      <div data-step>
+       <h2 class="k-step-title">Wie erreichen wir dich?</h2>
+       <p class="k-muted" style="margin:0">Wir haben die Daten aus deinem Kundenkonto übernommen. Bitte prüfe sie kurz.</p>
+       {% render 'kfl-contact-fields', address: true, id: section.id %}
+      </div>
+
+      <div data-step>
+       <h2 class="k-step-title">Fast fertig. Passt alles?</h2>
+       <ul class="k-summary" data-summary aria-label="Deine Angaben"></ul>
+       <div class="k-field">
+        <label for="d-notes">Sonstige Wünsche oder wichtige Angaben <span class="k-muted" style="font-weight:400">(optional)</span></label>
+        <textarea class="k-textarea" id="d-notes" name="contact[body]" rows="4" placeholder="z. B. Lieferung bis Ende März, nur Tageszulassung, Tausch gegen Firmenwagen …"></textarea>
+       </div>
+       {% render 'kfl-consents', type: 'deal' %}
+       <div class="k-note k-note--err" data-form-error hidden role="alert"></div>
+      </div>
+
+      <div class="k-stepper__nav">
+       <button type="button" class="k-btn k-btn--ghost" data-prev hidden>Zurück</button>
+       <span></span>
+       <button type="button" class="k-btn k-btn--dark" data-next>Weiter</button>
+       <button type="submit" class="k-btn k-btn--primary" data-submit hidden>Anfrage senden</button>
+      </div>
+     {%- endform -%}
+    </div>
+    {%- endunless -%}
+   </div>
+  </div>
+  {%- endunless -%}
+ </div>
+</section>
+
+{% stylesheet %}
+  /* Servicepakete (snippets/kfl-service-packages.liquid) */
+  .k-pack-wrap { display: grid; gap: 1.6rem; padding-top: 2.4rem; border-top: 1px solid var(--k-silver-2); }
+  .k-pack-head__title { margin: 0; font-size: 2rem; font-weight: 700; letter-spacing: -0.015em; }
+  .k-pack-head__text { margin: .4rem 0 0; color: var(--k-steel); font-size: 1.45rem; max-width: 56ch; }
+  .k-pack-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
+  @media (max-width: 640px) { .k-pack-grid { grid-template-columns: 1fr; } }
+  .k-pack { position: relative; display: block; cursor: pointer; }
+  .k-pack input { position: absolute; inset: 0; z-index: 1; opacity: 0; margin: 0; cursor: pointer; }
+  .k-pack__card { display: grid; gap: .6rem; align-content: start; height: 100%; padding: 2rem; border-radius: var(--k-radius-m); background: var(--k-silver); border: 1.5px solid transparent; transition: border-color .2s, background-color .2s, box-shadow .3s var(--k-ease); }
+  .k-pack__top { display: flex; justify-content: space-between; align-items: center; margin-bottom: .6rem; }
+  .k-pack__icon { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: #fff; color: var(--k-ink); transition: background-color .2s, color .2s; }
+  .k-pack__icon svg { width: 22px; height: 22px; }
+  .k-pack__box { width: 26px; height: 26px; border-radius: 8px; border: 1.5px solid var(--k-line); background: #fff; display: grid; place-items: center; color: transparent; transition: background-color .2s, border-color .2s, color .2s; }
+  .k-pack__box svg { width: 16px; height: 16px; }
+  .k-pack__badge { justify-self: start; font-size: 1.2rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--k-orange-deep); }
+  .k-pack__name { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.015em; line-height: 1.2; }
+  .k-pack__text { font-size: 1.4rem; color: var(--k-steel); line-height: 1.5; }
+  .k-pack input:hover + .k-pack__card { border-color: var(--k-line); }
+  .k-pack input:checked + .k-pack__card { background: #fff; border-color: #000; box-shadow: inset 0 0 0 1px #000, 0 12px 32px rgba(0,0,0,.06); }
+  .k-pack input:checked + .k-pack__card .k-pack__box { background: var(--k-orange); border-color: var(--k-orange); color: #000; }
+  .k-pack input:checked + .k-pack__card .k-pack__icon { background: #000; color: #fff; }
+  .k-pack input:focus-visible + .k-pack__card { outline: 3px solid var(--k-orange); outline-offset: 2px; }
+  .k-pack-extra { display: grid; gap: 1.6rem; padding: 2rem; border-radius: var(--k-radius-m); border: 1.5px dashed var(--k-line); animation: kFade .4s var(--k-ease) both; }
+  .k-pack-extra__title { display: flex; align-items: center; gap: .8rem; margin: 0; font-size: 1.6rem; font-weight: 700; }
+  .k-pack-extra__title svg { width: 20px; height: 20px; flex: none; color: var(--k-orange-deep); }
+
+  /* Inzahlungnahme: Fahrzeug des Kunden */
+  .k-tradein { display: grid; gap: 2rem; padding: 2.4rem; border-radius: var(--k-radius-m); background: var(--k-silver); border: 1.5px solid var(--k-silver-2); animation: kFade .4s var(--k-ease) both; }
+  .k-tradein[hidden] { display: none; }
+  .k-tradein__head { display: flex; gap: 1.4rem; align-items: flex-start; }
+  .k-tradein__icon { flex: none; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: #000; color: var(--k-orange); }
+  .k-tradein__icon svg { width: 22px; height: 22px; }
+  .k-tradein__title { margin: 0; font-size: 2rem; font-weight: 700; letter-spacing: -0.015em; }
+  .k-tradein__text { margin: .4rem 0 0; color: var(--k-steel); font-size: 1.45rem; line-height: 1.55; max-width: 60ch; }
+  .k-tradein .k-input, .k-tradein .k-select, .k-tradein .k-textarea { background: #fff; }
+  @media (max-width: 640px) { .k-tradein { padding: 1.8rem; } }
+{% endstylesheet %}
+
+{% schema %}
+{
+ "name": "KFL Dein Auto-DEAL",
+ "settings": [
+  { "type": "text", "id": "kicker", "label": "Kleine Zeile", "default": "Dein Auto-DEAL" },
+  { "type": "text", "id": "title", "label": "Überschrift", "default": "Sag uns, was du suchst. Wir verhandeln." },
+  { "type": "textarea", "id": "lead", "label": "Text", "default": "Vier kurze Schritte, rund drei Minuten. Danach holen wir Angebote bei Autohäusern, Banken und Leasinggesellschaften ein und schicken dir die besten." },
+  { "type": "text", "id": "success_title", "label": "Danke – Überschrift", "default": "Danke, deine Anfrage ist bei uns." },
+  { "type": "textarea", "id": "success_text", "label": "Danke – Text", "default": "Eine Kopie deiner Angaben liegt in unserem Postfach. Wir melden uns innerhalb von 24 Stunden an Werktagen bei dir." },
+  { "type": "header", "content": "Gutschein nach der Anfrage" },
+  { "type": "text", "id": "voucher_code", "label": "Rabattcode", "default": "TRAUMDEAL50", "info": "Muss unter Rabatte in Shopify angelegt sein." },
+  { "type": "text", "id": "voucher_title", "label": "Gutschein – Überschrift", "default": "Dein Dankeschön: 50 % auf die KFL Ratgeber" },
+  { "type": "text", "id": "voucher_text", "label": "Gutschein – Text", "default": "Einmal einlösbar pro Kundenkonto. Der Code wird an der Kasse abgezogen." },
+  { "type": "url", "id": "ratgeber_link", "label": "Link zu den Ratgebern" }
+ ]
+,
+ "presets": [{ "name": "KFL Dein Auto-DEAL" }]
+}
+{% endschema %}

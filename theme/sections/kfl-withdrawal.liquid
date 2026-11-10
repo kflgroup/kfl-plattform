@@ -1,0 +1,96 @@
+{%- capture endpoint -%}{% render 'kfl-config', key: 'endpoint' %}{%- endcapture -%}{%- assign endpoint = endpoint | strip -%}
+<section class="k-section" style="padding-top:clamp(40px,6vw,88px)">
+  <div class="k-wrap">
+    <div class="k-form-shell">
+      <aside class="k-form-aside">
+        <p class="k-kicker">Widerrufsfunktion nach § 356a BGB</p>
+        <h1 class="k-h1">Vertrag widerrufen</h1>
+        <p class="k-lead k-muted" style="margin-top:1.6rem">{{ section.settings.lead }}</p>
+        <ul class="k-ticks" style="margin-top:3.2rem">
+          <li>{% render 'kfl-icon', name: 'check' %}<span>Kein Kundenkonto und keine Anmeldung nötig.</span></li>
+          <li>{% render 'kfl-icon', name: 'check' %}<span>Ein Grund ist nicht erforderlich.</span></li>
+          <li>{% render 'kfl-icon', name: 'check' %}<span>Du erhältst eine Eingangsbestätigung mit Inhalt, Datum und Uhrzeit.</span></li>
+        </ul>
+        <p class="k-small k-muted" style="margin-top:2.4rem">Alle Details findest du in unserer <a href="{{ shop.refund_policy.url | default: '/policies/refund-policy' }}" class="k-link">Widerrufsbelehrung</a>.</p>
+      </aside>
+
+      <div class="k-panel">
+        {%- form 'contact', id: 'k-withdraw-form', novalidate: 'novalidate', data-k-form: 'widerruf', data-success: '#k-withdraw-success', data-fallback-mail: 'info@kfl-group.com', data-receipt: 'true' -%}
+          {%- if form.posted_successfully? -%}
+            <div class="k-success" id="k-withdraw-success-static" role="status" data-receipt-view data-received="{{ 'now' | date: '%d.%m.%Y um %H:%M Uhr' }}">
+              <span class="k-success__icon" aria-hidden="true">{% render 'kfl-icon', name: 'check' %}</span>
+              <h2 class="k-h2">Deine Widerrufserklärung ist bei uns eingegangen.</h2>
+              <p class="k-lead k-muted">Eingang am {{ 'now' | date: '%d.%m.%Y um %H:%M Uhr' }}. Wir bestätigen hiermit nur den Eingang. Ob und in welchem Umfang der Widerruf wirksam ist, prüfen wir und melden uns bei dir.</p>
+              <div class="k-note" data-receipt-text style="white-space:pre-wrap"></div>
+              <div class="k-actions"><button type="button" class="k-btn k-btn--dark" data-receipt-download>Eingangsbestätigung speichern</button></div>
+            </div>
+          {%- else -%}
+            {%- if endpoint != blank -%}<script>document.currentScript.closest('form').dataset.endpoint = {{ endpoint | json }};</script>{%- endif -%}
+            {% render 'kfl-form-auth', form_type: 'widerruf' %}
+            <input type="hidden" name="contact[Formular]" value="WIDERRUF (Widerrufsfunktion § 356a BGB) → info@kfl-group.com">
+            <input type="hidden" name="contact[Einwilligung Zeitpunkt]" value="">
+            <input type="text" name="contact[Firma2]" class="k-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+            {%- if form.errors -%}<div class="k-note k-note--err" role="alert">{{ form.errors | default_errors }}</div>{%- endif -%}
+
+            <div style="display:grid;gap:2.4rem">
+              <h2 class="k-step-title">Deine Widerrufserklärung</h2>
+              <div class="k-grid-2">
+                <div class="k-field">
+                  <label for="wd-name">Vor- und Nachname</label>
+                  <input class="k-input" id="wd-name" name="contact[name]" value="{{ customer.name | escape }}" autocomplete="name" required>
+                  <span class="k-error-text" hidden>Bitte gib deinen Namen ein.</span>
+                </div>
+                <div class="k-field">
+                  <label for="wd-mail">E-Mail-Adresse für die Eingangsbestätigung</label>
+                  <input class="k-input" id="wd-mail" type="email" name="contact[email]" value="{{ customer.email | escape }}" autocomplete="email" required>
+                  <span class="k-error-text" hidden>Bitte gib eine gültige E-Mail-Adresse ein.</span>
+                </div>
+              </div>
+              <fieldset class="k-choices">
+                <legend>Welchen Vertrag möchtest du widerrufen?</legend>
+                <label class="k-choice"><input type="radio" name="contact[Vertrag]" value="Bestellung (Ratgeber)" required checked><span>Bestellung<small>z. B. Ratgeber</small></span></label>
+                <label class="k-choice"><input type="radio" name="contact[Vertrag]" value="Dein Auto-DEAL (Vermittlung)"><span>Dein Auto-DEAL</span></label>
+                <label class="k-choice"><input type="radio" name="contact[Vertrag]" value="Mein Auto verkaufen (Vermittlung)"><span>Mein Auto verkaufen</span></label>
+              </fieldset>
+              <div class="k-grid-2">
+                <div class="k-field">
+                  <label for="wd-id">Bestellnummer oder Datum der Anfrage</label>
+                  <input class="k-input" id="wd-id" name="contact[Vertragsangaben]" placeholder="z. B. #1042 oder 12.10.2026" required>
+                  <span class="k-error-text" hidden>Bitte gib an, um welchen Vertrag es geht.</span>
+                </div>
+                <div class="k-field">
+                  <label for="wd-part">Nur einzelne Artikel widerrufen? <span class="k-muted" style="font-weight:400">(optional)</span></label>
+                  <input class="k-input" id="wd-part" name="contact[Teilwiderruf]" placeholder="z. B. nur Ratgeber Leasen">
+                </div>
+                <div class="k-field k-span-2">
+                  <label for="wd-reason">Grund <span class="k-muted" style="font-weight:400">(freiwillig)</span></label>
+                  <textarea class="k-textarea" id="wd-reason" name="contact[body]" rows="3"></textarea>
+                </div>
+              </div>
+              <p class="k-small k-muted" style="margin:0">Hiermit widerrufe ich den oben genannten Vertrag. Mit Klick auf „Widerruf bestätigen“ wird die Erklärung an die KFL GbR, Ahornring 2, 49451 Holdorf, übermittelt. Hinweise zur Verarbeitung deiner Daten findest du in der <a href="{{ shop.privacy_policy.url | default: '/policies/privacy-policy' }}" target="_blank">Datenschutzerklärung</a>.</p>
+              <div class="k-note k-note--err" data-form-error hidden role="alert"></div>
+              <div><button type="submit" class="k-btn k-btn--primary">Widerruf bestätigen</button></div>
+            </div>
+          {%- endif -%}
+        {%- endform -%}
+        <div class="k-success" id="k-withdraw-success" hidden data-receipt-view>
+          <span class="k-success__icon" aria-hidden="true">{% render 'kfl-icon', name: 'check' %}</span>
+          <h2 class="k-h2" tabindex="-1">Deine Widerrufserklärung ist bei uns eingegangen.</h2>
+          <p class="k-lead k-muted">Wir haben dir eine Eingangsbestätigung mit Inhalt, Datum und Uhrzeit per E-Mail geschickt. Wir bestätigen damit nur den Eingang. Ob und in welchem Umfang der Widerruf wirksam ist, prüfen wir und melden uns bei dir.</p>
+          <div class="k-note" data-receipt-text style="white-space:pre-wrap"></div>
+          <div class="k-actions"><button type="button" class="k-btn k-btn--dark" data-receipt-download>Eingangsbestätigung speichern</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "KFL Vertrag widerrufen",
+  "settings": [
+    { "type": "textarea", "id": "lead", "label": "Text", "default": "Hier kannst du einen mit uns online geschlossenen Vertrag innerhalb der Widerrufsfrist einfach und direkt widerrufen." }
+  ],
+  "presets": [{ "name": "KFL Vertrag widerrufen" }]
+}
+{% endschema %}

@@ -1,0 +1,88 @@
+<section class="k-pagehead">
+  <div class="k-wrap">
+    <p class="k-kicker">{{ section.settings.kicker }}</p>
+    <h1 class="k-display" style="max-width:12em">{{ section.settings.title }}</h1>
+    <p class="k-lead" style="margin-top:2.4rem">{{ section.settings.lead }}</p>
+  </div>
+</section>
+
+<section style="padding-bottom:var(--k-section)">
+  <div class="k-wrap">
+    <figure style="margin:0">
+      <div class="k-founders">
+        {%- if section.settings.founders != blank -%}
+          {{ section.settings.founders | image_url: width: 2400 | image_tag: loading: 'eager', sizes: '(min-width: 1240px) 1240px, 100vw', widths: '800, 1200, 1600, 2000, 2400', alt: section.settings.founders_caption }}
+        {%- else -%}
+          <span style="display:grid;gap:1rem;justify-items:center;text-align:center;padding:2rem">
+            <span style="width:56px;height:56px">{% render 'kfl-icon', name: 'account' %}</span>
+            <span>Platz für das Foto der Gründungspartner.<br>Im Theme-Editor unter „KFL History“ austauschen.</span>
+          </span>
+        {%- endif -%}
+      </div>
+      {%- if section.settings.founders_caption != blank -%}<figcaption class="k-small k-muted" style="margin-top:1.2rem">{{ section.settings.founders_caption }}</figcaption>{%- endif -%}
+    </figure>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:clamp(32px,5vw,80px);margin-top:clamp(56px,8vw,112px)">
+      <div>
+        <h2 class="k-h2">{{ section.settings.story_title }}</h2>
+      </div>
+      <div class="k-rte">{{ section.settings.story }}</div>
+    </div>
+
+    {%- if section.blocks.size > 0 -%}
+      <h2 class="k-h2" style="margin-top:clamp(72px,10vw,140px)">{{ section.settings.timeline_title }}</h2>
+      <ol class="k-timeline">
+        {%- for block in section.blocks -%}
+          <li {{ block.shopify_attributes }}>
+            <span class="k-timeline__year">{{ block.settings.year }}</span>
+            <div class="k-timeline__body">
+              <h3 class="k-h3">{{ block.settings.title }}</h3>
+              <p>{{ block.settings.text }}</p>
+              {%- if block.settings.image != blank -%}{{ block.settings.image | image_url: width: 1400 | image_tag: loading: 'lazy', widths: '600, 900, 1400', alt: block.settings.title }}{%- endif -%}
+            </div>
+          </li>
+        {%- endfor -%}
+      </ol>
+    {%- endif -%}
+  </div>
+</section>
+
+<section class="k-section k-bg-black">
+  <div class="k-wrap">
+    <p class="k-kicker">{{ section.settings.mission_kicker }}</p>
+    <h2 class="k-h1" style="max-width:15em">{{ section.settings.mission_title }}</h2>
+    <div class="k-rte" style="margin-top:2.4rem;color:#c7c7cc;max-width:64ch">{{ section.settings.mission }}</div>
+    <div class="k-actions" style="margin-top:3.6rem">
+      <a href="/pages/traumwagen-deal" class="k-btn k-btn--primary">Dein Auto-DEAL anfragen</a>
+      <a href="/blogs/network" class="k-btn k-btn--ghost" style="color:#fff">Zum KFL Network</a>
+    </div>
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "KFL History",
+  "settings": [
+    { "type": "text", "id": "kicker", "label": "Kleine Zeile", "default": "History" },
+    { "type": "text", "id": "title", "label": "Überschrift", "default": "Wir wollten den besseren Deal. Für alle." },
+    { "type": "textarea", "id": "lead", "label": "Einleitung", "default": "KFL steht für Kaufen, Finanzieren, Leasen. Und für die Überzeugung, dass niemand beim Autokauf draufzahlen sollte, nur weil ihm Insiderwissen fehlt." },
+    { "type": "image_picker", "id": "founders", "label": "Foto der Gründungspartner" },
+    { "type": "text", "id": "founders_caption", "label": "Bildunterschrift", "default": "René Lipownik und Tobias Krusch, Gründungspartner der KFL GbR" },
+    { "type": "text", "id": "story_title", "label": "Geschichte – Überschrift", "default": "Wie alles begann." },
+    { "type": "richtext", "id": "story", "label": "Geschichte – Text", "default": "<p>[Platzhalter – bitte ersetzen] Am Anfang stand eine einfache Frage: Warum bekommen manche beim Autokauf deutlich bessere Konditionen als andere? Wir haben jahrelang erlebt, wie viel Geld bei Kauf, Finanzierung und Leasing auf dem Tisch liegen bleibt – meist, weil Käufer nicht wissen, wo sie hinschauen müssen.</p><p>Also haben wir unser Wissen aufgeschrieben, ein Netzwerk aus Autohäusern, Banken und Leasinggesellschaften aufgebaut und KFL gegründet. Heute helfen wir Menschen in ganz Deutschland, ihren Traumwagen zum besseren Deal zu bekommen.</p>" },
+    { "type": "text", "id": "timeline_title", "label": "Zeitleiste – Überschrift", "default": "Meilensteine" },
+    { "type": "text", "id": "mission_kicker", "label": "Ziel – kleine Zeile", "default": "Unser Ziel" },
+    { "type": "text", "id": "mission_title", "label": "Ziel – Überschrift", "default": "Der fairste Weg zum nächsten Auto. Transparent, schnell und auf deiner Seite." },
+    { "type": "richtext", "id": "mission", "label": "Ziel – Text", "default": "<p>Mit dieser Website bündeln wir alles, was du für eine kluge Autoentscheidung brauchst: verständliche Ratgeber, eine persönliche Fahrzeugsuche, den Ankauf deines bisherigen Autos und eine Community, in der echte Erfahrungen zählen. Unser Versprechen: ehrliche Einschätzungen, klare Kosten und eine Antwort innerhalb von 24 Stunden an Werktagen.</p>" }
+  ],
+  "blocks": [
+    { "type": "milestone", "name": "Meilenstein", "settings": [
+      { "type": "text", "id": "year", "label": "Jahr", "default": "2026" },
+      { "type": "text", "id": "title", "label": "Titel", "default": "Meilenstein" },
+      { "type": "textarea", "id": "text", "label": "Text" },
+      { "type": "image_picker", "id": "image", "label": "Bild (optional)" }
+    ] }
+  ],
+  "presets": [{ "name": "KFL History" }]
+}
+{% endschema %}

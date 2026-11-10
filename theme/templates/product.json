@@ -1,0 +1,38 @@
+{
+  "sections": {
+    "main": {
+      "type": "kfl-product",
+      "settings": {
+        "bundle_product": "kaufen-finanzieren-leasen-finde-deun-neues-traumauto",
+        "bundle_items": [
+          "part-1-kaufen-was-muss-ich-beim-autokauf-beachten",
+          "finanzieren-wie-finde-ich-den-traumwagen-ohne-das-auto-doppelt-zu-bezahlen",
+          "leasen-wie-finde-ich-den-traumwagen-und-zahle-unfassbar-wenig"
+        ],
+        "collection_link": "/collections/ratgeber"
+      }
+    },
+    "deal": {
+      "type": "kfl-quickstart",
+      "settings": {
+        "heading": "Lieber gleich Profis verhandeln lassen?",
+        "text": "Mit Dein Auto-DEAL holen wir die Angebote für dich ein. Kostenlos und unverbindlich.",
+        "placeholder": "Welches Auto suchst du?",
+        "btn": "Deal starten",
+        "link": "/pages/traumwagen-deal",
+        "note": "Antwort innerhalb von 24 Stunden an Werktagen."
+      }
+    },
+    "apps": {
+      "type": "apps",
+      "settings": {
+        "include_margins": true
+      }
+    }
+  },
+  "order": [
+    "main",
+    "deal",
+    "apps"
+  ]
+}

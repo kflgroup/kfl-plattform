@@ -1,0 +1,59 @@
+{
+  "sections": {
+    "main": {
+      "type": "kfl-deal-form",
+      "settings": {
+        "voucher_code": "TRAUMDEAL50",
+        "ratgeber_link": "/collections/ratgeber"
+      }
+    },
+    "faq": {
+      "type": "kfl-faq",
+      "blocks": {
+        "q0": {
+          "type": "qa",
+          "settings": {
+            "q": "Was kostet mich Dein Auto-DEAL?",
+            "a": "<p>Nichts. Die Fahrzeugsuche ist für dich kostenlos und unverbindlich. Wir werden von unseren Partnern – Autohäusern, Banken und Leasinggesellschaften – vergütet, wenn ein Vertrag zustande kommt. Den Vertrag schließt du direkt mit dem jeweiligen Partner.</p>"
+          }
+        },
+        "q1": {
+          "type": "qa",
+          "settings": {
+            "q": "Wie schnell meldet ihr euch?",
+            "a": "<p>Innerhalb von 24 Stunden an Werktagen (Montag bis Freitag). Meist schon deutlich früher.</p>"
+          }
+        },
+        "q2": {
+          "type": "qa",
+          "settings": {
+            "q": "Warum brauche ich ein Kundenkonto?",
+            "a": "<p>Damit wir deine Anfrage sicher dir zuordnen und dich zuverlässig erreichen können. Die Anmeldung läuft per E-Mail-Code, ganz ohne Passwort. Dein Konto ist kostenlos und du kannst es jederzeit löschen lassen.</p>"
+          }
+        },
+        "q3": {
+          "type": "qa",
+          "settings": {
+            "q": "Was passiert mit meinen Daten?",
+            "a": "<p>Wir geben deine Angaben nur so weit an ausgewählte Partner weiter, wie es für deine Angebote nötig ist. Alles Weitere steht in unserer <a href=\"/policies/privacy-policy\">Datenschutzerklärung</a>.</p>"
+          }
+        }
+      },
+      "block_order": [
+        "q0",
+        "q1",
+        "q2",
+        "q3"
+      ],
+      "settings": {
+        "heading": "Gut zu wissen",
+        "text": "",
+        "silver": true
+      }
+    }
+  },
+  "order": [
+    "main",
+    "faq"
+  ]
+}

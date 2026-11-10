@@ -1,0 +1,113 @@
+{%- capture endpoint -%}{% render 'kfl-config', key: 'endpoint' %}{%- endcapture -%}{%- assign endpoint = endpoint | strip -%}
+<section class="k-section" style="padding-top:clamp(40px,6vw,88px)">
+  <div class="k-wrap">
+    <div class="k-form-shell">
+      <aside class="k-form-aside">
+        <p class="k-kicker">{{ section.settings.kicker }}</p>
+        <h1 class="k-h1">{{ section.settings.title }}</h1>
+        <p class="k-lead k-muted" style="margin-top:1.6rem">{{ section.settings.lead }}</p>
+        <div class="k-stack" style="margin-top:3.2rem">
+          <div><p class="k-small k-muted" style="margin:0">E-Mail</p><a class="k-link" href="mailto:{{ section.settings.email }}">{{ section.settings.email }}</a></div>
+          <div><p class="k-small k-muted" style="margin:0">Antwortzeit</p><p style="margin:0;font-weight:700">{{ section.settings.response }}</p></div>
+        </div>
+      </aside>
+
+      <div class="k-panel">
+        {%- form 'contact', id: 'k-support-form', novalidate: 'novalidate', data-k-form: 'support', data-success: '#k-support-success', data-fallback-mail: 'info@kfl-group.com' -%}
+          {%- if form.posted_successfully? -%}
+            <div class="k-success" id="k-support-success-static" role="status">
+              <span class="k-success__icon" aria-hidden="true">{% render 'kfl-icon', name: 'check' %}</span>
+              <h2 class="k-h2">Danke, deine Nachricht ist angekommen.</h2>
+              <p class="k-lead k-muted">Wir antworten dir {{ section.settings.response | downcase }}.</p>
+            </div>
+          {%- else -%}
+            {%- if endpoint != blank -%}<script>document.currentScript.closest('form').dataset.endpoint = {{ endpoint | json }};</script>{%- endif -%}
+            {% render 'kfl-form-auth', form_type: 'support' %}
+            <input type="hidden" name="contact[Formular]" value="SUPPORT → info@kfl-group.com">
+            <input type="text" name="contact[Firma2]" class="k-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+            {%- if form.errors -%}<div class="k-note k-note--err" role="alert">{{ form.errors | default_errors }}</div>{%- endif -%}
+
+            <div data-audience="#k-support-fields" style="display:grid;gap:2.4rem">
+              <h2 class="k-step-title">Wer schreibt uns?</h2>
+              <fieldset class="k-choices">
+                <legend>Ich bin</legend>
+                <label class="k-choice"><input type="radio" name="contact[Ich bin]" value="Kunde"><span>Kunde<small>Ratgeber, Anfrage, Konto</small></span></label>
+                <label class="k-choice"><input type="radio" name="contact[Ich bin]" value="Partner"><span>Partner<small>Autohaus, Bank, Leasing</small></span></label>
+              </fieldset>
+            </div>
+
+            <div id="k-support-fields" hidden style="display:grid;gap:2.4rem;margin-top:2.4rem">
+              <div class="k-grid-2">
+                <div class="k-field">
+                  <label for="sp-name">Vor- und Nachname</label>
+                  <input class="k-input" id="sp-name" name="contact[name]" value="{{ customer.name | escape }}" autocomplete="name" required>
+                  <span class="k-error-text" hidden>Bitte gib deinen Namen ein.</span>
+                </div>
+                <div class="k-field">
+                  <label for="sp-mail">E-Mail-Adresse</label>
+                  <input class="k-input" id="sp-mail" type="email" name="contact[email]" value="{{ customer.email | escape }}" autocomplete="email" required>
+                  <span class="k-error-text" hidden>Bitte gib eine gültige E-Mail-Adresse ein.</span>
+                </div>
+
+                <div class="k-field" data-for="Kunde">
+                  <label for="sp-topic-c">Worum geht es?</label>
+                  <select class="k-select" id="sp-topic-c" name="contact[Thema]">
+                    <option>Bestellung oder Download</option><option>Meine Anfrage zu Dein Auto-DEAL</option><option>Mein Auto verkaufen</option><option>Kundenkonto</option><option>Rechnung oder Zahlung</option><option>Sonstiges</option>
+                  </select>
+                </div>
+                <div class="k-field" data-for="Kunde">
+                  <label for="sp-order">Bestellnummer <span class="k-muted" style="font-weight:400">(optional)</span></label>
+                  <input class="k-input" id="sp-order" name="contact[Bestellnummer]" placeholder="z. B. #1042">
+                </div>
+
+                <div class="k-field" data-for="Partner">
+                  <label for="sp-company">Unternehmen</label>
+                  <input class="k-input" id="sp-company" name="contact[Unternehmen]" autocomplete="organization" required>
+                  <span class="k-error-text" hidden>Bitte gib dein Unternehmen an.</span>
+                </div>
+                <div class="k-field" data-for="Partner">
+                  <label for="sp-ptype">Art der Partnerschaft</label>
+                  <select class="k-select" id="sp-ptype" name="contact[Partnerart]">
+                    <option>Autohaus / Händler</option><option>Bank / Finanzierung</option><option>Leasinggesellschaft</option><option>Ankauf / Gutachter</option><option>Werbung / Kooperation</option><option>Sonstiges</option>
+                  </select>
+                </div>
+                <div class="k-field k-span-2" data-for="Partner">
+                  <label for="sp-phone">Telefon <span class="k-muted" style="font-weight:400">(optional)</span></label>
+                  <input class="k-input" id="sp-phone" type="tel" name="contact[phone]" autocomplete="tel">
+                </div>
+
+                <div class="k-field k-span-2">
+                  <label for="sp-msg">Deine Nachricht</label>
+                  <textarea class="k-textarea" id="sp-msg" name="contact[body]" rows="6" required minlength="10"></textarea>
+                  <span class="k-error-text" hidden>Bitte schreib uns ein paar Worte (mindestens 10 Zeichen).</span>
+                </div>
+              </div>
+              {% render 'kfl-consents', type: 'support' %}
+              <div class="k-note k-note--err" data-form-error hidden role="alert"></div>
+              <div><button type="submit" class="k-btn k-btn--primary">Nachricht senden</button></div>
+            </div>
+          {%- endif -%}
+        {%- endform -%}
+        <div class="k-success" id="k-support-success" hidden>
+          <span class="k-success__icon" aria-hidden="true">{% render 'kfl-icon', name: 'check' %}</span>
+          <h2 class="k-h2" tabindex="-1">Danke, deine Nachricht ist angekommen.</h2>
+          <p class="k-lead k-muted">Wir antworten dir {{ section.settings.response | downcase }}.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "KFL Support",
+  "settings": [
+    { "type": "text", "id": "kicker", "label": "Kleine Zeile", "default": "Support" },
+    { "type": "text", "id": "title", "label": "Überschrift", "default": "Wie können wir helfen?" },
+    { "type": "textarea", "id": "lead", "label": "Text", "default": "Ob Frage zu deinem Ratgeber, zu einer Anfrage oder zu einer Partnerschaft: Schreib uns, wir kümmern uns persönlich." },
+    { "type": "text", "id": "email", "label": "E-Mail", "default": "info@kfl-group.com" },
+    { "type": "text", "id": "response", "label": "Antwortzeit", "default": "Innerhalb von 24 Stunden an Werktagen" }
+  ],
+  "presets": [{ "name": "KFL Support" }]
+}
+{% endschema %}

@@ -1,0 +1,50 @@
+{
+  "sections": {
+    "main": {
+      "type": "kfl-collection",
+      "settings": {
+        "featured": "kaufen-finanzieren-leasen-finde-deun-neues-traumauto"
+      }
+    },
+    "faq": {
+      "type": "kfl-faq",
+      "blocks": {
+        "q0": {
+          "type": "qa",
+          "settings": {
+            "q": "Für wen sind die Ratgeber?",
+            "a": "<p>Für alle, die beim nächsten Auto keinen teuren Fehler machen wollen – ob Erstkäufer oder Vielfahrer. Die Ratgeber erklären Kauf, Finanzierung, Leasing und E-Mobilität verständlich, mit Checklisten und Rechenbeispielen.</p>"
+          }
+        },
+        "q1": {
+          "type": "qa",
+          "settings": {
+            "q": "Wie bekomme ich den Ratgeber?",
+            "a": "<p>Direkt nach der Zahlung als Download-Link auf der Bestellbestätigung und per E-Mail.</p>"
+          }
+        },
+        "q2": {
+          "type": "qa",
+          "settings": {
+            "q": "Gibt es Rabatt?",
+            "a": "<p>Ja: Wenn du <a href=\"/pages/traumwagen-deal\">Dein Auto-DEAL</a> bei uns anfragst, bekommst du als Dankeschön 50 % auf unsere Ratgeber.</p>"
+          }
+        }
+      },
+      "block_order": [
+        "q0",
+        "q1",
+        "q2"
+      ],
+      "settings": {
+        "heading": "Gut zu wissen",
+        "text": "",
+        "silver": true
+      }
+    }
+  },
+  "order": [
+    "main",
+    "faq"
+  ]
+}

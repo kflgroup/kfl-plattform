@@ -1,0 +1,42 @@
+{
+  "sections": {
+    "main": {
+      "type": "kfl-history",
+      "blocks": {
+        "m1": {
+          "type": "milestone",
+          "settings": {
+            "year": "2026",
+            "title": "Die KFL GbR wird gegründet",
+            "text": "[Platzhalter] René Lipownik und Tobias Krusch gründen in Holdorf die KFL GbR – mit dem Ziel, Autokäufern Insiderwissen zugänglich zu machen."
+          }
+        },
+        "m2": {
+          "type": "milestone",
+          "settings": {
+            "year": "2026",
+            "title": "Die ersten Ratgeber erscheinen",
+            "text": "Kaufen, Finanzieren und Leasen: drei Ratgeber, die erklären, wo beim Autokauf das Geld liegen bleibt. Kurz darauf folgt der E-Auto-Ratgeber."
+          }
+        },
+        "m3": {
+          "type": "milestone",
+          "settings": {
+            "year": "2027",
+            "title": "Der neue KFL-Auftritt",
+            "text": "Mit Dein Auto-DEAL, dem Fahrzeugankauf und dem KFL Network wird aus dem Ratgeber-Shop eine Plattform rund um dein nächstes Auto."
+          }
+        }
+      },
+      "block_order": [
+        "m1",
+        "m2",
+        "m3"
+      ],
+      "settings": {}
+    }
+  },
+  "order": [
+    "main"
+  ]
+}

@@ -3,7 +3,7 @@
   const auth = document.getElementById('k-consent-auth'), box = document.getElementById('k-cons');
   if (!auth || !box) return;
   let a; try { a = JSON.parse(auth.textContent); } catch (e) { return; }
-  // Formulare mit eigenen Einwilligungen (Traumwagen-DEAL, Auto verkaufen, Support) nicht zusätzlich stören
+  // Formulare mit eigenen Einwilligungen (Dein Auto-DEAL, Auto verkaufen, Support) nicht zusätzlich stören
   if (document.querySelector('.k-consents')) return;
   const key = `kfl_cons_${a.kid}_${a.version || 'x'}`;
   const store = { get: (s, k) => { try { return window[s].getItem(k); } catch (e) { return null; } }, set: (s, k, v) => { try { window[s].setItem(k, v); } catch (e) { /* privat */ } } };
