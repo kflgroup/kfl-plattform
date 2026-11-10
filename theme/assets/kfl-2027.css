@@ -161,3 +161,12 @@ body.kfl :focus-visible{outline:2px solid var(--k-orange);outline-offset:2px;bor
   .k-usp .k-usp__row--head > [role="columnheader"]:nth-child(2){padding-left:1.2rem}
   .k-usp .k-usp__row > .k-usp__kfl{padding:1.2rem;border-radius:10px;margin:.4rem 0}
 }
+@media (max-width:640px){
+  .k-usp .k-usp__table{grid-template-columns:minmax(0,1fr);column-gap:0}
+  .k-usp .k-usp__row--head{display:none}
+  .k-usp .k-usp__row > [role="rowheader"]{padding:1.8rem 0 .2rem 0;font-size:1.7rem}
+  .k-usp .k-usp__row:not(.k-usp__row--head) > .k-usp__alone{padding:.2rem 0 .8rem 0;font-size:1.45rem}
+  .k-usp .k-usp__row:not(.k-usp__row--head) > .k-usp__alone::before{content:"Allein: ";text-decoration:none;display:inline-block;margin-right:.4rem;color:#6e6e73}
+  .k-usp .k-usp__row > .k-usp__kfl{padding:1.3rem 1.4rem;border-radius:10px;margin:0 0 .4rem 0;font-size:1.6rem}
+  .k-usp .k-usp__row:last-child > .k-usp__kfl{border-radius:10px}
+}
