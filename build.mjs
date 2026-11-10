@@ -11,7 +11,7 @@ const ui = (name) => (existsSync(root + 'ui/' + name) ? read('ui/' + name) : '')
 const js = (kind) => existsSync(root + 'ui/' + kind) ? readdirSync(root + 'ui/' + kind).filter((f) => f.endsWith('.js')).sort().map((f) => read(`ui/${kind}/${f}`)).join('\n') : ui(kind + '.js');
 function page(kind) {
   const tpl = ui(kind + '.html');
-  const out = tpl.replace('/*COMMON_CSS*/', () => ui('common.css')).replace('/*CSS*/', () => ui(kind + '.css'))
+  const out = tpl.replace('/*COMMON_CSS*/', () => ui('common.css')).replace('/*CSS*/', () => ui(kind + '.css') + '\n' + ui('theme-2027.css'))
     .replace('/*COMMON_JS*/', () => ui('common.js')).replace('/*JS*/', () => js(kind));
   if (out.includes('</script') && out.indexOf('</script') < out.lastIndexOf('</script')) throw new Error(kind + ': "</script" im Skript gefunden');
   return out;
@@ -22,6 +22,10 @@ for (const f of files) {
   if (f === '99-index.js') continue;
   code += `\n/* ===== ${f} ===== */\n` + read('src/' + f) + '\n';
 }
+// Schrift Inter (SIL Open Font License) selbst ausliefern – keine Verbindung zu Google (DSGVO)
+const fontDir = root + 'ui/fonts/';
+const fonts = existsSync(fontDir) ? Object.fromEntries(readdirSync(fontDir).filter((f) => f.endsWith('.woff')).map((f) => [f, readFileSync(fontDir + f).toString('base64')])) : {};
+code += `\n/* ===== Schriften ===== */\nconst FONT_FILES = ${JSON.stringify(fonts)};\n`;
 code += `\n/* ===== Oberflächen ===== */\nconst STAFF_HTML = ${JSON.stringify(page('staff'))};\nconst PARTNER_HTML = ${JSON.stringify(page('partner'))};\n`;
 code += `\n/* ===== 99-index.js ===== */\n` + read('src/99-index.js');
 // nur ASCII ausgeben (Umlaute als \\u-Escapes), damit beim Kopieren nichts verloren geht

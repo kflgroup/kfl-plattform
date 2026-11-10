@@ -12,7 +12,7 @@ function pageResponse(html) {
   const nonce = randomHex(16);
   return new Response(html.replace(/__NONCE__/g, nonce), { headers: {
     'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store',
-    'Content-Security-Policy': `default-src 'self'; script-src 'nonce-${nonce}'; style-src 'self' 'nonce-${nonce}' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-src 'self' blob:; object-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`,
+    'Content-Security-Policy': `default-src 'self'; script-src 'nonce-${nonce}'; style-src 'self' 'nonce-${nonce}' https://fonts.googleapis.com; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; frame-src 'self' blob:; object-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`,
     'X-Frame-Options': 'DENY', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()', ...SEC_HEADERS } });
 }
 
@@ -165,6 +165,9 @@ export default {
     const url = new URL(request.url);
     try {
       if (!env.DB) return new Response('KFL Plattform: D1-Datenbank (Binding "DB") fehlt.', { status: 503 });
+      // Schriften für die Dashboards (selbst gehostet, lange zwischengespeichert)
+      const fm = url.pathname.match(/^\/fonts\/(inter-[A-Za-z]+\.woff)$/);
+      if (fm && typeof FONT_FILES !== 'undefined' && FONT_FILES[fm[1]]) return new Response(unb64(FONT_FILES[fm[1]]), { headers: { 'Content-Type': 'font/woff', 'Cache-Control': 'public, max-age=31536000, immutable', 'Access-Control-Allow-Origin': '*', 'X-Content-Type-Options': 'nosniff' } });
       await migrate(env.DB);
       const ctx = await makeCtx(request, env, url);
       await autoImport(ctx);
