@@ -88,7 +88,7 @@ async function secondPasswordThrottled(ctx, action) {
   const n = await DB.val(ctx.db, 'SELECT COUNT(*) FROM audit WHERE action = ? AND actor_id = ? AND at >= ?', action, a.id ?? -1, isoOf(nowMs() - 15 * 60e3));
   return n >= 5;
 }
-async function loginGeneric(ctx, table, sessTable, email, password) {
+async function loginGeneric(ctx, table, sessTable, email, password, code = '') {
   const generic = 'E-Mail oder Passwort ist falsch.';
   if (await loginThrottled(ctx)) return { error: 'Zu viele Anmeldeversuche von diesem Anschluss. Bitte in 15 Minuten erneut versuchen.', status: 429 };
   const u = await DB.one(ctx.db, `SELECT * FROM ${table} WHERE email = ?`, email);
@@ -108,12 +108,19 @@ async function loginGeneric(ctx, table, sessTable, email, password) {
     ctx.actor = { type: 'partner', id: u.id, name: u.name };
     await audit(ctx, 'partner_vorlaeufiges_passwort_genutzt', 'partner', u.id, null);
   }
+  // Zwei-Faktor-Anmeldung: Passwort stimmt → zusätzlich den Code der Authenticator-App verlangen
+  let need2fa = false;
+  if (ok && u.totp_on) {
+    if (!String(code || '').trim()) return { error: 'Bitte den 6-stelligen Code aus deiner Authenticator-App eingeben.', status: 401, need2fa: true };
+    const st = await totpCheck((await openSecretInfo(ctx.env, u.totp_secret)).text, code, u.totp_step || 0);
+    if (st) await DB.run(ctx.db, `UPDATE ${table} SET totp_step = ? WHERE id = ?`, st, u.id); else { ok = false; need2fa = true; }
+  }
   if (!ok) {
     const f = (u.failed_logins || 0) + 1, lock = f >= 5 ? isoOf(nowMs() + 15 * 60e3) : null;
     await DB.run(ctx.db, `UPDATE ${table} SET failed_logins = ?, locked_until = COALESCE(?, locked_until) WHERE id = ?`, lock ? 0 : f, lock, u.id);
     ctx.actor = { type: table === 'users' ? 'staff' : 'partner', id: u.id, name: u.name };
-    await audit(ctx, lock ? 'login_gesperrt' : 'login_fehlgeschlagen', table === 'users' ? 'mitarbeiter' : 'partner', u.id, email);
-    return { error: generic, status: 401 };
+    await audit(ctx, lock ? 'login_gesperrt' : need2fa ? 'login_code_falsch' : 'login_fehlgeschlagen', table === 'users' ? 'mitarbeiter' : 'partner', u.id, email);
+    return need2fa ? { error: 'Der Code ist falsch oder abgelaufen. Bitte den aktuellen Code eingeben.', status: 401, need2fa: true } : { error: generic, status: 401 };
   }
   await DB.run(ctx.db, `UPDATE ${table} SET failed_logins = 0, locked_until = CASE WHEN locked_until > '9000' THEN locked_until ELSE NULL END, prev_login = last_login, last_login = ? WHERE id = ?`, nowIso(), u.id);
   const s = await createSessionRow(ctx.db, sessTable, u.id);

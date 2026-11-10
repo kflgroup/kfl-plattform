@@ -35,7 +35,7 @@ function shell(active) {
         <div id="scta"></div>
         <nav class="nav" id="nav" aria-label="Hauptnavigation"></nav>
         <div class="side-foot">${avatar(S.user.name, 'alt')}<div class="who"><b>${S.user.name}</b><span>${S.user.roleLabel}</span></div><div class="side-tools">
-          <button class="icon-btn" data-act="myPassword" title="Passwort ändern" aria-label="Passwort ändern">${icon('key')}</button>
+          <button class="icon-btn" data-act="myPassword" title="Passwort ändern" aria-label="Passwort ändern">${icon('key')}</button><button class="icon-btn" data-act="my2fa" title="Zwei-Faktor-Anmeldung" aria-label="Zwei-Faktor-Anmeldung">${icon('shield')}</button>
           <button class="icon-btn" data-act="newTicket" title="Support kontaktieren" aria-label="Support kontaktieren">${icon('support')}</button>
           <button class="icon-btn" data-act="logout" title="Abmelden" aria-label="Abmelden">${icon('logout')}</button></div></div>
       </aside>
@@ -120,11 +120,21 @@ function authScreen(msg) {
     <form class="stack" data-submit="login">
       ${field('E-Mail', inp('email', '', { type: 'email', req: true, attrs: 'autocomplete="username"' }))}
       ${field('Passwort', inp('password', '', { type: 'password', req: true, attrs: 'autocomplete="current-password"' }))}
+      <div id="code2fa" class="hide">${field('Code aus der Authenticator-App', inp('code', '', { ph: '6-stelliger Code', attrs: 'inputmode="numeric" autocomplete="one-time-code" maxlength="7" pattern="[0-9 ]{6,7}"' }), 'Dein Konto ist mit Zwei-Faktor-Anmeldung geschützt.')}</div>
       <button class="btn btn-primary btn-block" type="submit">Anmelden</button></form>
     ${supportHelp()}
     <p class="tiny muted">Passwort vergessen? Die Administration schickt dir einen neuen Link. Nach 5 Fehlversuchen wird das Konto für 15 Minuten gesperrt.</p>`);
 }
-SUBMIT.login = async (d) => { const r = await POST('/login', d); if (r.mustChangePw) return forcePasswordScreen(); await boot(); };
+SUBMIT.login = async (d, f) => {
+  let r;
+  try { r = await POST('/login', d); } catch (e) {
+    // Zwei-Faktor-Anmeldung: Passwort stimmt → Code-Feld einblenden
+    const box = $('#code2fa', f);
+    if (e.data && e.data.need2fa && box && box.classList.contains('hide')) { box.classList.remove('hide'); const i = box.querySelector('input'); i.required = true; i.focus(); return; }
+    throw e;
+  }
+  if (r.mustChangePw) return forcePasswordScreen(); await boot();
+};
 function setupScreen(s) {
   authFrame(html`<div><h2>Ersteinrichtung</h2><p class="muted">Lege das erste Admin-Konto an. Den Einrichtungsschlüssel findest du in den Cloudflare-Secrets (SETUP_TOKEN).</p></div>
     ${!s.setupConfigured ? html`<div class="err-box">${icon('alert')}<span>Es ist noch kein SETUP_TOKEN hinterlegt. Bitte zuerst in Cloudflare als Secret anlegen.</span></div>` : ''}
@@ -172,6 +182,19 @@ ACT.myPassword = async () => {
   if (!d) return;
   if (d.next !== d.next2) throw new Error('Die Passwörter stimmen nicht überein.');
   await POST('/password', d); toast('Passwort geändert. Andere Sitzungen wurden abgemeldet.');
+};
+ACT.my2fa = async () => {
+  const st = await GET('/2fa');
+  if (st.enabled) {
+    const d = await ask({ title: 'Zwei-Faktor-Anmeldung', ok: 'Ausschalten', fields: html`<div class="info-box">${icon('shield')}<span>Dein Konto ist mit Zwei-Faktor-Anmeldung geschützt. Zum Ausschalten bitte Passwort und aktuellen Code eingeben.</span></div>
+      ${field('Passwort', inp('password', '', { type: 'password', req: true }))}${field('Code aus der App', inp('code', '', { req: true, attrs: 'inputmode="numeric" autocomplete="one-time-code"' }))}` });
+    if (!d) return; await POST('/2fa/disable', d); toast('Zwei-Faktor-Anmeldung ausgeschaltet.'); return;
+  }
+  const s = await POST('/2fa/setup');
+  const d = await ask({ title: 'Zwei-Faktor-Anmeldung einrichten', ok: 'Aktivieren', fields: html`<p class="muted small">Schützt dein Konto zusätzlich: Bei der Anmeldung brauchst du neben dem Passwort einen Code aus einer Authenticator-App (z. B. Google Authenticator, Microsoft Authenticator, Apple Passwörter).</p>
+    <ol class="small tfa-steps"><li>App öffnen und „Konto hinzufügen“ wählen. Auf dem Handy: <a class="link" href="${s.uri}">diesen Link antippen</a>.</li><li>Oder den Schlüssel von Hand eingeben: <b class="num tfa-key">${s.secret}</b> (Name: KFL)</li><li>Den 6-stelligen Code aus der App hier eintragen.</li></ol>
+    ${field('Code aus der App', inp('code', '', { req: true, attrs: 'inputmode="numeric" autocomplete="one-time-code" maxlength="7"' }))}` });
+  if (!d) return; await POST('/2fa/enable', d); toast('Zwei-Faktor-Anmeldung ist aktiv. Ab der nächsten Anmeldung brauchst du den Code.');
 };
 ACT.newTicket = async () => {
   const d = await ask({ title: 'Support kontaktieren', text: 'Technisches Problem oder Frage zum Dashboard? Das Ticket läuft mit dem Tag „Intern“ im Support ein.', ok: 'Ticket senden',

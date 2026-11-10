@@ -96,3 +96,22 @@ async function gunzip(bytes) {
   const ds = new DecompressionStream('gzip');
   return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(ds)).arrayBuffer());
 }
+
+/* ---------- Zwei-Faktor-Anmeldung (TOTP, RFC 6238: 6 Stellen, 30 s, SHA-1 – kompatibel mit allen Authenticator-Apps) ---------- */
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function b32enc(bytes) { let bits = 0, val = 0, out = ''; for (const b of bytes) { val = (val << 8) | b; bits += 8; while (bits >= 5) { out += B32[(val >>> (bits - 5)) & 31]; bits -= 5; } } if (bits > 0) out += B32[(val << (5 - bits)) & 31]; return out; }
+function b32dec(s) { const c = String(s || '').toUpperCase().replace(/[^A-Z2-7]/g, ''); let bits = 0, val = 0; const out = []; for (const ch of c) { val = ((val << 5) | B32.indexOf(ch)) & 0xffffff; bits += 5; if (bits >= 8) { out.push((val >>> (bits - 8)) & 255); bits -= 8; } } return new Uint8Array(out); }
+const newTotpSecret = () => b32enc(crypto.getRandomValues(new Uint8Array(20)));
+async function totpAt(secret, step) {
+  const key = await crypto.subtle.importKey('raw', b32dec(secret), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+  const msg = new Uint8Array(8); let x = step; for (let i = 7; i >= 0; i--) { msg[i] = x & 255; x = Math.floor(x / 256); }
+  const h = new Uint8Array(await crypto.subtle.sign('HMAC', key, msg)), o = h[19] & 15;
+  return String((((h[o] & 127) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3]) % 1e6).padStart(6, '0');
+}
+// Prüft den Code (±30 s Toleranz). Liefert den Zeitschritt (gegen Wiederverwendung speichern) oder 0
+async function totpCheck(secret, code, lastStep = 0) {
+  const c = String(code || '').replace(/\s/g, ''); if (!/^\d{6}$/.test(c) || !secret) return 0;
+  const now = Math.floor(nowMs() / 30000);
+  for (const d of [0, -1, 1]) { const st = now + d; if (st > lastStep && safeEqual(await totpAt(secret, st), c)) return st; }
+  return 0;
+}

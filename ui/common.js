@@ -20,7 +20,7 @@ async function api(method, path, body) {
   try { res = await fetch(App.base + path, opt); } catch (e) { throw new ApiError(0, 'Keine Verbindung zum Server. Bitte prüfe deine Internetverbindung.'); }
   let j = null; try { j = await res.json(); } catch (e) { /* keine JSON-Antwort */ }
   if (!res.ok || (j && j.ok === false)) {
-    const err = new ApiError(res.status, (j && j.error) || `Unerwarteter Fehler (${res.status}).`);
+    const err = new ApiError(res.status, (j && j.error) || `Unerwarteter Fehler (${res.status}).`); err.data = j;
     if (res.status === 401 && App.onAuth && !path.startsWith('/session') && !path.startsWith('/login')) App.onAuth();
     if (res.status === 428 && App.onPw) App.onPw();
     throw err;

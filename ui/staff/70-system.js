@@ -72,7 +72,7 @@ async function admUsers(P, tab) {
     <div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Rolle</th><th>Abteilung</th><th>Sonderrechte</th><th>Letzte Anmeldung</th><th>Status</th><th></th></tr></thead><tbody>
       ${d.users.map((u) => html`<tr class="${u.active ? '' : 'muted'}"><td><b>${u.name}</b><span class="cell-sub">${u.email}</span></td><td>${roleLabel(u.role_key)}</td><td>${u.department || '–'}</td>
         <td class="small">${u.extra_perms.length ? html`+ ${u.extra_perms.length}` : ''}${u.revoked_perms.length ? html` − ${u.revoked_perms.length}` : ''}${!u.extra_perms.length && !u.revoked_perms.length ? html`<span class="muted">–</span>` : ''}</td>
-        <td>${u.last_login ? fDT(u.last_login) : html`<span class="muted">nie</span>`}</td><td>${!u.active ? badge('Deaktiviert', 'muted') : u.locked ? badge('Gesperrt', 'err') : u.pending ? badge('Einladung offen', 'warn') : badge('Aktiv', 'ok')}</td>
+        <td>${u.last_login ? fDT(u.last_login) : html`<span class="muted">nie</span>`}</td><td>${!u.active ? badge('Deaktiviert', 'muted') : u.locked ? badge('Gesperrt', 'err') : u.pending ? badge('Einladung offen', 'warn') : badge('Aktiv', 'ok')}${u.totp_on ? html` <span class="tag" title="Zwei-Faktor-Anmeldung aktiv">2FA</span>` : ''}</td>
         <td class="r nowrap">${manageable(u) ? html`<button class="btn btn-sm btn-ghost" data-act="userEdit" data-id="${u.id}">Bearbeiten</button>` : ''}${u.pending && manageable(u) ? html`<button class="btn btn-sm btn-ghost" data-act="userInvite" data-id="${u.id}">Einladung</button>` : ''}</td></tr>`)}</tbody></table></div></section>`);
 }
 ACT.userNew = async () => {
@@ -99,7 +99,7 @@ ACT.userEdit = async (b) => {
     ${can('users_perms') ? html`<fieldset><legend>Sonderrechte zusätzlich zur Rolle</legend><p class="small muted">Nur der Admin kann einzelnen Mitarbeitern Rechte geben oder entziehen.</p>${permChecks('extra', u.extra_perms)}</fieldset>
       <fieldset><legend>Rechte entziehen</legend>${permChecks('revoked', u.revoked_perms)}</fieldset>` : ''}</form>
     ${can('users_admin') && !self ? html`<hr class="sep"><div class="row"><button class="btn btn-sm" data-act="userReset" data-id="${u.id}">${icon('key')}Passwort zurücksetzen</button>
-      <button class="btn btn-sm" data-act="userLock" data-id="${u.id}" data-locked="${u.locked ? 1 : 0}">${u.locked ? 'Entsperren' : 'Sperren'}</button><button class="btn btn-sm" data-act="userActive" data-id="${u.id}" data-active="${u.active ? 1 : 0}">${u.active ? 'Deaktivieren' : 'Aktivieren'}</button>
+      ${u.totp_on ? html`<button class="btn btn-sm" data-act="user2faReset" data-id="${u.id}">${icon('shield')}2FA zurücksetzen</button>` : ''}<button class="btn btn-sm" data-act="userLock" data-id="${u.id}" data-locked="${u.locked ? 1 : 0}">${u.locked ? 'Entsperren' : 'Sperren'}</button><button class="btn btn-sm" data-act="userActive" data-id="${u.id}" data-active="${u.active ? 1 : 0}">${u.active ? 'Deaktivieren' : 'Aktivieren'}</button>
       <span class="spacer"></span><button class="btn btn-sm btn-danger" data-act="userDelete" data-id="${u.id}">${icon('trash')}Konto löschen</button></div>` : ''}`,
     foot: html`<button class="btn btn-ghost" data-close>Abbrechen</button><button class="btn btn-primary" type="submit" form="userForm">Speichern</button>` });
 };
@@ -118,6 +118,7 @@ ACT.userReset = async (b) => {
   toast(r.mail === 'gesendet' ? 'Per E-Mail versendet.' : 'Gespeichert, E-Mail nicht versendet.', r.mail === 'gesendet' ? 'ok' : 'err');
   if (r.invite && r.mail !== 'gesendet') showLink('Link zum neuen Passwort', r.invite);
 };
+ACT.user2faReset = async (b) => { if (!(await confirmBox('Zwei-Faktor-Anmeldung zurücksetzen?', 'Zum Beispiel bei verlorenem Handy. Der Mitarbeiter wird abgemeldet und meldet sich danach nur mit Passwort an – bitte die Zwei-Faktor-Anmeldung danach neu einrichten lassen.', 'Zurücksetzen', true))) return; await POST(`/users/${b.dataset.id}/2fa-reset`); toast('Zwei-Faktor-Anmeldung zurückgesetzt.'); closeModal(); reload(); };
 ACT.userLock = async (b) => { const lock = b.dataset.locked !== '1'; if (lock && !(await confirmBox('Konto sperren?', 'Der Mitarbeiter wird sofort abgemeldet.', 'Sperren', true))) return; await PATCH('/users/' + b.dataset.id, { locked: lock }); closeModal(); reload(); };
 ACT.userActive = async (b) => { await PATCH('/users/' + b.dataset.id, { active: b.dataset.active !== '1' }); closeModal(); reload(); };
 ACT.userDelete = async (b) => { if (!(await confirmBox('Konto löschen?', 'Das Konto wird dauerhaft deaktiviert, die E-Mail-Adresse wird frei.', 'Löschen', true))) return; await DEL('/users/' + b.dataset.id); closeModal(); toast('Konto gelöscht.'); reload(); };

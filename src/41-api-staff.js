@@ -59,8 +59,8 @@ async function handleStaffApi(ctx, url) {
     return out({ ok: true }, 200, { 'Set-Cookie': cookieHeader(STAFF_COOKIE, s.token, s.maxAge) });
   }
   if (path === '/login' && method === 'POST') {
-    const r = await loginGeneric(ctx, 'users', 'sessions', str(body.email).toLowerCase(), String(body.password || ''));
-    if (r.error) return fail(r.status, r.error);
+    const r = await loginGeneric(ctx, 'users', 'sessions', str(body.email).toLowerCase(), String(body.password || ''), str(body.code, 12));
+    if (r.error) return fail(r.status, r.error, r.need2fa ? { need2fa: true } : null);
     return out({ ok: true, mustChangePw: !!r.user.must_change_pw }, 200, { 'Set-Cookie': cookieHeader(STAFF_COOKIE, r.session.token, r.session.maxAge) });
   }
   if (path === '/logout' && method === 'POST') {
@@ -107,6 +107,30 @@ async function handleStaffApi(ctx, url) {
   need(u, 401, 'Bitte melde dich an.');
   if (u.mustChangePw && !['/password', '/me/start'].includes(path)) need(false, 428, 'Bitte vergib zuerst ein eigenes Passwort.');
 
+  /* ---------- Zwei-Faktor-Anmeldung (eigenes Konto) ---------- */
+  if (path === '/2fa' && method === 'GET') { const row = await DB.one(db, 'SELECT totp_on FROM users WHERE id = ?', u.id); return out({ ok: true, enabled: !!row.totp_on }); }
+  if (path === '/2fa/setup' && method === 'POST') {
+    const row = await DB.one(db, 'SELECT email, totp_on FROM users WHERE id = ?', u.id); need(!row.totp_on, 409, 'Die Zwei-Faktor-Anmeldung ist bereits aktiv.');
+    const secret = newTotpSecret();
+    await DB.update(db, 'users', u.id, { totp_pending: await sealSecret(env, secret) });
+    return out({ ok: true, secret: secret.replace(/(.{4})/g, '$1 ').trim(), uri: `otpauth://totp/KFL:${encodeURIComponent(row.email)}?secret=${secret}&issuer=KFL&algorithm=SHA1&digits=6&period=30` });
+  }
+  if (path === '/2fa/enable' && method === 'POST') {
+    const row = await DB.one(db, 'SELECT totp_pending, totp_on FROM users WHERE id = ?', u.id); need(row.totp_pending && !row.totp_on, 409, 'Bitte die Einrichtung neu starten.');
+    const st = await totpCheck((await openSecretInfo(env, row.totp_pending)).text, body.code);
+    need(st, 400, 'Der Code stimmt nicht. Bitte den aktuellen Code aus der App eingeben (Uhrzeit des Handys prüfen).');
+    await DB.update(db, 'users', u.id, { totp_secret: row.totp_pending, totp_pending: null, totp_on: 1, totp_step: st });
+    await audit(ctx, '2fa_aktiviert', 'mitarbeiter', u.id, null);
+    return out({ ok: true });
+  }
+  if (path === '/2fa/disable' && method === 'POST') {
+    const row = await DB.one(db, 'SELECT pass_hash, pass_salt, totp_secret, totp_on, totp_step FROM users WHERE id = ?', u.id); need(row.totp_on, 409, 'Die Zwei-Faktor-Anmeldung ist nicht aktiv.');
+    need(await verifyPassword(String(body.password || ''), row.pass_hash, row.pass_salt), 400, 'Das Passwort ist falsch.');
+    need(await totpCheck((await openSecretInfo(env, row.totp_secret)).text, body.code, row.totp_step || 0), 400, 'Der Code ist falsch oder abgelaufen.');
+    await DB.update(db, 'users', u.id, { totp_secret: null, totp_pending: null, totp_on: 0, totp_step: 0 });
+    await audit(ctx, '2fa_deaktiviert', 'mitarbeiter', u.id, null);
+    return out({ ok: true });
+  }
   if (path === '/password' && method === 'POST') {
     const row = await DB.one(db, 'SELECT pass_hash, pass_salt FROM users WHERE id = ?', u.id);
     need(await verifyPassword(body.current, row.pass_hash, row.pass_salt), 400, 'Das aktuelle Passwort ist falsch.');
@@ -177,6 +201,8 @@ async function handleStaffApi(ctx, url) {
         { key: 'area_pw', ok: keys.has('_area_pw') || !!env.AREA_PASSWORD, label: 'Eigenes Bereichspasswort (Protokoll, Backup)', hint: 'Verwaltung → Einstellungen → Bereichspasswort ändern. Der Startwert ist nur ein Platzhalter.' },
         { key: 'scoring_pw', ok: keys.has('_scoring_pw') || !!env.SCORING_PASSWORD, label: 'Eigenes Freigabepasswort (Angebotsauswahl)', hint: 'Verwaltung → Angebotsauswahl → Freigabepasswort ändern.' }
       ];
+      const no2fa = await DB.all(db, "SELECT name FROM users WHERE active = 1 AND pass_hash IS NOT NULL AND totp_on = 0 AND role_key IN ('admin','gf','buchhaltung') ORDER BY name");
+      security.push({ key: 'twofa', ok: !no2fa.length, label: 'Zwei-Faktor-Anmeldung für Admin, Geschäftsführung und Buchhaltung', hint: `Unten links auf das Schild-Symbol klicken und mit einer Authenticator-App einrichten.${no2fa.length ? ' Noch ohne: ' + no2fa.map((x) => x.name).join(', ') + '.' : ''}` });
     }
     return out({ ok: true, today: berlinDate(nowMs()), week: w.week, year: w.year, news, chats, kpis: kp, absenceRequests: abs, pipeline, security });
   }
@@ -688,7 +714,7 @@ async function handleStaffApi(ctx, url) {
   /* ---------- Verwaltung: Mitarbeiter, Rollen, Einstellungen, Links ---------- */
   if (path === '/users' && method === 'GET') {
     need(can(u, 'users_view') || can(u, 'users_create') || can(u, 'users_admin'), 403, 'Dafür fehlt dir die Berechtigung.');
-    const rows = await DB.all(db, `SELECT id, email, name, role_key, active, department, phone, extra_perms, revoked_perms, created_at, last_login, locked_until, CASE WHEN pass_hash IS NULL THEN 1 ELSE 0 END AS pending FROM users ORDER BY active DESC, name`);
+    const rows = await DB.all(db, `SELECT id, email, name, role_key, active, department, phone, extra_perms, revoked_perms, created_at, last_login, locked_until, totp_on, CASE WHEN pass_hash IS NULL THEN 1 ELSE 0 END AS pending FROM users ORDER BY active DESC, name`);
     return out({ ok: true, users: rows.map((r) => ({ ...r, extra_perms: jparse(r.extra_perms, []), revoked_perms: jparse(r.revoked_perms, []), locked: !!(r.locked_until && r.locked_until > '9000') })) });
   }
   if (path === '/users' && method === 'POST') {
@@ -704,6 +730,14 @@ async function handleStaffApi(ctx, url) {
     await audit(ctx, 'mitarbeiter_angelegt', 'mitarbeiter', id, { email, role });
     const r = await staffInviteMail(ctx, { email, name }, inv.token, url);
     return out({ ok: true, id, invite: r.link, mail: r.status });
+  }
+  if ((m = path.match(/^\/users\/(\d+)\/2fa-reset$/)) && method === 'POST') {
+    requirePerm(u, 'users_admin');
+    const target = await DB.one(db, 'SELECT id, name FROM users WHERE id = ?', +m[1]); need(target, 404, 'Mitarbeiter nicht gefunden.');
+    await DB.update(db, 'users', target.id, { totp_secret: null, totp_pending: null, totp_on: 0, totp_step: 0 });
+    await DB.run(db, 'DELETE FROM sessions WHERE user_id = ?', target.id);
+    await audit(ctx, '2fa_zurueckgesetzt', 'mitarbeiter', target.id, target.name);
+    return out({ ok: true });
   }
   if ((m = path.match(/^\/users\/(\d+)(?:\/(invite|reset))?$/))) {
     const target = await DB.one(db, 'SELECT * FROM users WHERE id = ?', +m[1]); need(target, 404, 'Mitarbeiter nicht gefunden.');

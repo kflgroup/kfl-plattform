@@ -34,7 +34,7 @@ for (let i = 0; i < 5; i++) await c.post('/api/area/unlock', { password: 'falsch
 r = await c.post('/api/area/unlock', { password: 'irgendwas' }, { who: 'admin' }); check(r.status === 429, 'Bereichspasswort: nach 5 Fehlversuchen gesperrt', r);
 r = await c.post('/api/settings/scoring-password', { current: 'falsch', next: 'NeuesFreigabe#2026' }, { who: 'admin' }); check(r.status === 403, 'Freigabepasswort ändern nur mit dem aktuellen');
 r = await c.get('/api/me/start?full=1', { who: 'admin' });
-check(Array.isArray(r.security) && r.security.length === 3 && r.security.every((x) => x.ok === false), 'Admin sieht offene Sicherheitspunkte (Server-Schlüssel, Bereichs- und Freigabepasswort)', r.security);
+check(Array.isArray(r.security) && r.security.length === 4 && r.security.every((x) => x.ok === false) && r.security[3].key === 'twofa', 'Admin sieht offene Sicherheitspunkte (Server-Schlüssel, Bereichs- und Freigabepasswort, Zwei-Faktor-Anmeldung)', r.security);
 
 console.log('Dateien: Typ nach Inhalt');
 const kid = '777', ts = nowSec();
