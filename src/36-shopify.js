@@ -100,7 +100,7 @@ async function consentsFromRequests(ctx, ids) {
     // neueste Zustimmung zählt (Liste ist absteigend sortiert)
     if (!o.agb && isYes(d[CONSENT_KEYS.agb])) o.agb = { ...src, value: d[CONSENT_KEYS.agb] };
     if (!o.privacy && isYes(d[CONSENT_KEYS.privacy])) o.privacy = { ...src, value: d[CONSENT_KEYS.privacy] };
-    // Kenntnisnahme der Widerrufsbelehrung ist Teil der AGB-Bestätigung bei Traumwagen-DEAL und Auto verkaufen
+    // Kenntnisnahme der Widerrufsbelehrung ist Teil der AGB-Bestätigung bei Dein Auto-DEAL und Auto verkaufen
     if (!o.withdrawal && isYes(d[CONSENT_KEYS.agb]) && (r.type === 'deal' || r.type === 'sell')) o.withdrawal = { ...src, value: 'Widerrufsbelehrung zur Kenntnis genommen (' + d[CONSENT_KEYS.agb] + ')' };
     if (!o.partner && isYes(d[CONSENT_KEYS.partner])) o.partner = { ...src, value: d[CONSENT_KEYS.partner] };
   }

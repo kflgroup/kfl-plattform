@@ -23,6 +23,7 @@ assign ep = endpoint | split: '/'
 assign dash_url = ep[0] | append: '//' | append: ep[2] | append: '/partner'
 endif
 assign dash_label = section.settings.dashboard_label | default: 'Zum Partner-Dashboard'
+assign agb_partner_url = section.settings.agb_url | default: '/pages/agb-partner'
 -%}
 
 {%- capture k_benefits -%}
@@ -55,6 +56,7 @@ assign dash_label = section.settings.dashboard_label | default: 'Zum Partner-Das
 <details><summary>Wie werden die Angebote bewertet?</summary><p>Nach festen, für alle gleichen Kriterien – vor allem Preis bzw. Rate, Übereinstimmung mit dem Kundenwunsch und Vollständigkeit. Die besten Angebote stellen wir dem Kunden neutral vor.</p></details>
 <details><summary>Wann bekomme ich die Kontaktdaten des Kunden?</summary><p>Sobald der Kunde dein Angebot annimmt. Bis dahin bleiben seine persönlichen Daten geschützt – so sprichst du nur mit Kunden, die wirklich wollen.</p></details>
 <details><summary>Kann mein Team mitarbeiten?</summary><p>Ja. Geschäftsführung, Verkaufsleitung und Vertrieb bekommen eigene Zugänge mit passenden Rechten. Die Verkaufsleitung sieht alle Angebote des Teams.</p></details>
+<details><summary>Welche Bedingungen gelten?</summary><p>Unsere <a class="k-link" href="{{ agb_partner_url }}">AGB für Geschäftspartner</a> regeln Anfragen, Angebote, Bewertung, Datenschutz und Vergütung – transparent und für alle Partner gleich. Die jeweils aktuelle Fassung findest du immer hier und im Partner-Dashboard.</p></details>
 <details><summary>Was kostet die Partnerschaft?</summary><p>Die Konditionen besprechen wir persönlich im Kennenlernen – transparent und schriftlich, bevor du die erste Anfrage bekommst.</p></details>
 </div>
 {%- unless is_partner -%}
@@ -81,6 +83,7 @@ assign dash_label = section.settings.dashboard_label | default: 'Zum Partner-Das
 <div class="k-pc__actions">
 <a class="k-btn k-btn--primary k-pc__cta" href="{{ dash_url | escape }}" target="_blank" rel="noopener">{{ dash_label | escape }}<span aria-hidden="true">{% render 'kfl-icon', name: 'arrow' %}</span></a>
 <a class="k-pc__ghost" href="#partner-anfrage">Nachricht an KFL</a>
+<a class="k-pc__ghost" href="{{ agb_partner_url }}">AGB für Partner</a>
 </div>
 <p class="k-pc__hint">{{ section.settings.dashboard_hint }}</p>
 {%- endif -%}
@@ -104,6 +107,7 @@ assign dash_label = section.settings.dashboard_label | default: 'Zum Partner-Das
 <b>{{ section.settings.contact_name }}</b>
 <a href="mailto:{{ section.settings.contact_email }}">{{ section.settings.contact_email }}</a>
 {%- if section.settings.contact_phone != blank -%}<a href="tel:{{ section.settings.contact_phone | remove: ' ' }}">{{ section.settings.contact_phone }}</a>{%- endif -%}
+<a class="k-pc__legal" href="{{ agb_partner_url }}">{% render 'kfl-icon', name: 'shield' %}AGB für Geschäftspartner</a>
 </div>
 </div>
 
@@ -176,7 +180,7 @@ assign dash_label = section.settings.dashboard_label | default: 'Zum Partner-Das
 <span class="k-error-text" hidden>Bitte schreib uns ein paar Worte (mindestens 10 Zeichen).</span>
 </div>
 </div>
-<p class="k-small k-muted" style="margin:0">Bitte übermittle Kundendaten nur, soweit sie für das Angebot erforderlich sind. Es gelten die <a href="{{ shop.terms_of_service.url | default: '/policies/terms-of-service' }}" target="_blank">AGB</a> und unsere <a href="{{ shop.privacy_policy.url | default: '/policies/privacy-policy' }}" target="_blank">Datenschutzerklärung</a>.</p>
+<p class="k-small k-muted" style="margin:0">Bitte übermittle Kundendaten nur, soweit sie für das Angebot erforderlich sind. Es gelten die <a href="{{ agb_partner_url }}" target="_blank" rel="noopener">AGB für Geschäftspartner</a> und unsere <a href="{{ shop.privacy_policy.url | default: '/policies/privacy-policy' }}" target="_blank">Datenschutzerklärung</a>.</p>
 <div class="k-note k-note--err" data-form-error hidden role="alert"></div>
 <div><button type="submit" class="k-btn k-btn--primary">Anfrage senden</button></div>
 </div>
@@ -213,6 +217,7 @@ assign dash_label = section.settings.dashboard_label | default: 'Zum Partner-Das
 <a class="k-btn k-btn--ghost" href="{{ dash_url | escape }}" target="_blank" rel="noopener">{{ dash_label | escape }}<span aria-hidden="true">{% render 'kfl-icon', name: 'arrow' %}</span></a>
 </div>
 {%- endif -%}
+<p class="k-small k-muted" style="margin-top:1.6rem">Für die Zusammenarbeit gelten unsere <a class="k-link" href="{{ agb_partner_url }}">AGB für Geschäftspartner</a>.</p>
 </aside>
 
 <div class="k-panel">
@@ -291,7 +296,7 @@ assign dash_label = section.settings.dashboard_label | default: 'Zum Partner-Das
 <textarea class="k-textarea" id="pa-msg" name="contact[body]" rows="4" placeholder="z. B. Marken, Region, Konditionen, Ankaufvolumen …"></textarea>
 </div>
 </div>
-{% render 'kfl-consents', type: 'support' %}
+{% render 'kfl-consents', type: 'partner' %}
 <div class="k-note k-note--err" data-form-error hidden role="alert"></div>
 <div><button type="submit" class="k-btn k-btn--primary">Partner-Antrag senden</button></div>
 </div>
@@ -371,6 +376,9 @@ assign dash_label = section.settings.dashboard_label | default: 'Zum Partner-Das
 @media (max-width: 960px) { .k-pflow__list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .k-pflow__list { grid-template-columns: 1fr; } }
 .k-pfaq { max-width: 860px; }
+.k-pc__legal { display: inline-flex; align-items: center; gap: .6rem; margin-left: auto; font-size: 1.35rem; }
+.k-pc__legal svg { width: 16px; height: 16px; }
+.k-pfaq details p a { color: inherit; }
 .k-pfaq__title { margin: 0 0 1.2rem; font-size: 2.2rem; }
 .k-pfaq details { border-bottom: 1px solid rgba(0, 0, 0, .1); }
 .k-pfaq summary { cursor: pointer; list-style: none; padding: 1.8rem 4rem 1.8rem 0; position: relative; font-weight: 700; font-size: 1.7rem; }
@@ -421,6 +429,7 @@ assign dash_label = section.settings.dashboard_label | default: 'Zum Partner-Das
 { "type": "textarea", "id": "dash_lead", "label": "Begrüßungstext", "default": "Schön, dass du da bist. Hier findest du alles für die Zusammenarbeit mit KFL." },
 { "type": "text", "id": "dashboard_url", "label": "Adresse Partner-Dashboard (Login)", "info": "Leer = automatisch die aktuelle Adresse des KFL Partner-Dashboards. Nach dem Umzug auf die eigene Adresse hier https://partner.kfl-group.com eintragen." },
 { "type": "text", "id": "dashboard_label", "label": "Button-Text", "default": "Zum Partner-Dashboard" },
+{ "type": "url", "id": "agb_url", "label": "Seite AGB für Geschäftspartner", "default": "/pages/agb-partner", "info": "Text wird im internen KFL-Dashboard unter Verwaltung → Partner-AGB gepflegt." },
 { "type": "textarea", "id": "dashboard_hint", "label": "Hinweis unter dem Button", "default": "Kundenanfragen bearbeiten, Angebote abgeben und Abrechnungen einsehen. Die Anmeldung erfolgt mit deinen Zugangsdaten für das Partner-Dashboard." },
 { "type": "text", "id": "contact_name", "label": "Ansprechpartner", "default": "KFL Vermittlungsteam" },
 { "type": "text", "id": "contact_email", "label": "E-Mail", "default": "vermittlung@kfl-group.com" },

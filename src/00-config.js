@@ -60,6 +60,7 @@ const PERMISSIONS = [
   { key: 'backup_view',       group: 'System', label: 'Backup' },
   { key: 'audit_view',        group: 'System', label: 'Protokoll' },
   { key: 'settings_all',      group: 'System', label: 'Alle Einstellungen' },
+  { key: 'legal_terms',       group: 'System', label: 'AGB für Geschäftspartner bearbeiten und veröffentlichen' },
   { key: 'links_view',        group: 'System', label: 'Links (Dashboard, Partner, Shopify) sehen' },
   // Mitarbeiter
   { key: 'users_view',        group: 'Mitarbeiter', label: 'Mitarbeiter sehen' },
@@ -78,7 +79,7 @@ const ROLE_PERMS = (() => {
   const teamleitung = [...vertrieb, 'req_partner', 'req_assign', 'req_spam_confirm', 'req_status_force', 'team_stats', 'users_view', 'users_create_vt'];
   const buchhaltung = ['acc_view', 'acc_manage', 'acc_cancel', 'fibu_view', 'fibu_book', 'partner_view'];
   const gf = [...new Set([...teamleitung, ...buchhaltung, 'fibu_manage', 'acc_settings', 'acc_release', 'partner_manage', 'partner_terms', 'partner_stats',
-    'stats_view', 'stats_shop', 'visitors_view', 'support_changes', 'links_view', 'users_create', 'news_publish', 'news_partner'])];
+    'stats_view', 'stats_shop', 'visitors_view', 'support_changes', 'links_view', 'users_create', 'news_publish', 'news_partner', 'legal_terms'])];
   return { admin: PERM_KEYS.slice(), gf, teamleitung, vertrieb, buchhaltung };
 })();
 
@@ -91,7 +92,7 @@ const PARTNER_ROLES = {
 
 /* ---------- Anfragearten ---------- */
 const REQUEST_TYPES = {
-  deal: { label: 'Traumwagen-DEAL', short: 'Kauf', inbox: 'vermittlung@kfl-group.com' },
+  deal: { label: 'Dein Auto-DEAL', short: 'Kauf', inbox: 'vermittlung@kfl-group.com' },
   sell: { label: 'Fahrzeugverkauf', short: 'Verkauf', inbox: 'vermittlung@kfl-group.com' }
 };
 // Formulare der Webseite, die als Support-Ticket laufen
@@ -264,7 +265,7 @@ const DEFAULT_SETTINGS = {
   link_shopify_admin: 'https://admin.shopify.com/store/3r1qns-2d',
   link_shop: 'https://kfl-group.com',
   link_instagram: 'https://www.instagram.com/',
-  link_agb_partner: 'https://kfl-group.com/policies/terms-of-service',
+  link_agb_partner: 'https://kfl-group.com/pages/agb-partner',
   link_privacy: 'https://kfl-group.com/policies/privacy-policy',
   link_my_requests: 'https://kfl-group.com/pages/meine-anfragen'
 };

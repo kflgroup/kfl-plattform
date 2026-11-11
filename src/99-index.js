@@ -200,6 +200,10 @@ export default {
       if (p.startsWith('/api/')) return await handleStaffApi(ctx, url);
       if (p.startsWith('/papi/')) return await handlePartnerApi(ctx, url);
       if (p === '/health') return out({ ok: true });
+      // AGB für Geschäftspartner: JSON für die Webseite (/pages/agb-partner) und eigene Leseseite (Link aus dem Partner-Dashboard)
+      if (p === '/legal/agb-partner' && request.method === 'GET') return termsJsonResponse(termsOf(await settingsOf(ctx)));
+      if (p === '/legal/agb-partner' && request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET', 'Access-Control-Max-Age': '86400' } });
+      if (p === '/agb-partner' && request.method === 'GET') return termsPageResponse(termsOf(await settingsOf(ctx)));
       if (p === '/') return Response.redirect(url.origin + '/partner', 302);
       return new Response('Nicht gefunden', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'", 'X-Frame-Options': 'DENY', ...SEC_HEADERS } });
     } catch (e) {

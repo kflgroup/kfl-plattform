@@ -831,6 +831,38 @@ async function handleStaffApi(ctx, url) {
     await audit(ctx, 'rolle_geaendert', 'rolle', m[1], perms);
     return out({ ok: true });
   }
+  /* ---------- AGB für Geschäftspartner (eine Quelle für Partner-Dashboard und Webseite) ---------- */
+  if (path.startsWith('/partner-terms')) {
+    const canEdit = can(u, 'legal_terms') || can(u, 'settings_all');
+    need(canEdit || ['acc_settings', 'acc_manage', 'partner_view'].some((k) => can(u, k)), 403, 'Dafür fehlt dir die Berechtigung.');
+    if (path === '/partner-terms' && method === 'GET') {
+      const t = termsOf(await settingsOf(ctx));
+      const versions = (await DB.all(db, "SELECT id, ref_id AS version, title, data, archived_at, expires_at FROM archive WHERE kind = 'agb_partner' ORDER BY ref_id DESC LIMIT 100"))
+        .map((a) => { const d = jparse(a.data, {}); return { id: a.id, version: a.version, title: a.title, note: d.note || '', updated_at: d.updated_at || a.archived_at, updated_by: d.updated_by || '', reconsent: (d.consent_min || 0) === a.version, expires_at: a.expires_at }; });
+      const st = await DB.one(db, 'SELECT COUNT(*) AS total, SUM(CASE WHEN agb_at IS NOT NULL AND COALESCE(agb_version, 1) >= ? THEN 1 ELSE 0 END) AS current, SUM(CASE WHEN agb_at IS NOT NULL THEN 1 ELSE 0 END) AS any FROM partner_users WHERE active = 1 AND pass_hash IS NOT NULL', t.version);
+      return out({ ok: true, terms: { ...termsPublic(t), note: t.note || '', updated_by: t.updated_by || '', shop_sync: t.shop_sync || null }, canEdit, versions,
+        stats: { total: st.total || 0, current: st.current || 0, any: st.any || 0 }, web: (await settingsOf(ctx)).link_agb_partner, publicUrl: ctx.origin + '/agb-partner' });
+    }
+    if ((m = path.match(/^\/partner-terms\/versions\/(\d+)$/)) && method === 'GET') {
+      const a = await DB.one(db, "SELECT * FROM archive WHERE kind = 'agb_partner' AND ref_id = ? ORDER BY id DESC LIMIT 1", +m[1]); need(a, 404, 'Diese Fassung gibt es nicht (mehr).');
+      const d = jparse(a.data, {});
+      return out({ ok: true, version: { version: a.ref_id, html: d.html || '', note: d.note || '', updated_at: d.updated_at, updated_by: d.updated_by, stand: termsStand(d.html) } });
+    }
+    if (path === '/partner-terms' && method === 'PUT') {
+      need(canEdit, 403, 'Die AGB für Geschäftspartner dürfen nur Geschäftsführung und Admin ändern.');
+      const t = await publishTerms(ctx, u, body);
+      return out({ ok: true, version: t.version, shop_sync: t.shop_sync, stand: termsStand(t.html) });
+    }
+    if (path === '/partner-terms/shop-sync' && method === 'POST') {
+      need(canEdit, 403, 'Dafür fehlt dir die Berechtigung.');
+      const t = termsOf(await settingsOf(ctx));
+      t.shop_sync = await pushTermsToShop(ctx, t);
+      await saveTerms(ctx, t);
+      await audit(ctx, 'partner_agb_webseite_abgleich', 'einstellungen', t.version, { shopify: t.shop_sync.ok ? 'aktualisiert' : t.shop_sync.error });
+      return out({ ok: true, shop_sync: t.shop_sync });
+    }
+    return fail(404, 'Nicht gefunden');
+  }
   if (path === '/settings' && method === 'GET') {
     need(can(u, 'settings_all') || can(u, 'acc_settings') || can(u, 'acc_manage'), 403, 'Dafür fehlt dir die Berechtigung.');
     const s = await settingsOf(ctx);

@@ -55,7 +55,7 @@ ACT.orgNew = async () => {
       ${field('Telefon', inp('phone'))}${field('Rechnungs-E-Mail', inp('billing_email', '', { type: 'email' }), 'Leer = allgemeine E-Mail')}${field('USt-IdNr.', inp('vat_id'))}
       ${can('partner_terms') ? field('Abrechnung', sel('billing_mode', [['einzel', 'Jeder Fall einzeln'], ['monatlich', 'Monatliche Sammelrechnung']], 'einzel')) : ''}</div>
     <fieldset><legend>Marken</legend>${brandPicker([])}</fieldset>
-    <div class="checks">${chk('accepts[]', true, 'Traumwagen-DEAL (Kauf, Leasing, Finanzierung)', 'deal')}${chk('accepts[]', true, 'Fahrzeugankauf', 'sell')}</div>
+    <div class="checks">${chk('accepts[]', true, 'Dein Auto-DEAL (Kauf, Leasing, Finanzierung)', 'deal')}${chk('accepts[]', true, 'Fahrzeugankauf', 'sell')}</div>
     <div class="stack-s">${chk('supplier', true, 'Auch als Lieferant anlegen')}<p class="small muted">Der Partner erscheint dann automatisch unter Buchhaltung → Lieferanten, damit du seine Rechnungen erfassen und bezahlen kannst. Name und Anschrift werden laufend übernommen, die Bankverbindung ergänzt die Buchhaltung.</p></div>
     <fieldset><legend>Zugang zum Partner-Dashboard</legend><p class="small muted">Optional: Lege gleich das erste Konto an. Die Person bekommt den Einladungslink per E-Mail und legt ihr Passwort selbst fest. Weitere Konten (bei Organisationen) legst du danach beim Partner an.</p>
       <div class="grid-2 mt">${field('Name der Person', inp('u_name', '', { ph: 'z. B. Max Händler' }))}${field('E-Mail für den Zugang', inp('u_email', '', { type: 'email', ph: 'leer = kein Konto anlegen' }))}
@@ -108,7 +108,7 @@ async function pagePartner(id) {
         ${field('Preis je Vermittlung (netto)', inp('lead_price', o.lead_price ?? '', { ph: 'Standard laut Einstellungen', attrs: terms ? '' : 'disabled' }))}
         ${termsFields(o, terms)}</div></section>
       <section class="panel"><div class="panel-head"><h2>Anfragen</h2></div><div class="panel-body stack">
-        <div class="checks">${chk('accepts[]', o.accepts.includes('deal'), 'Traumwagen-DEAL', 'deal')}${chk('accepts[]', o.accepts.includes('sell'), 'Fahrzeugankauf', 'sell')}</div>
+        <div class="checks">${chk('accepts[]', o.accepts.includes('deal'), 'Dein Auto-DEAL', 'deal')}${chk('accepts[]', o.accepts.includes('sell'), 'Fahrzeugankauf', 'sell')}</div>
         ${field('Maximaler Umkreis (km)', inp('max_radius_km', o.max_radius_km ?? '', { type: 'number', ph: 'ohne Begrenzung', attrs: dis }), 'Der Kunde wählt seinen Umkreis selbst; hier kann der Partner zusätzlich begrenzt werden.')}
         <h3>Marken</h3>${brandPicker(o.brands)}</div></section>
       <section class="panel"><div class="panel-head"><h2>Öffnungszeiten</h2></div><div class="panel-body tight">${openingEditor(o.opening)}</div></section>

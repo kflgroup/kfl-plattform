@@ -6,7 +6,7 @@
    ============================================================ */
 
 function partnerPublic(p) {
-  return p && { id: p.id, name: p.name, email: p.email, role: p.role, roleLabel: p.roleLabel, phone: p.phone, mustChangePw: p.mustChangePw, consentsOk: p.consentsOk, prevLogin: p.prevLogin,
+  return p && { id: p.id, name: p.name, email: p.email, role: p.role, roleLabel: p.roleLabel, phone: p.phone, mustChangePw: p.mustChangePw, consentsOk: p.consentsOk, termsOutdated: p.termsOutdated, termsVersion: p.termsVersion, agbAt: p.agbAt, agbVersion: p.agbVersion, prevLogin: p.prevLogin,
     org: { id: p.org.id, name: p.org.name, kind: p.org.kind, city: p.org.city, brands: jparse(p.org.brands, []) } };
 }
 function asgTone(a) { return (ASSIGN_STATUSES.find((s) => s.key === a.status) || {}).tone || 'info'; }
@@ -215,10 +215,10 @@ async function handlePartnerApi(ctx, url) {
     const pr = passwordProblem(body.password); need(!pr, 400, pr);
     need(body.agb && body.privacy, 400, 'Bitte akzeptiere die AGB und die Datenschutzhinweise.');
     const h = await hashPassword(body.password);
-    await DB.run(db, 'UPDATE partner_users SET pass_hash = ?, pass_salt = ?, invite_hash = NULL, invite_expires = NULL, failed_logins = 0, must_change_pw = 0, agb_at = COALESCE(agb_at, ?), privacy_at = COALESCE(privacy_at, ?), last_login = ? WHERE id = ?', h.hash, h.salt, nowIso(), nowIso(), nowIso(), u.id);
+    await DB.run(db, 'UPDATE partner_users SET pass_hash = ?, pass_salt = ?, invite_hash = NULL, invite_expires = NULL, failed_logins = 0, must_change_pw = 0, agb_at = ?, agb_version = ?, privacy_at = COALESCE(privacy_at, ?), last_login = ? WHERE id = ?', h.hash, h.salt, nowIso(), termsOf(s).version, nowIso(), nowIso(), u.id);
     await DB.run(db, 'DELETE FROM partner_sessions WHERE user_id = ?', u.id);
     ctx.actor = { type: 'partner', id: u.id, name: u.name };
-    await audit(ctx, 'partner_passwort_gesetzt', 'partnerkonto', u.id, { agb: true, datenschutz: true });
+    await audit(ctx, 'partner_passwort_gesetzt', 'partnerkonto', u.id, { agb: true, agb_fassung: termsOf(s).version, datenschutz: true });
     const sess = await createSessionRow(db, 'partner_sessions', u.id);
     return out({ ok: true }, 200, { 'Set-Cookie': cookieHeader(PARTNER_COOKIE, sess.token, sess.maxAge) });
   }
@@ -275,12 +275,19 @@ async function handlePartnerApi(ctx, url) {
     return out({ ok: true, number: id });
   }
 
+  if (path === '/terms' && method === 'GET') {
+    const t = termsOf(s), me = await currentPartner(ctx);
+    return out({ ok: true, ...termsPublic(t), web: s.link_agb_partner, mine: me ? { agb_at: me.agbAt, version: me.agbVersion, outdated: me.termsOutdated } : null });
+  }
   const p = await currentPartner(ctx);
   requirePartner(p);
   if (path === '/consents' && method === 'POST') {
     need(body.agb && body.privacy, 400, 'Bitte akzeptiere beides.');
-    await DB.run(db, 'UPDATE partner_users SET agb_at = COALESCE(agb_at, ?), privacy_at = COALESCE(privacy_at, ?) WHERE id = ?', nowIso(), nowIso(), p.id);
-    await audit(ctx, 'partner_zustimmung', 'partnerkonto', p.id, { agb: true, datenschutz: true });
+    const t = termsOf(s), now = nowIso();
+    need(toInt(body.version, t.version) === t.version, 409, 'Die AGB wurden gerade aktualisiert. Bitte lade die Seite neu und bestätige die aktuelle Fassung.');
+    // Neue Fassung (Zustimmung erneut nötig): Zeitpunkt neu setzen, sonst die erste Zustimmung behalten
+    await DB.run(db, 'UPDATE partner_users SET agb_at = CASE WHEN agb_at IS NULL OR COALESCE(agb_version, 0) < ? THEN ? ELSE agb_at END, agb_version = ?, privacy_at = COALESCE(privacy_at, ?) WHERE id = ?', t.consent_min || 0, now, t.version, now, p.id);
+    await audit(ctx, 'partner_zustimmung', 'partnerkonto', p.id, { agb: true, agb_fassung: t.version, datenschutz: true });
     return out({ ok: true });
   }
   if (path === '/password' && method === 'POST') {

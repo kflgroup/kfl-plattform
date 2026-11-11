@@ -30,6 +30,7 @@ async function api(method, path, body) {
 const GET = (p, q) => api('GET', p + qs(q));
 const POST = (p, b) => api('POST', p, b);
 const PATCH = (p, b) => api('PATCH', p, b);
+const PUT = (p, b) => api('PUT', p, b);
 const DEL = (p, b) => api('DELETE', p, b);
 const fileUrl = (p, q) => App.base + p + qs(q);
 

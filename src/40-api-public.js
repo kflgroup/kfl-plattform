@@ -52,12 +52,12 @@ async function handleForm(ctx) {
     }
     return cjson({ ok: true, number: id, ticket: true, receivedAt: data['Eingang (Server)'] }, 200, origin);
   }
-  // Traumwagen-DEAL mit Inzahlungnahme: zusätzlich eigene Ankauf-Anfrage, beide verknüpft
+  // Dein Auto-DEAL mit Inzahlungnahme: zusätzlich eigene Ankauf-Anfrage, beide verknüpft
   const sellData = form === 'deal' ? tradeInSplit(data) : null;
   const id = await createRequest(ctx, form, data, { customerAccount: kid !== '0' ? kid : null });
   let sellId = null;
   if (sellData) {
-    sellData['Inzahlungnahme zu'] = `Traumwagen-DEAL #${toNumber(id)}`;
+    sellData['Inzahlungnahme zu'] = `Dein Auto-DEAL #${toNumber(id)}`;
     // Ankauf-Anfrage gleich verknüpft anlegen; verteilt wird sie im nächsten Durchlauf (spätestens 5 Minuten) – hält den Formular-Eingang schnell und im Abfragelimit
     sellId = await createRequest(ctx, 'sell', sellData, { customerAccount: kid !== '0' ? kid : null, extra: { linked_request_id: id, dispatch_pending: 1 } });
     data['Ankauf-Anfrage zum Altwagen'] = `#${toNumber(sellId)}`;

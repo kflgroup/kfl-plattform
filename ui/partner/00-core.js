@@ -11,9 +11,10 @@ const PNAV = () => [
   isVL() && { key: 'statistik', href: '#/statistik', label: 'Statistik', icon: 'chart', group: 'Auswertung' },
   { key: 'news', href: '#/news', label: 'News', icon: 'bell', count: P.unread, group: 'Kommunikation' },
   { key: 'support', href: '#/support', label: 'Support', icon: 'support', group: 'Kommunikation' },
-  { key: 'einstellungen', href: '#/einstellungen', label: 'Einstellungen', icon: 'gear', group: 'Konto' }
+  { key: 'einstellungen', href: '#/einstellungen', label: 'Einstellungen', icon: 'gear', group: 'Konto' },
+  { key: 'agb', href: '#/agb', label: 'AGB für Partner', short: 'AGB', icon: 'file', group: 'Konto' }
 ].filter(Boolean);
-const PCRUMB = { start: 'Übersicht', anfragen: 'Anfragen', angebote: 'Angebote', statistik: 'Statistik', news: 'News', support: 'Support', einstellungen: 'Einstellungen' };
+const PCRUMB = { start: 'Übersicht', anfragen: 'Anfragen', angebote: 'Angebote', statistik: 'Statistik', news: 'News', support: 'Support', einstellungen: 'Einstellungen', agb: 'AGB für Partner' };
 const roleLabel = () => ((P.cfg.partnerRoles || {})[P.user && P.user.role] || {}).label || 'Partner';
 const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ohne Speicher */ } } };
 
@@ -42,7 +43,7 @@ function pnav() {
   render('#pbell', html`<a class="pt-bell" href="#/news" aria-label="News${P.unread ? ` (${P.unread} ungelesen)` : ''}" title="News">${icon('bell')}${P.unread ? html`<span class="count">${P.unread}</span>` : ''}</a>`);
   const main = items.filter((n) => ['start', 'anfragen', 'news', 'support'].includes(n.key));
   render('#ptab', html`${main.map((n) => html`<a href="${n.href}" class="${P.active === n.key ? 'on' : ''}">${icon(n.icon)}${n.short || n.label}${n.count ? html`<span class="count">${n.count}</span>` : ''}</a>`)}
-    <button data-act="moreSheet" class="${['angebote', 'statistik', 'einstellungen'].includes(P.active) ? 'on' : ''}">${icon('menu')}Mehr</button>`);
+    <button data-act="moreSheet" class="${['angebote', 'statistik', 'einstellungen', 'agb'].includes(P.active) ? 'on' : ''}">${icon('menu')}Mehr</button>`);
 }
 ACT.prail = () => { const a = $('#papp'); a.classList.toggle('is-rail'); store.set('kfl_p_rail', a.classList.contains('is-rail') ? '1' : '0'); };
 window.addEventListener('scroll', () => { const t = $('#ptop'); if (t) t.classList.toggle('scrolled', window.scrollY > 4); }, { passive: true });
@@ -71,7 +72,7 @@ function pauthFrame(inner) {
     <div><h1><span>Schnell sein.</span> <span>Bestes Angebot abgeben.</span> <span>Deal gewinnen.</span></h1><p class="claim">Das Partner-Dashboard der KFL GbR. Hier landen die Anfragen deiner Region – wer zuerst ein starkes Angebot abgibt, holt den Kunden.</p></div>
     <div class="p-auth-points"><div>${icon('bolt')}<span>Neue Anfragen sofort sehen und mit einem Klick übernehmen.</span></div><div>${icon('clock')}<span>Jede Anfrage hat 24 Werktags-Stunden – die Uhr zeigt dir, wie viel Zeit bleibt.</span></div><div>${icon('trophy')}<span>Das beste Angebot gewinnt. Der Kunde meldet sich – du bekommst seine Kontaktdaten.</span></div></div>
     <div class="socials">${l.shop ? html`<a class="social" href="${l.shop}" target="_blank" rel="noopener">${icon('shop')}Webstore</a>` : ''}${l.instagram ? html`<a class="social" href="${l.instagram}" target="_blank" rel="noopener">${icon('insta')}Instagram</a>` : ''}</div></section>
-    <section class="p-auth-form">${inner}</section></div>`);
+    <section class="p-auth-form">${inner}<p class="p-auth-legal"><a href="/agb-partner" target="_blank" rel="noopener" data-act="pagbShow">AGB für Geschäftspartner</a>${l.privacy ? html`<span aria-hidden="true">·</span><a href="${l.privacy}" target="_blank" rel="noopener">Datenschutz</a>` : ''}</p></section></div>`);
 }
 const psupportHelp = () => html`<div class="auth-help">${icon('support')}<span>Probleme beim Anmelden?</span><span class="spacer"></span><button class="btn btn-sm" type="button" data-act="psupportPublic">Support kontaktieren</button></div>`;
 function plogin(msg) {
@@ -98,7 +99,7 @@ ACT.psupportPublic = async () => {
     ${field('Thema', sel('topic', ['Anmeldung / Zugang', 'Passwort vergessen', 'Neues Konto', 'Technisches Problem', 'Sonstiges'], 'Anmeldung / Zugang'))}${field('Nachricht', area('message', '', { rows: 5, req: true }))}<input class="sr" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">` });
   if (!d) return; delete d._form; const r = await POST('/support-public', d); toast(r.number ? `Danke! Deine Anfrage #${r.number} ist eingegangen.` : 'Danke, deine Anfrage ist eingegangen.');
 };
-const consentFields = () => html`<div class="consents">${chk('agb', false, raw(`Ich akzeptiere die <a class="link" href="${esc(P.links.agb || '#')}" target="_blank" rel="noopener">AGB für Geschäftspartner</a>.`))}${chk('privacy', false, raw(`Ich habe die <a class="link" href="${esc(P.links.privacy || '#')}" target="_blank" rel="noopener">Datenschutzhinweise</a> gelesen und stimme der Verarbeitung meiner Daten zu.`))}</div>`;
+const consentFields = () => html`<div class="consents">${chk('agb', false, raw(`Ich akzeptiere die <a class="link" href="/agb-partner" target="_blank" rel="noopener" data-act="pagbShow">AGB für Geschäftspartner</a>.`))}${chk('privacy', false, raw(`Ich habe die <a class="link" href="${esc(P.links.privacy || '#')}" target="_blank" rel="noopener">Datenschutzhinweise</a> gelesen und stimme der Verarbeitung meiner Daten zu.`))}</div>`;
 async function pinvite(token) {
   if (!P.links.agb) await ploadSession().catch(() => {});
   let info; try { info = await GET('/invite/check', { token }); } catch (e) { return pauthFrame(html`<div><h2>Link nicht mehr gültig</h2></div><div class="err-box">${icon('alert')}<span>${e.message}</span></div><a class="btn" href="#/">Zur Anmeldung</a>${psupportHelp()}`); }
@@ -108,10 +109,14 @@ async function pinvite(token) {
 }
 SUBMIT.pinvite = async (d) => { if (d.password !== d.password2) throw new Error('Die Passwörter stimmen nicht überein.'); if (!d.agb || !d.privacy) throw new Error('Bitte bestätige AGB und Datenschutzhinweise.'); await POST('/invite/accept', d); history.replaceState(null, '', '#/'); await pboot(); };
 function pconsents() {
+  const u = P.user || {};
+  if (u.termsOutdated) return pauthFrame(html`<div><h2>Unsere AGB für Geschäftspartner wurden aktualisiert</h2><p class="muted">Fassung ${u.termsVersion} – bitte lies die neue Fassung und bestätige sie. Danach geht es direkt weiter zu deinen Anfragen.</p></div>
+    <button class="btn btn-block" type="button" data-act="pagbShow">${icon('file')}Neue Fassung lesen</button>
+    <form class="stack" data-submit="pconsents"><input type="hidden" name="privacy" value="1">${chk('agb', false, raw(`Ich akzeptiere die aktualisierten <a class="link" href="/agb-partner" target="_blank" rel="noopener" data-act="pagbShow">AGB für Geschäftspartner</a> (Fassung ${esc(u.termsVersion)}).`))}<button class="btn btn-primary btn-block" type="submit">Bestätigen und weiter</button></form>`);
   pauthFrame(html`<div><h2>Noch eine Bestätigung</h2><p class="muted">Bevor du Anfragen bearbeitest, bestätige bitte unsere AGB und die Datenschutzhinweise.</p></div>
     <form class="stack" data-submit="pconsents">${consentFields()}<button class="btn btn-primary btn-block" type="submit">Bestätigen und weiter</button></form>`);
 }
-SUBMIT.pconsents = async (d) => { if (!d.agb || !d.privacy) throw new Error('Bitte bestätige beides.'); await POST('/consents', d); await pboot(); };
+SUBMIT.pconsents = async (d) => { if (!d.agb || !d.privacy) throw new Error('Bitte bestätige die AGB' + (P.user && P.user.termsOutdated ? '.' : ' und die Datenschutzhinweise.')); await POST('/consents', { ...d, version: P.user && P.user.termsVersion }); await pboot(); };
 function pforcePw() {
   pauthFrame(html`<div><h2>Eigenes Passwort festlegen</h2><p class="muted">Du hast ein vorläufiges Passwort von der KFL bekommen. Bitte vergib jetzt dein eigenes.</p></div>
     <form class="stack" data-submit="pforcePw">${plastPw ? html`<input type="hidden" name="current" value="${plastPw}">` : field('Vorläufiges Passwort', inp('current', '', { type: 'password', req: true }))}${field('Neues Passwort', inp('next', '', { type: 'password', req: true, attrs: 'minlength="10"' }), PW_HINT)}${field('Wiederholen', inp('next2', '', { type: 'password', req: true }))}

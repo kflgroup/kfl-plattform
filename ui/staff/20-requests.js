@@ -22,7 +22,7 @@ async function pageRequests() {
         <div class="chips">${chip('mine', '1', 'Mir zugewiesen', 'user')}${chip('unassigned', '1', 'Ohne Zuständigen', 'users')}${chip('notes', '1', 'Neue Kundennotizen', 'note')}</div></div>
       <form class="toolbar" data-submit="reqFilter">
         <label class="search">${icon('search')}<input name="q" value="${q.q || ''}" placeholder="Nummer, Name, E-Mail, Marke, PLZ …" aria-label="Suche"></label>
-        ${sel('type', [['deal', 'Traumwagen-DEAL'], ['sell', 'Fahrzeugverkauf']], q.type, { empty: 'Alle Arten', attrs: 'aria-label="Art" data-change="reqFilterChange"' })}
+        ${sel('type', [['deal', 'Dein Auto-DEAL'], ['sell', 'Fahrzeugverkauf']], q.type, { empty: 'Alle Arten', attrs: 'aria-label="Art" data-change="reqFilterChange"' })}
         ${sel('brand', d.brands, q.brand, { empty: 'Alle Marken', attrs: 'aria-label="Marke" data-change="reqFilterChange"' })}
         ${users.length ? sel('assignee', users.map((u) => [u.id, u.name]), q.assignee, { empty: 'Alle Zuständigen', attrs: 'aria-label="Zuständig" data-change="reqFilterChange"' }) : ''}
         <details class="more-filters" ${more ? 'open' : ''}><summary>${icon('menu')}Weitere Filter</summary><div class="mf-in">
@@ -94,7 +94,7 @@ async function pageRequest(no) {
   P.show(html`${head(html`#${r.number} · ${r.vehicle || r.summary || typeLabel(r.type)}`, html`${typeLabel(r.type)} · eingegangen ${fDT(r.created_at)} · Quelle: ${r.source || 'Webseite'}${r.radius_km != null ? html` · Umkreis ${r.radius_km ? r.radius_km + ' km' : 'bundesweit'}` : ''}`,
       html`${statusBadge(RS(), r.status)}${r.billed ? badge('Kopie · in Rechnung gestellt', 'ok') : ''}${r.deleted ? badge('Deaktiviert', 'err') : ''}`, ['#/anfragen', 'Alle Anfragen'])}
     ${r.status_note ? html`<div class="note-box">${icon('alert')}<span>${r.status_note}</span></div>` : ''}
-    ${r.linked ? html`<div class="info-box mt">${icon('refresh')}<span>${r.type === 'deal' ? html`<b>Mit Inzahlungnahme:</b> Der Kunde gibt sein jetziges Auto in Zahlung. Ankauf-Anfrage` : html`<b>Inzahlungnahme:</b> Gehört zum Traumwagen-DEAL`} <a href="#/anfragen/${r.linked.number}">#${r.linked.number}${r.linked.vehicle ? ' · ' + r.linked.vehicle : ''}</a> (${(RS().find((x) => x.key === r.linked.status) || {}).label || r.linked.status}). Partner der Traumwagen-Anfrage können den Ankauf zusätzlich übernehmen.</span></div>` : ''}
+    ${r.linked ? html`<div class="info-box mt">${icon('refresh')}<span>${r.type === 'deal' ? html`<b>Mit Inzahlungnahme:</b> Der Kunde gibt sein jetziges Auto in Zahlung. Ankauf-Anfrage` : html`<b>Inzahlungnahme:</b> Gehört zum Auto-DEAL`} <a href="#/anfragen/${r.linked.number}">#${r.linked.number}${r.linked.vehicle ? ' · ' + r.linked.vehicle : ''}</a> (${(RS().find((x) => x.key === r.linked.status) || {}).label || r.linked.status}). Partner der Auto-DEAL-Anfrage können den Ankauf zusätzlich übernehmen.</span></div>` : ''}
     ${r.customer_note_unread ? html`<div class="info-box mt">${icon('note')}<span>Der Kunde hat eine neue Notiz unter „Sonstiges“ hinterlassen. Bitte berücksichtigen und ggf. an die Partner weitergeben.</span></div>` : ''}
     <section class="panel mt">${trackHtml(r)}</section>
     <div class="detail-grid mt">

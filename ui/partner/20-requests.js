@@ -65,7 +65,7 @@ async function pRequest(id) {
   wishUpdate($('.offer-form'));
   if (/[?&]kontakt\b/.test(location.hash)) { const cc = $('.contact-card'); if (cc) { cc.classList.add('flash'); cc.scrollIntoView({ block: 'start', behavior: 'smooth' }); setTimeout(() => cc.classList.remove('flash'), 2600); } }
 }
-// Verknüpfte Anfrage (Inzahlungnahme ↔ Traumwagen-DEAL)
+// Verknüpfte Anfrage (Inzahlungnahme ↔ Dein Auto-DEAL)
 function linkedCard(a) {
   const l = a.linked; if (!l) return '';
   if (a.request.type === 'deal') {
@@ -144,7 +144,7 @@ function offerForm(a) {
     ${offerFields(a)}<div class="sticky-submit"><button class="btn btn-primary btn-block" type="submit">${icon('send')}Angebot senden</button></div></div></form>`;
 }
 const sentOffer = (o, label) => html`<div class="combo-sent"><div class="row-between"><b>${label}</b>${offerStatus(o.status)}</div><div class="offer-price num">${offerHeadline(o.data)}</div><div class="mt-s">${kv(offerRows(o.data))}</div></div>`;
-// Traumwagen-DEAL mit Inzahlungnahme: beide Angebote in einer Maske, ein Klick zum Senden – getrennt gespeichert und bewertet
+// Dein Auto-DEAL mit Inzahlungnahme: beide Angebote in einer Maske, ein Klick zum Senden – getrennt gespeichert und bewertet
 function comboForm(a) {
   const t = a.trade, l = a.linked || {};
   const dealOpen = a.status === 'in_bearbeitung' && a.mine, tradeOpen = !!(t && t.mine && t.status === 'in_bearbeitung');

@@ -26,6 +26,8 @@ for (const f of files) {
 const fontDir = root + 'ui/fonts/';
 const fonts = existsSync(fontDir) ? Object.fromEntries(readdirSync(fontDir).filter((f) => f.endsWith('.woff')).map((f) => [f, readFileSync(fontDir + f).toString('base64')])) : {};
 code += `\n/* ===== Schriften ===== */\nconst FONT_FILES = ${JSON.stringify(fonts)};\n`;
+// Standardfassung der AGB für Geschäftspartner (bis zur ersten Änderung im internen Dashboard)
+code += `\n/* ===== AGB für Geschäftspartner (Standard) ===== */\nconst PARTNER_TERMS_DEFAULT = ${JSON.stringify(read('legal/agb-partner.html').trim())};\n`;
 code += `\n/* ===== Oberflächen ===== */\nconst STAFF_HTML = ${JSON.stringify(page('staff'))};\nconst PARTNER_HTML = ${JSON.stringify(page('partner'))};\n`;
 code += `\n/* ===== 99-index.js ===== */\n` + read('src/99-index.js');
 // nur ASCII ausgeben (Umlaute als \\u-Escapes), damit beim Kopieren nichts verloren geht

@@ -29,7 +29,7 @@ const d = q1('SELECT * FROM requests WHERE id = 1'), s = q1('SELECT * FROM reque
 const dd = JSON.parse(d.data), sd = JSON.parse(s.data);
 check(d.type === 'deal' && d.brand === 'Audi' && d.linked_request_id === 2 && s.type === 'sell' && s.brand === 'Opel' && s.model === 'Astra' && s.linked_request_id === 1, 'Kauf (Audi) und Verkauf (Opel) erkannt und verknüpft', { d: [d.type, d.brand], s: [s.type, s.brand, s.model] });
 check(dd['Altwagen Marke'] === 'Opel' && dd['Altwagen Laufleistung km'] === '98.500' && dd['Ankauf-Anfrage zum Altwagen'] === '#1002', 'Altwagen-Angaben liegen auch in der Kauf-Anfrage', dd);
-check(sd.Marke === 'Opel' && sd.Erstzulassung === '2018-05' && sd.body === 'TÜV neu, Winterräder dabei' && sd['Inzahlungnahme zu'] === 'Traumwagen-DEAL #1001' && sd.email === 'max@kunde.de' && sd.PLZ === '49451' && !sd.Bezahlart && sd.Halter === 'Privat', 'Ankauf-Anfrage mit Fahrzeug- und Kontaktdaten, ohne Kaufangaben', sd);
+check(sd.Marke === 'Opel' && sd.Erstzulassung === '2018-05' && sd.body === 'TÜV neu, Winterräder dabei' && sd['Inzahlungnahme zu'] === 'Dein Auto-DEAL #1001' && sd.email === 'max@kunde.de' && sd.PLZ === '49451' && !sd.Bezahlart && sd.Halter === 'Privat', 'Ankauf-Anfrage mit Fahrzeug- und Kontaktdaten, ohne Kaufangaben', sd);
 check(s.customer_account === kid && s.radius_km === 100, 'Ankauf im Kundenkonto, gleicher Umkreis');
 check(qa('SELECT * FROM assignments WHERE request_id = 1').length === 1 && !qa('SELECT * FROM assignments WHERE request_id = 2').length && s.dispatch_pending === 1, 'Kauf sofort an Alpha verteilt, Ankauf vorgemerkt');
 check(/Ankauf-Anfrage <strong>#1002<\/strong>/.test(lastMailTo('max@kunde.de').htmlContent), 'Eingangsbestätigung nennt beide Anfragen');
@@ -80,7 +80,7 @@ check(q1("SELECT COUNT(*) AS n FROM notifications WHERE recipient_type = 'partne
 r = await c.post('/', sell2());
 const idS = r.number - 1000;
 const lD = q1('SELECT * FROM requests WHERE id = ?', idD), lS = q1('SELECT * FROM requests WHERE id = ?', idS);
-check(r.ok && lD.linked_request_id === idS && lS.linked_request_id === idD && JSON.parse(lS.data)['Inzahlungnahme zu'] === `Traumwagen-DEAL #${nD}`, 'Separates „Auto verkaufen“ desselben Kunden automatisch als Inzahlungnahme verknüpft');
+check(r.ok && lD.linked_request_id === idS && lS.linked_request_id === idD && JSON.parse(lS.data)['Inzahlungnahme zu'] === `Dein Auto-DEAL #${nD}`, 'Separates „Auto verkaufen“ desselben Kunden automatisch als Inzahlungnahme verknüpft');
 const note = q1("SELECT * FROM notifications WHERE recipient_type = 'partner' AND recipient_id = ? AND title LIKE 'Inzahlungnahme zu%' ORDER BY id DESC", pu.A);
 check(note && note.link === `#/anfragen/${aidD}` && !note.read_at, 'Partner, der den Traumwagen bearbeitet, bekommt einen Hinweis auf den Ankauf');
 let unread = (await c.get('/papi/start', { who: 'A' })).news.notifications.filter((n) => !n.read).length;
@@ -153,7 +153,7 @@ sq.prepare("UPDATE requests SET linked_request_id = NULL, dispatch_pending = 0 W
 const aidD7 = q1('SELECT id FROM assignments WHERE request_id = ? AND org_id = ?', idD7, org.A).id;
 await c.post(`/papi/requests/${aidD7}/take`, {}, { who: 'A' });
 r = await c.post(`/papi/requests/${aidD7}/linked`, {}, { who: 'A' });
-check(r.ok && q1('SELECT request_id FROM assignments WHERE id = ?', r.id).request_id === idS7 && q1("SELECT COUNT(*) AS n FROM requests WHERE type = 'sell' AND data LIKE ?", `%Traumwagen-DEAL #${idD7 + 1000}%`).n === 1, 'Partner übernimmt die vorhandene Ankauf-Anfrage, keine zweite angelegt');
+check(r.ok && q1('SELECT request_id FROM assignments WHERE id = ?', r.id).request_id === idS7 && q1("SELECT COUNT(*) AS n FROM requests WHERE type = 'sell' AND data LIKE ?", `%Dein Auto-DEAL #${idD7 + 1000}%`).n === 1, 'Partner übernimmt die vorhandene Ankauf-Anfrage, keine zweite angelegt');
 console.log('Kombi-Angebot: Fahrzeug + Inzahlungnahme in einer Maske');
 const kid8 = '88800000000001', ts8 = nowSec();
 r = await c.post('/', { ...deal(trade), _kid: kid8, _ts: ts8, _sig: sig(`${kid8}.${ts8}.deal`), Kundennummer: kid8, email: 'kai@kunde.de', Vorname: 'Kai' });

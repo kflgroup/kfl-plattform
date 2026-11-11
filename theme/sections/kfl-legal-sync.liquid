@@ -1,0 +1,97 @@
+{%- comment -%}
+KFL Rechtstext mit Live-Abgleich (Seite /pages/agb-partner, Vorlage page.agb-partner)
+- Quelle ist das interne KFL-Dashboard (Verwaltung → Partner-AGB). Die Seite zeigt sofort den Shopify-Seitentext
+  (für Suchmaschinen und ohne JavaScript) und lädt danach die aktuelle Fassung vom KFL-Formulardienst (GET /legal/agb-partner).
+- Der Text vom Dienst ist dort bereits bereinigt (nur Absätze, Überschriften, Listen, Hervorhebungen und Links).
+{%- endcomment -%}
+{%- capture endpoint -%}{% render 'kfl-config', key: 'endpoint' %}{%- endcapture -%}{%- assign endpoint = endpoint | strip -%}
+{%- liquid
+  assign src = ''
+  if endpoint != blank
+    assign ep = endpoint | split: '/'
+    assign src = ep[0] | append: '//' | append: ep[2] | append: section.settings.path
+  endif
+-%}
+<section class="k-section k-legal" style="padding-top:clamp(40px,6vw,88px)">
+<div class="k-wrap k-legal__wrap">
+<aside class="k-legal__aside">
+<p class="k-kicker">{{ section.settings.kicker }}</p>
+<h1 class="k-legal__title">{{ page.title | default: section.settings.title }}</h1>
+<p class="k-legal__meta" data-k-legal-meta>{{ section.settings.meta_fallback }}</p>
+<nav class="k-legal__toc" aria-label="Inhalt" data-k-legal-toc hidden></nav>
+<div class="k-legal__actions">
+<button type="button" class="k-btn k-btn--dark" data-k-legal-print>Drucken / als PDF speichern</button>
+{%- if section.settings.cta_url != blank -%}<a class="k-legal__link" href="{{ section.settings.cta_url }}">{{ section.settings.cta_label }}</a>{%- endif -%}
+</div>
+<p class="k-small k-muted">{{ section.settings.note }}</p>
+</aside>
+<article class="k-legal__doc" id="k-legal-doc" data-k-legal-src="{{ src | escape }}">{{ page.content }}</article>
+</div>
+</section>
+<script>
+(function () {
+  var doc = document.getElementById('k-legal-doc'); if (!doc) return;
+  var meta = document.querySelector('[data-k-legal-meta]'), toc = document.querySelector('[data-k-legal-toc]');
+  function buildToc() {
+    if (!toc) return;
+    var hs = doc.querySelectorAll('h2'); if (hs.length < 3) { toc.hidden = true; return; }
+    var ol = document.createElement('ol');
+    for (var i = 0; i < hs.length; i++) {
+      hs[i].id = 'abschnitt-' + (i + 1);
+      var li = document.createElement('li'), a = document.createElement('a');
+      a.href = '#abschnitt-' + (i + 1); a.textContent = hs[i].textContent.replace(/\s+/g, ' ').trim();
+      li.appendChild(a); ol.appendChild(li);
+    }
+    toc.innerHTML = ''; toc.appendChild(ol); toc.hidden = false;
+  }
+  function stand(html) { var m = String(html).match(/Stand:\s*([^<\n]{3,40})/); return m ? m[1].trim() : ''; }
+  var s0 = stand(doc.innerHTML); if (meta && s0) meta.textContent = 'Stand: ' + s0;
+  buildToc();
+  var btn = document.querySelector('[data-k-legal-print]'); if (btn) btn.addEventListener('click', function () { window.print(); });
+  var src = doc.getAttribute('data-k-legal-src'); if (!src || !window.fetch) return;
+  fetch(src, { credentials: 'omit', cache: 'no-cache' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+    if (!j || !j.ok || typeof j.html !== 'string' || j.html.length < 200) return;
+    if (j.html !== doc.innerHTML.trim()) { doc.innerHTML = j.html; buildToc(); }
+    if (meta) meta.textContent = 'Fassung ' + j.version + (j.stand ? ' · Stand: ' + j.stand : '');
+    doc.setAttribute('data-version', j.version);
+  }).catch(function () { /* Seitentext bleibt stehen */ });
+})();
+</script>
+
+{% stylesheet %}
+.k-legal__wrap { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); gap: clamp(32px, 5vw, 80px); align-items: start; }
+.k-legal__aside { position: sticky; top: 110px; display: flex; flex-direction: column; gap: 1.6rem; }
+.k-legal__title { margin: 0; font-size: clamp(3.2rem, 4vw, 4.8rem); line-height: 1.05; letter-spacing: -.02em; font-weight: 800; }
+.k-legal__meta { margin: 0; font-size: 1.4rem; color: #6e6e73; font-weight: 600; }
+.k-legal__toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: .2rem; max-height: 46vh; overflow: auto; border-left: 2px solid rgba(0, 0, 0, .08); }
+.k-legal__toc a { display: block; padding: .5rem 0 .5rem 1.4rem; margin-left: -2px; border-left: 2px solid transparent; font-size: 1.4rem; line-height: 1.35; color: #3a3a3d; text-decoration: none; }
+.k-legal__toc a:hover, .k-legal__toc a:focus-visible { color: var(--k-orange-deep, #c45300); border-left-color: var(--k-orange, #ff6c01); }
+.k-legal__actions { display: flex; flex-wrap: wrap; gap: 1.2rem; align-items: center; }
+.k-legal__link { font-weight: 700; font-size: 1.5rem; color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.k-legal__doc { background: #fff; border-radius: 24px; padding: clamp(24px, 4.5vw, 64px); box-shadow: 0 20px 60px rgba(0, 0, 0, .05); font-size: 1.65rem; line-height: 1.7; color: #2b2b2e; max-width: 880px; }
+.k-legal__doc > :first-child { margin-top: 0; }
+.k-legal__doc h2 { font-size: 2.1rem; line-height: 1.3; margin: 3.6rem 0 1rem; letter-spacing: -.01em; color: #111; scroll-margin-top: 120px; }
+.k-legal__doc h3 { font-size: 1.8rem; margin: 2.4rem 0 .8rem; color: #111; }
+.k-legal__doc p { margin: 0 0 1.2rem; }
+.k-legal__doc ul, .k-legal__doc ol { margin: 0 0 1.4rem; padding-left: 2rem; }
+.k-legal__doc li { margin: 0 0 .5rem; }
+.k-legal__doc a { color: var(--k-orange-deep, #c45300); text-decoration: underline; text-underline-offset: 2px; }
+@media (max-width: 960px) { .k-legal__wrap { grid-template-columns: 1fr; } .k-legal__aside { position: static; } .k-legal__toc ol { max-height: none; } }
+@media print { .k-legal__aside .k-legal__actions, .k-legal__toc, header, footer, .shopify-section-group-header-group, .shopify-section-group-footer-group { display: none !important; } .k-legal__wrap { display: block; } .k-legal__doc { box-shadow: none; padding: 0; max-width: none; } }
+{% endstylesheet %}
+
+{% schema %}
+{
+"name": "KFL Rechtstext (Live)",
+"settings": [
+{ "type": "text", "id": "kicker", "label": "Überschrift klein", "default": "Für Geschäftspartner" },
+{ "type": "text", "id": "title", "label": "Titel (falls die Seite keinen hat)", "default": "AGB für Geschäftspartner" },
+{ "type": "text", "id": "path", "label": "Quelle beim KFL-Formulardienst", "default": "/legal/agb-partner", "info": "Der Text wird im internen KFL-Dashboard unter Verwaltung → Partner-AGB gepflegt und hier automatisch angezeigt." },
+{ "type": "text", "id": "meta_fallback", "label": "Hinweis, bis die Fassung geladen ist", "default": "Aktuelle Fassung" },
+{ "type": "url", "id": "cta_url", "label": "Link unter dem Druck-Button", "default": "/pages/partner" },
+{ "type": "text", "id": "cta_label", "label": "Link-Text", "default": "Zum Partnerbereich" },
+{ "type": "textarea", "id": "note", "label": "Hinweis", "default": "Diese Bedingungen gelten für Unternehmen (§ 14 BGB), die über das KFL Partner-Dashboard Kundenanfragen erhalten. Für Kundinnen und Kunden gelten unsere allgemeinen AGB." }
+],
+"presets": [{ "name": "KFL Rechtstext (Live)" }]
+}
+{% endschema %}

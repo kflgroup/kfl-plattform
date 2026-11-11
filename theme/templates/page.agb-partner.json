@@ -1,0 +1,16 @@
+{
+  "sections": {
+    "main": {
+      "type": "kfl-legal-sync",
+      "settings": {
+        "kicker": "Für Geschäftspartner",
+        "title": "AGB für Geschäftspartner",
+        "path": "/legal/agb-partner",
+        "meta_fallback": "Aktuelle Fassung",
+        "cta_url": "/pages/partner",
+        "cta_label": "Zum Partnerbereich"
+      }
+    }
+  },
+  "order": ["main"]
+}

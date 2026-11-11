@@ -341,3 +341,30 @@ fieldset.fieldset-plain{border:0;padding:0;margin:0;min-width:0}
 @keyframes sl-pulse{50%{box-shadow:0 0 0 6px rgba(255,108,1,0)}}
 @media (max-width:960px){.s-live{padding:10px 16px 0}.sl-main{flex-basis:100%}}
 @media (prefers-reduced-motion:reduce){.sl-main.hot .sl-dot{animation:none}}
+
+/* ===== Verwaltung → Partner-AGB ===== */
+.terms-teaser .row-between{gap:16px;flex-wrap:wrap}
+.terms-teaser .ic{width:22px;height:22px;color:var(--orange)}
+.terms-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.terms-facts>div{background:var(--sunken);border:1px solid var(--line-2);border-radius:var(--r-m);padding:14px 16px;display:flex;flex-direction:column;gap:2px}
+.terms-facts span{font-size:12px;color:var(--steel);text-transform:uppercase;letter-spacing:.04em}
+.terms-facts b{font-size:22px;letter-spacing:-.02em;color:var(--ink)}
+.terms-facts small{font-size:12.5px;color:var(--steel)}
+.terms-sync{list-style:none;margin:0;padding:0;border:1px solid var(--line-2);border-radius:var(--r-m)}
+.terms-sync li{display:grid;grid-template-columns:22px 1fr auto;gap:12px;align-items:center;padding:12px 14px}
+.terms-sync li+li{border-top:1px solid var(--line-2)}
+.terms-sync li>.ic{color:var(--green)}
+.terms-sync li div b{display:block;font-size:14px}
+.terms-sync li div span{font-size:13px;color:var(--steel)}
+.terms-sync .warn-text{color:var(--amber)}
+.terms-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:8px 12px;border-bottom:1px solid var(--line-2);background:var(--sunken)}
+#termsMain{scroll-margin-top:96px}
+.terms-toolbar .sep{width:1px;height:22px;background:var(--line);margin:0 4px}
+.terms-toolbar .strong{font-weight:800}.terms-toolbar .em{font-style:italic}
+.terms-toolbar .on{background:var(--ink);color:#fff}
+.terms-editor{max-width:none;min-height:420px;max-height:70vh;overflow:auto;padding:22px 26px;outline:none;background:var(--surface)}
+.terms-editor:focus{box-shadow:inset 0 0 0 2px rgba(255,108,1,.25)}
+.terms-src{display:block;width:100%;min-height:420px;max-height:70vh;border:0;border-bottom:1px solid var(--line-2);padding:18px 22px;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;resize:vertical;background:#fbfbfc}
+.terms-editor[hidden],.terms-src[hidden]{display:none}
+.terms-publish{border-top:1px solid var(--line-2)}
+@media (max-width:760px){.terms-facts{grid-template-columns:1fr}.terms-sync li{grid-template-columns:22px 1fr}.terms-sync li>.row{grid-column:2}}

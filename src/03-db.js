@@ -173,7 +173,7 @@ const EXTRA_COLUMNS = {
     must_change_pw: "INTEGER NOT NULL DEFAULT 0", created_by: 'INTEGER', prev_login: 'TEXT',
     totp_on: 'INTEGER NOT NULL DEFAULT 0', totp_secret: 'TEXT', totp_pending: 'TEXT', totp_step: 'INTEGER NOT NULL DEFAULT 0' },
   sessions: { area_until: 'TEXT' },
-  partner_users: { temp_pw_hash: 'TEXT', temp_pw_salt: 'TEXT', temp_pw_expires: 'TEXT', temp_pw_at: 'TEXT' },
+  partner_users: { agb_version: 'INTEGER', temp_pw_hash: 'TEXT', temp_pw_salt: 'TEXT', temp_pw_expires: 'TEXT', temp_pw_at: 'TEXT' },
   mail_outbox: { server_reply: 'TEXT' },
   tickets: { partner_hidden_at: 'TEXT' },
   offers: { score_detail: 'TEXT' },
@@ -188,7 +188,7 @@ const OLD_STATUS_MAP = { neu: 'eingang', in_bearbeitung: 'in_bearbeitung', angeb
 const OLD_ROLE_MAP = { admin: 'admin', bearbeiter: 'teamleitung', team_angebote: 'vertrieb', team_ankauf: 'vertrieb' };
 
 // Rechte, die nach dem Start hinzukamen: welche festen Rollen sie automatisch bekommen
-const NEW_ROLE_PERMS = { acc_cancel: ['gf', 'buchhaltung'], fibu_view: ['gf', 'buchhaltung'], fibu_book: ['gf', 'buchhaltung'], fibu_manage: ['gf'], customers_view: ['gf', 'teamleitung', 'vertrieb'], visitors_view: ['gf'] };
+const NEW_ROLE_PERMS = { acc_cancel: ['gf', 'buchhaltung'], fibu_view: ['gf', 'buchhaltung'], fibu_book: ['gf', 'buchhaltung'], fibu_manage: ['gf'], customers_view: ['gf', 'teamleitung', 'vertrieb'], visitors_view: ['gf'], legal_terms: ['gf'] };
 
 let migrated = false;
 // Fingerabdruck des Datenbankschemas: ändert sich bei jeder Schema-/Rechte-/Kontenänderung → Migration läuft genau dann erneut
@@ -253,6 +253,10 @@ async function migrate(db) {
         COALESCE(NULLIF(trim(billing_city), ''), city), COALESCE(country, 'Deutschland'), COALESCE(NULLIF(trim(billing_email), ''), email), phone, vat_id, id, 1, ?
       FROM orgs o WHERE o.deleted = 0 AND NOT EXISTS (SELECT 1 FROM suppliers s WHERE s.org_id = o.id)`).bind(nowIso()),
     setFlagStmt(db, '_org_suppliers_v1'));
+  // Einmalig: Link „AGB für Partner“ zeigt auf die eigene Seite /pages/agb-partner statt auf die Kunden-AGB
+  if (!flags.has('_agb_partner_link_v1')) ops.push(
+    db.prepare("UPDATE settings SET value = ? WHERE key = 'link_agb_partner' AND value IN (?, ?)").bind(JSON.stringify('https://kfl-group.com/pages/agb-partner'), JSON.stringify('https://kfl-group.com/policies/terms-of-service'), 'https://kfl-group.com/policies/terms-of-service'),
+    setFlagStmt(db, '_agb_partner_link_v1'));
   // Einmalig: Absendername der E-Mails ist „KFL“ (statt „KFL – Kaufen Finanzieren Leasen“ bzw. „KFL GbR“ im Text)
   if (!flags.has('_mail_brand_v1')) ops.push(
     db.prepare("UPDATE settings SET value = ? WHERE key = 'mail_sender_name' AND value IN (?, ?)").bind(JSON.stringify('KFL'), JSON.stringify('KFL – Kaufen Finanzieren Leasen'), JSON.stringify('KFL GbR')),

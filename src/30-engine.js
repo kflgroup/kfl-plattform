@@ -48,7 +48,7 @@ async function createRequest(ctx, type, data, { customerAccount, source, extra =
   return id;
 }
 
-/* ---------- Inzahlungnahme: eigene Ankauf-Anfrage aus dem Traumwagen-DEAL ---------- */
+/* ---------- Inzahlungnahme: eigene Ankauf-Anfrage aus dem Auto-DEAL ---------- */
 const TRADE_PREFIX = 'Altwagen ';
 const TRADE_COPY = /^(Vorname|name|email|phone|Straße|PLZ|Ort|Kontaktweg|Umkreis|Kundennummer|Kundenkonto-ID|Eingang \(Server\)|Einwilligung Zeitpunkt|Einwilligung Feedback und Erinnerungen|AGB akzeptiert|Datenschutz akzeptiert|Weitergabe an Partner und Kontaktaufnahme|_page|_src)$/;
 // Liefert die Formulardaten der Ankauf-Anfrage (oder null) und entfernt Altwagen-Angaben, wenn keine Inzahlungnahme gewünscht ist
@@ -61,7 +61,7 @@ function tradeInSplit(data) {
   const sell = { ...car }; // Fahrzeugangaben zuerst, danach Kontakt- und Einwilligungsdaten
   for (const [k, v] of Object.entries(data)) if (TRADE_COPY.test(k)) sell[k] = v;
   if (car.Anmerkungen) { sell.body = car.Anmerkungen; delete sell.Anmerkungen; }
-  sell.Formular = 'MEIN AUTO VERKAUFEN (Inzahlungnahme aus Traumwagen-DEAL)';
+  sell.Formular = 'MEIN AUTO VERKAUFEN (Inzahlungnahme aus dem Auto-DEAL)';
   sell.Verkaufszeitpunkt = car.Verkaufszeitpunkt || 'Mit dem Kauf des neuen Fahrzeugs (Inzahlungnahme)';
   sell.Halter = car.Halter || (/gewerb|selbst/i.test(data.Kundenart || '') ? 'Geschäftlich' : 'Privat');
   sell._form = 'sell';
@@ -70,10 +70,10 @@ function tradeInSplit(data) {
 // Partner übernimmt zusätzlich den Ankauf des Altwagens (Doppel-Geschäft): Zuordnung zur verknüpften Ankauf-Anfrage
 async function joinLinkedRequest(ctx, p, aid) {
   const a = await DB.one(ctx.db, 'SELECT * FROM assignments WHERE id = ? AND org_id = ?', aid, p.orgId);
-  need(a && a.taken_by === p.id, 403, 'Bitte übernimm zuerst die Anfrage zum Traumwagen.');
+  need(a && a.taken_by === p.id, 403, 'Bitte übernimm zuerst die Anfrage zum Auto-DEAL.');
   let req = await DB.one(ctx.db, 'SELECT * FROM requests WHERE id = ?', a.request_id);
   need(req && (req.linked_request_id || wantsTradeIn(req)), 404, 'Zu dieser Anfrage gibt es keinen Ankauf.');
-  // Inzahlungnahme gewünscht, aber (noch) keine eigene Ankauf-Anfrage: jetzt aus den Angaben des Traumwagen-DEALs anlegen – nur für diesen Partner
+  // Inzahlungnahme gewünscht, aber (noch) keine eigene Ankauf-Anfrage: jetzt aus den Angaben des Auto-DEALs anlegen – nur für diesen Partner
   if (!req.linked_request_id) { await createTradeInFor(ctx, req); req = await DB.one(ctx.db, 'SELECT * FROM requests WHERE id = ?', a.request_id); }
   const sell = await DB.one(ctx.db, 'SELECT * FROM requests WHERE id = ?', req.linked_request_id);
   need(sell && !sell.deleted, 404, 'Die Ankauf-Anfrage ist nicht mehr verfügbar.');
@@ -82,31 +82,31 @@ async function joinLinkedRequest(ctx, p, aid) {
   if (ex) {
     if (ex.taken_by === p.id && !['verloren', 'geschlossen'].includes(ex.status)) return { ok: true, id: ex.id, existing: true };
     need(!ex.taken_by || ex.status === 'neu', 409, 'Die Ankauf-Anfrage wird in deinem Team bereits von jemand anderem bearbeitet.');
-    // Noch nicht bearbeitet, aber Frist abgelaufen oder verfallen: für den Bearbeiter des Traumwagens wieder öffnen (gleiche Frist wie eine neue Zuordnung)
+    // Noch nicht bearbeitet, aber Frist abgelaufen oder verfallen: für den Bearbeiter des Auto-DEALs wieder öffnen (gleiche Frist wie eine neue Zuordnung)
     const expired = ex.status === 'verloren' || (ex.status === 'neu' && ex.deadline_at && ex.deadline_at <= nowIso());
     need(ex.status === 'neu' || expired, 409, 'Die Ankauf-Anfrage kann nicht mehr übernommen werden.');
     if (expired) {
       const s = await settingsOf(ctx), org = await DB.one(ctx.db, 'SELECT opening FROM orgs WHERE id = ?', p.orgId);
       await DB.run(ctx.db, "UPDATE assignments SET status = 'neu', taken_by = NULL, taken_at = NULL, archived = 0, target_user_id = ?, deadline_at = ?, updated_at = ? WHERE id = ?",
         p.id, isoOf(addBusinessHours(nowMs(), s.offer_window_hours, { saturday: saturdayOpen(org && org.opening) })), nowIso(), ex.id);
-      await partnerEvent(ctx, { assignmentId: ex.id, requestId: sell.id, orgId: p.orgId, action: 'notiz', text: `Wieder geöffnet für die Inzahlungnahme zum Traumwagen-DEAL #${toNumber(req.id)}.`, visiblePartner: true });
+      await partnerEvent(ctx, { assignmentId: ex.id, requestId: sell.id, orgId: p.orgId, action: 'notiz', text: `Wieder geöffnet für die Inzahlungnahme zum Auto-DEAL #${toNumber(req.id)}.`, visiblePartner: true });
     }
     await takeAssignment(ctx, p, ex.id);
-    await reqEvent(ctx, sell.id, 'partner_verknuepft', `${p.org.name} übernimmt den Ankauf zusätzlich zur Traumwagen-Anfrage #${toNumber(req.id)}`);
+    await reqEvent(ctx, sell.id, 'partner_verknuepft', `${p.org.name} übernimmt den Ankauf zusätzlich zur Auto-DEAL-Anfrage #${toNumber(req.id)}`);
     return { ok: true, id: ex.id, existing: true };
   }
   const org = await DB.one(ctx.db, 'SELECT * FROM orgs WHERE id = ?', p.orgId);
-  const r = await createAssignment(ctx, sell, org, { source: 'verknuepft', targetUserId: p.id, note: `Weitergeleitet aus Traumwagen-DEAL #${toNumber(req.id)} (Inzahlungnahme) – Angebot für Traumwagen und Ankauf möglich.` });
+  const r = await createAssignment(ctx, sell, org, { source: 'verknuepft', targetUserId: p.id, note: `Weitergeleitet aus dem Auto-DEAL #${toNumber(req.id)} (Inzahlungnahme) – Angebot für Traumwagen und Ankauf möglich.` });
   await takeAssignment(ctx, p, r.id);
-  await reqEvent(ctx, sell.id, 'partner_verknuepft', `${org.name} übernimmt den Ankauf zusätzlich zur Traumwagen-Anfrage #${toNumber(req.id)}`);
+  await reqEvent(ctx, sell.id, 'partner_verknuepft', `${org.name} übernimmt den Ankauf zusätzlich zur Auto-DEAL-Anfrage #${toNumber(req.id)}`);
   await audit(ctx, 'ankauf_verknuepft', 'anfrage', toNumber(sell.id), { partner: org.name, deal: toNumber(req.id) });
   return { ok: true, id: r.id, existing: false };
 }
-// Kunde möchte sein jetziges Auto in Zahlung geben (Traumwagen-DEAL)
+// Kunde möchte sein jetziges Auto in Zahlung geben (Dein Auto-DEAL)
 function wantsTradeIn(req) { return !!req && req.type === 'deal' && /^ja/i.test(String(jparse(req.data, {}).Inzahlungnahme || '').trim()); }
-// Ankauf-Anfrage zum Traumwagen-DEAL nachträglich anlegen (Altwagen-Angaben aus dem DEAL, sonst nur Kontakt + Hinweis) – ohne Verteilung an andere Partner
+// Ankauf-Anfrage zum Auto-DEAL nachträglich anlegen (Altwagen-Angaben aus dem DEAL, sonst nur Kontakt + Hinweis) – ohne Verteilung an andere Partner
 async function createTradeInFor(ctx, deal) {
-  const d = jparse(deal.data, {}), ref = `Traumwagen-DEAL #${toNumber(deal.id)}`;
+  const d = jparse(deal.data, {}), ref = `Dein Auto-DEAL #${toNumber(deal.id)}`;
   // Gibt es schon eine (unverknüpfte) Ankauf-Anfrage zu diesem DEAL? Dann diese verknüpfen statt eine zweite anzulegen
   const ex = await DB.one(ctx.db, "SELECT id FROM requests WHERE type = 'sell' AND deleted = 0 AND (linked_request_id IS NULL OR linked_request_id = ?) AND json_extract(data, '$.\"Inzahlungnahme zu\"') = ? ORDER BY id LIMIT 1", deal.id, ref);
   if (ex) {
@@ -120,9 +120,9 @@ async function createTradeInFor(ctx, deal) {
     sell = { Marke: d['Altwagen Marke'] || 'Noch offen' };
     for (const [k, v] of Object.entries(d)) if (TRADE_COPY.test(k)) sell[k] = v;
     sell.body = 'Der Kunde möchte sein jetziges Fahrzeug beim Kauf in Zahlung geben. Die Fahrzeugdaten liegen noch nicht vor – bitte beim Kunden erfragen.';
-    sell.Formular = 'MEIN AUTO VERKAUFEN (Inzahlungnahme aus Traumwagen-DEAL)'; sell._form = 'sell';
+    sell.Formular = 'MEIN AUTO VERKAUFEN (Inzahlungnahme aus dem Auto-DEAL)'; sell._form = 'sell';
   }
-  sell['Inzahlungnahme zu'] = `Traumwagen-DEAL #${toNumber(deal.id)}`;
+  sell['Inzahlungnahme zu'] = `Dein Auto-DEAL #${toNumber(deal.id)}`;
   const sid = await createRequest(ctx, 'sell', sell, { customerAccount: deal.customer_account, source: 'Inzahlungnahme', extra: { linked_request_id: deal.id } });
   await DB.run(ctx.db, 'UPDATE requests SET linked_request_id = ?, data = ? WHERE id = ?', sid, JSON.stringify({ ...d, 'Ankauf-Anfrage zum Altwagen': `#${toNumber(sid)}` }), deal.id);
   await reqEvent(ctx, deal.id, 'verknuepft', `Inzahlungnahme: Ankauf-Anfrage #${toNumber(sid)} für den Partner angelegt`);
@@ -139,7 +139,7 @@ async function repairStuckRequests(ctx) {
     if (dealId) {
       // Der DEAL hat inzwischen schon eine andere Ankauf-Anfrage (z. B. vom Partner angelegt) → nicht doppelt verteilen, KFL prüft
       const other = await DB.val(ctx.db, 'SELECT linked_request_id FROM requests WHERE id = ?', dealId);
-      if (other && other !== r.id) { await DB.update(ctx.db, 'requests', r.id, { status: 'stoerung', status_note: `Doppelte Ankauf-Anfrage zum Traumwagen-DEAL #${toNumber(dealId)} (verknüpft ist #${toNumber(other)}) – bitte prüfen` }); await reqEvent(ctx, r.id, 'stoerung', 'Doppelte Ankauf-Anfrage – nicht verteilt'); n++; continue; }
+      if (other && other !== r.id) { await DB.update(ctx.db, 'requests', r.id, { status: 'stoerung', status_note: `Doppelte Ankauf-Anfrage zum Auto-DEAL #${toNumber(dealId)} (verknüpft ist #${toNumber(other)}) – bitte prüfen` }); await reqEvent(ctx, r.id, 'stoerung', 'Doppelte Ankauf-Anfrage – nicht verteilt'); n++; continue; }
       await DB.run(ctx.db, 'UPDATE requests SET linked_request_id = ? WHERE id = ?', dealId, r.id);
       await DB.run(ctx.db, "UPDATE requests SET linked_request_id = ? WHERE id = ? AND linked_request_id IS NULL AND type = 'deal'", r.id, dealId);
       await reqEvent(ctx, dealId, 'verknuepft', `Inzahlungnahme: Ankauf-Anfrage #${toNumber(r.id)} nachträglich verknüpft`);
@@ -152,7 +152,7 @@ async function repairStuckRequests(ctx) {
 }
 const SELL_CLOSED = ['angebot_beim_kunden', 'angebot_akzeptiert', 'kontaktdaten_versendet', 'angebot_abgelehnt', 'kein_angebot', 'spam'];
 
-// Inzahlungnahme über zwei getrennte Formulare (Traumwagen-DEAL mit „Inzahlungnahme: Ja“ ohne Fahrzeugdaten + „Mein Auto verkaufen“):
+// Inzahlungnahme über zwei getrennte Formulare (Dein Auto-DEAL mit „Inzahlungnahme: Ja“ ohne Fahrzeugdaten + „Mein Auto verkaufen“):
 // gleiche Kundin bzw. gleicher Kunde innerhalb von 30 Tagen → beide Anfragen automatisch verknüpfen
 async function autoLinkTradeIn(ctx, id) {
   const r = await DB.one(ctx.db, 'SELECT id, type, data, email, customer_account, linked_request_id FROM requests WHERE id = ?', id);
@@ -165,15 +165,15 @@ async function autoLinkTradeIn(ctx, id) {
   const other = cands.find((c) => (isDeal ? !SELL_CLOSED.includes(c.status) : String(jparse(c.data, {}).Inzahlungnahme || '') === 'Ja'));
   if (!other) return null;
   const deal = isDeal ? r : other, sell = isDeal ? other : r;
-  const dd = { ...jparse(deal.data, {}), 'Ankauf-Anfrage zum Altwagen': `#${toNumber(sell.id)}` }, sd = { ...jparse(sell.data, {}), 'Inzahlungnahme zu': `Traumwagen-DEAL #${toNumber(deal.id)}` };
+  const dd = { ...jparse(deal.data, {}), 'Ankauf-Anfrage zum Altwagen': `#${toNumber(sell.id)}` }, sd = { ...jparse(sell.data, {}), 'Inzahlungnahme zu': `Dein Auto-DEAL #${toNumber(deal.id)}` };
   await ctx.db.batch([
     ctx.db.prepare('UPDATE requests SET linked_request_id = ?, data = ? WHERE id = ?').bind(sell.id, JSON.stringify(dd), deal.id),
     ctx.db.prepare('UPDATE requests SET linked_request_id = ?, data = ? WHERE id = ?').bind(deal.id, JSON.stringify(sd), sell.id)]);
   await reqEvent(ctx, deal.id, 'verknuepft', `Inzahlungnahme: Ankauf-Anfrage #${toNumber(sell.id)} des Kunden automatisch verknüpft`);
-  await reqEvent(ctx, sell.id, 'verknuepft', `Gehört als Inzahlungnahme zum Traumwagen-DEAL #${toNumber(deal.id)} (automatisch verknüpft)`);
-  // Partner, die den Traumwagen schon bearbeiten, auf den Ankauf hinweisen
+  await reqEvent(ctx, sell.id, 'verknuepft', `Gehört als Inzahlungnahme zum Auto-DEAL #${toNumber(deal.id)} (automatisch verknüpft)`);
+  // Partner, die den Auto-DEAL schon bearbeiten, auf den Ankauf hinweisen
   const takers = await DB.all(ctx.db, "SELECT id, taken_by FROM assignments WHERE request_id = ? AND taken_by IS NOT NULL AND status IN ('in_bearbeitung', 'versendet', 'vorgestellt', 'gewonnen', 'kontaktiert', 'nicht_erreicht')", deal.id);
-  for (const t of takers) await notify(ctx, 'partner', t.taken_by, { kind: 'anfrage', title: `Inzahlungnahme zu #${toNumber(deal.id)}: Ankauf #${toNumber(sell.id)} verfügbar`, body: 'Der Kunde möchte sein jetziges Auto in Zahlung geben. Du kannst den Ankauf direkt in der Traumwagen-Anfrage zusätzlich übernehmen.', link: `#/anfragen/${t.id}` });
+  for (const t of takers) await notify(ctx, 'partner', t.taken_by, { kind: 'anfrage', title: `Inzahlungnahme zu #${toNumber(deal.id)}: Ankauf #${toNumber(sell.id)} verfügbar`, body: 'Der Kunde möchte sein jetziges Auto in Zahlung geben. Du kannst den Ankauf direkt in der Auto-DEAL-Anfrage zusätzlich übernehmen.', link: `#/anfragen/${t.id}` });
   return { deal: deal.id, sell: sell.id };
 }
 // Hinweis für den Partner zur verknüpften Anfrage
@@ -366,7 +366,7 @@ async function submitComboOffer(ctx, p, dealAid, dealBody, tradeBody) {
   need(dealBody || tradeBody, 400, 'Bitte mindestens ein Angebot ausfüllen.');
   const a = await DB.one(ctx.db, 'SELECT * FROM assignments WHERE id = ? AND org_id = ?', dealAid, p.orgId); need(a, 404, 'Anfrage nicht gefunden.');
   const req = await DB.one(ctx.db, 'SELECT * FROM requests WHERE id = ?', a.request_id);
-  need(req.type === 'deal', 400, 'Kombi-Angebote gibt es nur zum Traumwagen-DEAL.');
+  need(req.type === 'deal', 400, 'Kombi-Angebote gibt es nur zum Auto-DEAL.');
   let ta = null, treq = null;
   if (tradeBody) {
     need(req.linked_request_id, 409, 'Bitte übernimm zuerst die Inzahlungnahme.');
@@ -441,7 +441,7 @@ const COMBO_BONUS_TRADE = 0.10, COMBO_BONUS_DEAL = 0.02;
 function scoreWeights(s) { const w = {}; for (const f of SCORE_FACTORS) w[f.key] = Math.max(0, toNum(s['score_w_' + f.key], 0) || 0); return w; }
 async function scoreOffers(ctx, req, offers, s) {
   const sell = req.type === 'sell', f = jparse(req.data, {}), w = scoreWeights(s);
-  // Inzahlungnahme: Bietet derselbe Partner auch zum Traumwagen-DEAL an, zählt sein Ankaufpreis intern 10 % höher (nur Bewertung – der Kunde sieht den echten Preis)
+  // Inzahlungnahme: Bietet derselbe Partner auch zum Auto-DEAL an, zählt sein Ankaufpreis intern 10 % höher (nur Bewertung – der Kunde sieht den echten Preis)
   // Fahrzeugangebot (DEAL): Bietet derselbe Partner auch zur Inzahlungnahme an, zählen seine Kosten intern 2 % günstiger
   const comboOrgs = req.linked_request_id ? new Set((await DB.all(ctx.db, 'SELECT DISTINCT org_id FROM offers WHERE request_id = ?', req.linked_request_id)).map((x) => x.org_id)) : new Set();
   const bonus = sell ? COMBO_BONUS_TRADE : COMBO_BONUS_DEAL;

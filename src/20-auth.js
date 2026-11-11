@@ -147,9 +147,10 @@ async function currentPartner(ctx) {
   if (!row || !row.active || row.expires_at < nowIso() || (row.locked_until && row.locked_until > '9000')) return null;
   const org = await DB.one(ctx.db, 'SELECT * FROM orgs WHERE id = ?', row.org_id);
   if (!org || !org.active || org.deleted) return null;
+  const terms = termsOf(await settingsOf(ctx)), termsOutdated = !!row.agb_at && (toInt(row.agb_version, 0) || 0) < (terms.consent_min || 0);
   const p = { id: row.id, orgId: row.org_id, email: row.email, name: row.name, role: row.role, rank: (PARTNER_ROLES[row.role] || { rank: 1 }).rank,
     roleLabel: (PARTNER_ROLES[row.role] || {}).label || row.role, phone: row.phone, mustChangePw: !!row.must_change_pw,
-    consentsOk: !!(row.agb_at && row.privacy_at), prevLogin: row.prev_login, lastLogin: row.last_login, org };
+    consentsOk: !!(row.agb_at && row.privacy_at) && !termsOutdated, termsOutdated, termsVersion: terms.version, agbAt: row.agb_at, agbVersion: toInt(row.agb_version, 0) || null, prevLogin: row.prev_login, lastLogin: row.last_login, org };
   ctx._partner = p;
   ctx.actor = { type: 'partner', id: p.id, name: `${p.name} (${org.name})` };
   return p;

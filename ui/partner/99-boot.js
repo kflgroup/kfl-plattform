@@ -9,6 +9,7 @@ Router
   .on(/^#\/news/, () => pNews())
   .on(/^#\/statistik/, () => pStats())
   .on(/^#\/einstellungen\/?([a-z]*)/, (t) => pSettings(t))
+  .on(/^#\/agb/, () => pTerms())
   .on(/^#\/support\/(\d+)/, (id) => pSupport(id))
   .on(/^#\/support/, () => pSupport());
 Router.fallback = () => { location.hash = '#/'; };
