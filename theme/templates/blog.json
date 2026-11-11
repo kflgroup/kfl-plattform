@@ -1,0 +1,90 @@
+{
+  "sections": {
+    "main": {
+      "type": "main-blog",
+      "settings": {
+        "layout": "grid",
+        "show_image": true,
+        "image_height": "medium",
+        "show_date": true,
+        "show_author": false,
+        "padding_top": 36,
+        "padding_bottom": 36
+      }
+    },
+    "featured_product_PJzwGB": {
+      "type": "featured-product",
+      "blocks": {
+        "text_YWBKEf": {
+          "type": "text",
+          "settings": {
+            "text": "{{ section.settings.product.vendor }}",
+            "text_style": "uppercase"
+          }
+        },
+        "title_AxYBKK": {
+          "type": "title",
+          "settings": {
+            "heading_size": "h1"
+          }
+        },
+        "price_ztUJFh": {
+          "type": "price",
+          "settings": {}
+        },
+        "variant_picker_NtBxwF": {
+          "type": "variant_picker",
+          "settings": {
+            "picker_type": "button",
+            "swatch_shape": "circle"
+          }
+        },
+        "quantity_selector_q9friF": {
+          "type": "quantity_selector",
+          "settings": {}
+        },
+        "buy_buttons_RDGkey": {
+          "type": "buy_buttons",
+          "settings": {
+            "show_dynamic_checkout": false,
+            "show_gift_card_recipient": true
+          }
+        },
+        "share_ifJ4wA": {
+          "type": "share",
+          "settings": {
+            "share_label": "Teilen"
+          }
+        }
+      },
+      "block_order": [
+        "text_YWBKEf",
+        "title_AxYBKK",
+        "price_ztUJFh",
+        "variant_picker_NtBxwF",
+        "quantity_selector_q9friF",
+        "buy_buttons_RDGkey",
+        "share_ifJ4wA"
+      ],
+      "name": "t:sections.featured-product.presets.name",
+      "settings": {
+        "product": "kaufen-finanzieren-leasen-finde-deun-neues-traumauto",
+        "color_scheme": "scheme-1",
+        "secondary_background": false,
+        "media_size": "small",
+        "constrain_to_viewport": true,
+        "media_fit": "contain",
+        "media_position": "left",
+        "image_zoom": "lightbox",
+        "hide_variants": false,
+        "enable_video_looping": false,
+        "padding_top": 36,
+        "padding_bottom": 36
+      }
+    }
+  },
+  "order": [
+    "main",
+    "featured_product_PJzwGB"
+  ]
+}
