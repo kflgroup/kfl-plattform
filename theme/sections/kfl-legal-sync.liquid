@@ -21,7 +21,7 @@ KFL Rechtstext mit Live-Abgleich (Seite /pages/agb-partner, Vorlage page.agb-par
 <nav class="k-legal__toc" aria-label="Inhalt" data-k-legal-toc hidden></nav>
 <div class="k-legal__actions">
 <button type="button" class="k-btn k-btn--dark" data-k-legal-print>Drucken / als PDF speichern</button>
-{%- if section.settings.cta_url != blank -%}<a class="k-legal__link" href="{{ section.settings.cta_url }}">{{ section.settings.cta_label }}</a>{%- endif -%}
+{%- if section.settings.cta_url != blank -%}<a class="k-legal__link" href="{{ section.settings.cta_url | escape }}">{{ section.settings.cta_label }}</a>{%- endif -%}
 </div>
 <p class="k-small k-muted">{{ section.settings.note }}</p>
 </aside>
@@ -88,7 +88,7 @@ KFL Rechtstext mit Live-Abgleich (Seite /pages/agb-partner, Vorlage page.agb-par
 { "type": "text", "id": "title", "label": "Titel (falls die Seite keinen hat)", "default": "AGB für Geschäftspartner" },
 { "type": "text", "id": "path", "label": "Quelle beim KFL-Formulardienst", "default": "/legal/agb-partner", "info": "Der Text wird im internen KFL-Dashboard unter Verwaltung → Partner-AGB gepflegt und hier automatisch angezeigt." },
 { "type": "text", "id": "meta_fallback", "label": "Hinweis, bis die Fassung geladen ist", "default": "Aktuelle Fassung" },
-{ "type": "url", "id": "cta_url", "label": "Link unter dem Druck-Button", "default": "/pages/partner" },
+{ "type": "text", "id": "cta_url", "label": "Link unter dem Druck-Button (Adresse)", "default": "/pages/partner" },
 { "type": "text", "id": "cta_label", "label": "Link-Text", "default": "Zum Partnerbereich" },
 { "type": "textarea", "id": "note", "label": "Hinweis", "default": "Diese Bedingungen gelten für Unternehmen (§ 14 BGB), die über das KFL Partner-Dashboard Kundenanfragen erhalten. Für Kundinnen und Kunden gelten unsere allgemeinen AGB." }
 ],

@@ -23,7 +23,7 @@ assign ep = endpoint | split: '/'
 assign dash_url = ep[0] | append: '//' | append: ep[2] | append: '/partner'
 endif
 assign dash_label = section.settings.dashboard_label | default: 'Zum Partner-Dashboard'
-assign agb_partner_url = section.settings.agb_url | default: '/pages/agb-partner'
+assign agb_partner_url = section.settings.agb_url | default: '/pages/agb-partner' | escape
 -%}
 
 {%- capture k_benefits -%}
@@ -429,7 +429,7 @@ assign agb_partner_url = section.settings.agb_url | default: '/pages/agb-partner
 { "type": "textarea", "id": "dash_lead", "label": "Begrüßungstext", "default": "Schön, dass du da bist. Hier findest du alles für die Zusammenarbeit mit KFL." },
 { "type": "text", "id": "dashboard_url", "label": "Adresse Partner-Dashboard (Login)", "info": "Leer = automatisch die aktuelle Adresse des KFL Partner-Dashboards. Nach dem Umzug auf die eigene Adresse hier https://partner.kfl-group.com eintragen." },
 { "type": "text", "id": "dashboard_label", "label": "Button-Text", "default": "Zum Partner-Dashboard" },
-{ "type": "url", "id": "agb_url", "label": "Seite AGB für Geschäftspartner", "default": "/pages/agb-partner", "info": "Text wird im internen KFL-Dashboard unter Verwaltung → Partner-AGB gepflegt." },
+{ "type": "text", "id": "agb_url", "label": "Seite AGB für Geschäftspartner (Adresse)", "default": "/pages/agb-partner", "info": "Text wird im internen KFL-Dashboard unter Verwaltung → Partner-AGB gepflegt." },
 { "type": "textarea", "id": "dashboard_hint", "label": "Hinweis unter dem Button", "default": "Kundenanfragen bearbeiten, Angebote abgeben und Abrechnungen einsehen. Die Anmeldung erfolgt mit deinen Zugangsdaten für das Partner-Dashboard." },
 { "type": "text", "id": "contact_name", "label": "Ansprechpartner", "default": "KFL Vermittlungsteam" },
 { "type": "text", "id": "contact_email", "label": "E-Mail", "default": "vermittlung@kfl-group.com" },
