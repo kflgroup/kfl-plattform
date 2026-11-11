@@ -157,6 +157,8 @@ const fb = lastMailTo('max@kunde.de');
 check(/Kurze Frage/.test(fb.subject) && /\/c\/feedback\?r=1001/.test(fb.htmlContent), 'Kunde bekommt Ja/Nein-Rückfrage');
 const neinLink = fb.htmlContent.match(/href="(https:\/\/w\.test\/c\/feedback[^"]+a=nein)"/)[1].replace(/&amp;/g, '&');
 let res = await worker.fetch(new Request(neinLink), env);
+check(res.status === 200 && /<form method="post"/.test(await res.text()), 'Link zeigt zuerst eine Bestätigung (Link-Scanner lösen nichts aus)');
+res = await worker.fetch(new Request(neinLink, { method: 'POST' }), env);
 check(res.status === 200 && (await res.text()).includes('Danke'), 'Kunde klickt „Nein“');
 check(q1('SELECT feedback_state FROM requests WHERE id = 1').feedback_state === 'nein', 'Rückmeldung gespeichert');
 r = await c.get('/api/news', { who: 'vt' }); check(r.notifications.some((n) => /Nein, nicht gemeldet/.test(n.title)), 'Vertrieb wird informiert');

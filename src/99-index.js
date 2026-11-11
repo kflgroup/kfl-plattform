@@ -102,6 +102,7 @@ async function runJobs(ctx, { force } = {}) {
   if (force === 'support' || force === 'partnerarchiv' || (!force && !heavy)) await safe('partnerarchiv', () => runPartnerTicketArchive(ctx));
   // Vorbereiteter Sicherheitsbericht → PDF ins Archiv (365 Tage)
   if (force === 'sicherheitstest' || (!force && !heavy)) await safe('sicherheitstest', () => runSecurityTestImport(ctx));
+  if (force === 'archiv' || (!force && !heavy)) await safe('archiv', () => runArchiveHousekeeping(ctx));
   return res;
 }
 
@@ -154,12 +155,21 @@ const hostOf = (env, role) => String((role === 'staff' ? env.STAFF_HOST : env.PA
 function hostRole(env, hostname) { const h = String(hostname || '').toLowerCase(); return h === hostOf(env, 'staff') ? 'staff' : h === hostOf(env, 'partner') ? 'partner' : null; }
 const hostOrigin = (env, role) => 'https://' + hostOf(env, role);
 
+// IPv6: ein Anschluss bekommt meist ein ganzes /64-Netz – Bremsen zählen daher je /64, nicht je Einzeladresse
+function ipKey(ip) {
+  ip = String(ip || '').trim();
+  if (!ip.includes(':')) return ip;
+  let [head, tail] = ip.toLowerCase().split('::');
+  const h = head ? head.split(':') : [], t = tail !== undefined ? (tail ? tail.split(':') : []) : [];
+  const full = tail !== undefined ? [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill('0'), ...t] : h;
+  return full.slice(0, 4).map((x) => (parseInt(x, 16) || 0).toString(16)).join(':') + '::/64';
+}
 async function makeCtx(request, env, url) {
   const ip = request ? clientIp(request) : '';
   let origin = url ? url.origin : (env.PUBLIC_ORIGIN || '');
   if (!url && !origin) origin = (await rawSetting(env.DB, '_origin')) || '';
   if (url && !(await rawSetting(env.DB, '_origin'))) await setRawSetting(env.DB, '_origin', url.origin);
-  return { env, db: env.DB, request, origin, ipHash: ip ? (await hmacHex(serverKey(env), 'kfl-ip:' + ip)).slice(0, 24) : null, actor: null };
+  return { env, db: env.DB, request, origin, ipHash: ip ? (await hmacHex(serverKey(env), 'kfl-ip:' + ipKey(ip))).slice(0, 24) : null, actor: null };
 }
 
 export default {

@@ -189,17 +189,18 @@ async function handleMy(ctx, url) {
 }
 
 /* ---------- Kunden-Links aus E-Mails ---------- */
-function simplePage(title, text, ok = true) {
+function simplePage(title, text, ok = true, confirm = null) {
   return new Response(`<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)}</title>
 <style>body{margin:0;font:17px/1.55 "Helvetica Neue",Helvetica,Arial,sans-serif;background:#f4f4f4;color:#1a1a1a;display:grid;place-items:center;min-height:100vh;padding:20px;box-sizing:border-box}
 .c{background:#fff;border-radius:24px;max-width:520px;width:100%;padding:36px;box-shadow:0 20px 60px rgba(0,0,0,.08)}.i{width:56px;height:56px;border-radius:50%;background:${ok ? '#ff6c01' : '#c4291c'};display:grid;place-items:center;color:#000;font-size:26px;font-weight:700}
 h1{font-size:28px;letter-spacing:-.02em;margin:18px 0 8px}p{color:#6b6b70;margin:0 0 18px}a{display:inline-block;background:#000;color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:999px}</style></head>
-<body><div class="c"><div class="i">${ok ? '✓' : '!'}</div><h1>${esc(title)}</h1><p>${esc(text)}</p><a href="https://kfl-group.com">Zu kfl-group.com</a></div></body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', ...SEC_HEADERS } });
+<body><div class="c"><div class="i">${ok ? '✓' : '!'}</div><h1>${esc(title)}</h1><p>${esc(text)}</p>${confirm ? `<form method="post"><button type="submit" style="border:0;cursor:pointer;display:inline-block;background:#ff6c01;color:#000;font:inherit;font-weight:700;padding:12px 22px;border-radius:999px">${esc(confirm)}</button></form>` : '<a href="https://kfl-group.com">Zu kfl-group.com</a>'}</div></body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'", 'X-Frame-Options': 'DENY', ...SEC_HEADERS } });
 }
 async function handleCustomerLinks(ctx, url) {
   if (url.pathname === '/c/feedback') {
     const rid = fromNumber(url.searchParams.get('r') || ''), a = url.searchParams.get('a');
     if (!(rid > 0) || !['ja', 'nein'].includes(a) || !(await linkTokenOk(ctx.env, url.searchParams.get('t'), 'fb', rid))) return simplePage('Link ungültig', 'Dieser Link ist leider nicht (mehr) gültig.', false);
+    if (ctx.request.method !== 'POST') return simplePage(a === 'ja' ? 'Hat sich der Partner gemeldet?' : 'Hat sich niemand gemeldet?', a === 'ja' ? 'Bitte bestätige kurz deine Antwort: Ja, der Partner hat sich bei mir gemeldet.' : 'Bitte bestätige kurz deine Antwort: Nein, es hat sich noch niemand gemeldet.', true, 'Antwort senden');
     ctx.actor = { type: 'customer', name: 'Kunde' };
     await customerFeedback(ctx, rid, a);
     return simplePage('Danke für deine Rückmeldung!', a === 'ja' ? 'Schön, dass sich der Partner gemeldet hat. Wir wünschen dir viel Freude mit deinem Fahrzeug!' : 'Das tut uns leid. Unser Team kümmert sich sofort darum und meldet sich bei dir.');
@@ -210,6 +211,7 @@ async function handleCustomerLinks(ctx, url) {
     const sv = await DB.one(ctx.db, 'SELECT * FROM surveys WHERE id = ?', sid);
     if (!sv) return simplePage('Link ungültig', 'Diese Umfrage gibt es nicht mehr.', false);
     const service = sv.kind === 'service';
+    if (ctx.request.method !== 'POST' && !sv.answered_at) return simplePage('Deine Bewertung', `Du möchtest ${rating} von 5 Punkten vergeben. Bitte bestätige kurz.`, true, `${rating} von 5 Punkten senden`);
     if (!sv.answered_at) {
       await DB.update(ctx.db, 'surveys', sid, { rating, answered_at: nowIso() });
       ctx.actor = { type: 'customer', name: 'Kunde' };
@@ -223,9 +225,10 @@ async function handleCustomerLinks(ctx, url) {
     if (!(rid > 0) || !(await linkTokenOk(ctx.env, url.searchParams.get('t'), 'oo', rid))) return simplePage('Link ungültig', 'Dieser Link ist leider nicht (mehr) gültig.', false);
     const req = await DB.one(ctx.db, 'SELECT id, email FROM requests WHERE id = ?', rid);
     if (!req) return simplePage('Link ungültig', 'Diese Anfrage gibt es nicht mehr.', false);
+    if (ctx.request.method !== 'POST') return simplePage('Von Umfragen abmelden?', 'Du bekommst dann keine Umfragen mehr. Nachrichten zu deinen Anfragen und Angeboten erhältst du weiterhin.', true, 'Abmelden');
     const r = await ctx.db.prepare('UPDATE requests SET feedback_optout = 1 WHERE lower(email) = lower(?) AND feedback_optout = 0').bind(req.email).run();
     if (r.meta && r.meta.changes) { ctx.actor = { type: 'customer', name: 'Kunde' }; await reqEvent(ctx, rid, 'umfrage_abgemeldet', 'Kunde hat sich von Umfragen abgemeldet'); }
     return simplePage('Abgemeldet', 'Du bekommst von uns keine Umfragen mehr. Nachrichten zu deinen Anfragen und Angeboten erhältst du weiterhin.');
   }
-  return new Response('Nicht gefunden', { status: 404 });
+  return new Response('Nicht gefunden', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Frame-Options': 'DENY', ...SEC_HEADERS } });
 }

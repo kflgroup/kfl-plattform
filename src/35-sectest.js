@@ -109,16 +109,21 @@ async function runSecurityTestImport(ctx) {
   const rep = jparse(raw, null);
   await DB.run(ctx.db, "DELETE FROM settings WHERE key = '_sectest_pending'");
   if (!rep || !rep.title || !Array.isArray(rep.sections)) { await audit(ctx, 'sicherheitstest_ungueltig', 'archiv', null, null); return 0; }
-  if (rep.ref && await DB.one(ctx.db, "SELECT id FROM archive WHERE kind = 'sicherheitstest' AND data LIKE ?", `%"ref":"${String(rep.ref).replace(/[%_"]/g, '')}"%`)) return 0;
+  if (rep.ref && await DB.one(ctx.db, "SELECT id FROM archive WHERE kind = 'sicherheitstest' AND json_extract(data, '$.ref') = ?", String(rep.ref))) return 0;
   const pdf = renderSecurityTestPdf(rep);
   await archiveSecurityTest(ctx, { title: rep.title, pdf, summary: rep.summary || null, ref: rep.ref, source: 'Sicherheitstest' });
   return 1;
 }
 
-// Abgelaufene Archiv-Einträge mit Datei: Datei mitlöschen
-async function purgeExpiredArchiveFiles(ctx) {
-  for (const a of await DB.all(ctx.db, "SELECT id, data FROM archive WHERE kind = 'sicherheitstest' AND expires_at IS NOT NULL AND expires_at < ? LIMIT 5", nowIso())) {
-    const d = jparse(a.data, {}); if (d.file_id) await deleteFile(ctx, d.file_id);
-    await DB.run(ctx.db, 'DELETE FROM archive WHERE id = ?', a.id);
-  }
+// Archiv-Pflege im leichten Cron-Durchlauf (wenige Abfragen, Abfragegrenze je Aufruf):
+// – archivierte Support-Fälle: Löschfrist 3 Jahre ab Archivierung nachtragen, erledigte Tickets nach 3 Jahren löschen (je Lauf höchstens 10)
+// – abgelaufene Sicherheitstests samt PDF löschen (je Lauf höchstens einer)
+async function runArchiveHousekeeping(ctx) {
+  const old = isoOf(nowMs() - TICKET_ARCHIVE_DAYS * 86400e3), pick = "SELECT id FROM tickets WHERE status = 'erledigt' AND archived_at IS NOT NULL AND archived_at < ? ORDER BY id LIMIT 10";
+  await ctx.db.batch([
+    ctx.db.prepare(`UPDATE archive SET expires_at = strftime('%Y-%m-%dT%H:%M:%fZ', archived_at, '+${TICKET_ARCHIVE_DAYS} days') WHERE kind = 'ticket' AND expires_at IS NULL`),
+    ctx.db.prepare(`DELETE FROM ticket_messages WHERE ticket_id IN (${pick})`).bind(old),
+    ctx.db.prepare(`DELETE FROM tickets WHERE id IN (${pick})`).bind(old)]);
+  const a = await DB.one(ctx.db, "SELECT id, data FROM archive WHERE kind = 'sicherheitstest' AND expires_at IS NOT NULL AND expires_at < ? LIMIT 1", nowIso());
+  if (a) { const d = jparse(a.data, {}); if (d.file_id) await deleteFile(ctx, d.file_id); await DB.run(ctx.db, 'DELETE FROM archive WHERE id = ?', a.id); }
 }

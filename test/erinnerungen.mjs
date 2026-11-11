@@ -67,16 +67,16 @@ await cron(worker, env); await cron(worker, env);
 check(mailTo('ja@kunde.test', /Wie zufrieden bist du mit KFL/).length === 1, 'Nachfrage nur einmal');
 
 console.log('Antworten aus der Mail');
-let r = await c.get(linkIn(sv[0], '/c/survey').replace(/r=\d/, 'r=2').replace('https://w.example', ''), { who: 'kunde' });
+let r = await c.post(linkIn(sv[0], '/c/survey').replace(/r=\d/, 'r=2').replace('https://w.example', ''), {}, { who: 'kunde' });
 check(r.status === 200 && /Das tut uns leid/.test(r._text || ''), 'Bewertung 2 von 5 gespeichert, Seite bietet Hilfe an');
 check(q1("SELECT rating FROM surveys WHERE request_id = ? AND kind = 'service'", s1).rating === 2, 'Bewertung als Service-Umfrage gespeichert');
 check(q1("SELECT COUNT(*) AS n FROM notifications WHERE title LIKE ?", `%Kunde unzufrieden (2 von 5)%`).n >= 1, 'Team wird bei schlechter Bewertung benachrichtigt');
-r = await c.get(linkIn(sv[0], '/c/feedback').replace('https://w.example', '').replace('a=ja', 'a=nein'), { who: 'kunde' });
+r = await c.post(linkIn(sv[0], '/c/feedback').replace('https://w.example', '').replace('a=ja', 'a=nein'), {}, { who: 'kunde' });
 check(q1('SELECT feedback_state FROM requests WHERE id = ?', s1).feedback_state === 'nein', 'Antwort „Partner hat sich nicht gemeldet“ gespeichert');
 
 console.log('Abmelden von Umfragen');
 const s4 = addReq('ja@kunde.test', 'kontaktdaten_versendet', { decided_at: '2026-11-02T10:00:00Z', won_assignment_id: 1 }, true);
-r = await c.get(linkIn(sv[0], '/c/optout').replace('https://w.example', ''), { who: 'kunde' });
+r = await c.post(linkIn(sv[0], '/c/optout').replace('https://w.example', ''), {}, { who: 'kunde' });
 check(r.status === 200 && q1('SELECT feedback_optout FROM requests WHERE id = ?', s4).feedback_optout === 1, 'Abmeldung gilt für alle Anfragen dieser E-Mail-Adresse');
 await cron(worker, env); await cron(worker, env);
 check(mailTo('ja@kunde.test', /Wie zufrieden bist du mit KFL/).length === 1, 'Nach der Abmeldung keine weitere Umfrage');

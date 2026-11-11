@@ -175,12 +175,6 @@ async function runSupportJobs(ctx) {
     await DB.insert(ctx.db, 'archive', { kind: 'sysissue', ref_id: si.id, title: si.title, data: JSON.stringify(si), archived_at: t, expires_at: isoOf(msOf(si.done_at) + s.syslist_retention_days * 86400e3) });
     res.sysToBackup++;
   }
-  await purgeExpiredArchiveFiles(ctx);
-  // Speicherbegrenzung (Art. 5 Abs. 1 lit. e DSGVO): archivierte Support-Fälle höchstens drei Jahre (Verjährungsfrist) aufbewahren
-  await DB.run(ctx.db, "UPDATE archive SET expires_at = ? WHERE kind = 'ticket' AND expires_at IS NULL", isoOf(nowMs() + TICKET_ARCHIVE_DAYS * 86400e3));
-  for (const tk of await DB.all(ctx.db, 'SELECT id FROM tickets WHERE archived_at IS NOT NULL AND archived_at < ? LIMIT 20', isoOf(nowMs() - TICKET_ARCHIVE_DAYS * 86400e3))) {
-    await DB.run(ctx.db, 'DELETE FROM ticket_messages WHERE ticket_id = ?', tk.id); await DB.run(ctx.db, 'DELETE FROM tickets WHERE id = ?', tk.id);
-  }
   await DB.run(ctx.db, "DELETE FROM archive WHERE kind != 'sicherheitstest' AND expires_at IS NOT NULL AND expires_at < ?", t);
   await DB.run(ctx.db, "DELETE FROM sys_issues WHERE status = 'erledigt' AND done_at < ?", isoOf(nowMs() - s.syslist_retention_days * 86400e3));
   return res;

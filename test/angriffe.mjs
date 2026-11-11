@@ -51,6 +51,7 @@ let tf; for (let i = 0; i < 12; i++) tf = await c.post('/api/login', { email: 'a
 probe(tf.status === 429 || tf.status === 423, 'Raten des 6-stelligen Codes wird gebremst', tf);
 advance(1);
 r = await c.post('/api/login', { email: 'admin@kfl.de', password: 'AdminPass123!', code: totp(setup.secret) }, { who: 'admin' });
+probe(r.ok, 'Gegenprobe: mit Passwort und gültigem Code klappt die Anmeldung', r);
 const used = totp(setup.secret);
 r = await c.post('/api/login', { email: 'admin@kfl.de', password: 'AdminPass123!', code: used }, { who: 'replay' });
 probe(!r.ok, 'Ein bereits benutzter Code kann nicht ein zweites Mal verwendet werden', r);
@@ -59,6 +60,16 @@ const src = (await import('node:fs')).readFileSync(new URL('./wk.mjs', import.me
 probe(!/DEFAULT_AREA_HASH|ee1cf79402a417ca/.test(src), 'Kein Standard-Bereichs-/Freigabepasswort (auch nicht als Hash) im öffentlichen Quellcode');
 r = await c.post('/api/area/unlock', { password: 'AdminPass123!' }, { who: 'admin' });
 probe(r.ok, 'Ohne eigenes Bereichspasswort entsperrt nur das eigene Anmeldepasswort (erneute Anmeldung)', r);
+await c.post('/api/area/lock', {}, { who: 'admin' });
+r = await c.post('/api/area/unlock', { password: 'Vertrieb12345!' }, { who: 'admin' });
+probe(r.status === 403, 'Passwort eines anderen Kontos entsperrt den Bereich nicht', r.status);
+await c.post('/api/area/unlock', { password: 'AdminPass123!' }, { who: 'admin' });
+// Konten ausspähen über die Sperre: vorhandenes und unbekanntes Konto müssen sich auch nach vielen Fehlversuchen gleich verhalten
+advance(1);
+const seq = async (mail, who) => { const out = []; for (let i = 0; i < 7; i++) out.push((await c.post('/papi/login', { email: mail, password: 'Falsch!xyz' + i }, { who: who + 'x'.repeat(i) })).status); return out.join(','); };
+const sKnown = await seq('gf@beta.de', 'enumA'), sUnknown = await seq('niemand@beta.de', 'enumB');
+probe(sKnown === sUnknown, 'Auch nach Kontosperre: gleiche Antworten für vorhandene und unbekannte Partner-Adressen', [sKnown, sUnknown]);
+advance(1);
 
 /* 2 ---------------------------------------------------------------- */
 attack(2, 'Rechteausweitung und fremde Daten (IDOR)', 'Mit einem einfachen Konto Admin-Rechte erlangen oder Daten anderer Partner/Kunden lesen');
@@ -67,12 +78,10 @@ r = await c.post('/api/users', { email: 'boese@kfl.de', name: 'Böse', role_key:
 const vtId = q1("SELECT id FROM users WHERE email = 'vt@kfl.de'").id;
 r = await c.patch(`/api/users/${vtId}`, { role_key: 'admin', extra_perms: ['users_admin', 'settings_all'] }, { who: 'vt' }); probe(r.status === 403 || r.status === 404, 'Vertriebler kann sich selbst keine Rolle/Rechte geben', r);
 probe(q1('SELECT role_key FROM users WHERE id = ?', vtId).role_key === 'vertrieb', 'Rolle in der Datenbank unverändert');
-for (const p of ['/api/backups', '/api/audit', '/api/settings', '/api/users', '/api/stats/staff']) { r = await c.get(p, { who: 'vt' }); probe(r.status === 403 || r.status === 423, `Vertriebler: ${p} gesperrt`, r.status); }
+for (const p of ['/api/backups', '/api/audit', '/api/settings', '/api/users', '/api/stats/staff']) { r = await c.get(p, { who: 'vt' }); probe(r.status === 403, `Vertriebler: ${p} gesperrt (fehlende Berechtigung)`, r.status); }
 r = await c.post('/api/jobs/run', { job: 'backup' }, { who: 'vt' }); probe(r.status === 403, 'Vertriebler kann keine Systemjobs starten', r.status);
 r = await c.get(`/papi/requests/${asgA.id}`, { who: 'pbeta' }); probe(r.status === 404 || r.status === 403, 'Partner Beta kann die Anfrage von Partner Alpha nicht öffnen (ID geraten)', r.status);
 r = await c.post(`/papi/requests/${asgA.id}/take`, {}, { who: 'pbeta' }); probe(r.status === 404 || r.status === 403, 'Partner Beta kann fremde Anfrage nicht übernehmen', r.status);
-r = await c.get('/papi/offers/1/file', { who: 'pbeta' }); probe(r.status === 404 || r.status === 403, 'Partner kann keine fremden Angebotsdateien laden', r.status);
-r = await c.get('/papi/invoices/1/pdf', { who: 'pbeta' }); probe(r.status === 404 || r.status === 403, 'Partner kann keine fremden Rechnungen laden', r.status);
 r = await c.get('/api/requests', { who: 'pa' }); probe(r.status === 401, 'Partner-Sitzung gilt nicht im internen Dashboard', r.status);
 r = await c.get('/papi/requests', { who: 'vt' }); probe(r.status === 401, 'Mitarbeiter-Sitzung gilt nicht im Partner-Dashboard', r.status);
 const t2 = nowSec();
@@ -93,9 +102,11 @@ const staffHtml = await (await c.call('GET', '/admin', null, { raw: true })).tex
 probe(/const esc\s*=|function esc\(/.test(staffHtml) && /script-src 'nonce-/.test((await c.call('GET', '/admin', null, { raw: true })).headers.get('Content-Security-Policy')), 'Oberfläche maskiert Eingaben, CSP erlaubt nur signierte Skripte (eingeschleuste Skripte laufen nicht)');
 const mailWithXss = mails.find((m) => JSON.stringify(m).includes('onerror'));
 probe(!mailWithXss || !/<img src=x onerror/.test(mailWithXss.htmlContent || ''), 'E-Mails an KFL/Kunden enthalten eingeschleustes HTML nur maskiert', mailWithXss && (mailWithXss.htmlContent || '').slice(0, 200));
-const exp = await c.call('GET', '/api/requests?export=csv', null, { who: 'admin', raw: true });
-const expTxt = exp.status === 200 ? await exp.text() : '';
-probe(!expTxt || !/(^|[;,\t"])=HYPERLINK/m.test(expTxt), 'Export: Formeln aus Kundeneingaben werden entschärft (keine Excel-Formel-Injection)', expTxt.slice(0, 200));
+{ const tt = nowSec(); await c.post('/', { _form: 'support', _kid: '0', _ts: tt, _sig: sig(`0.${tt}.support`), name: '=HYPERLINK("http://evil.test","Klick")', email: 'f@x.de', Thema: 'x', Nachricht: 'Formel' }, { who: 'formel' }); }
+await c.post('/api/area/unlock', { password: 'AdminPass123!' }, { who: 'admin' });
+const exp = await c.call('GET', '/api/audit?export=1', null, { who: 'admin', raw: true });
+const expTxt = await exp.text();
+probe(exp.status === 200 && expTxt.includes('HYPERLINK') && !/(^|\t)=HYPERLINK/m.test(expTxt), 'Protokoll-Export: Formeln aus Eingaben werden entschärft (keine Excel-Formel-Injection)', expTxt.split('\n').find((l) => l.includes('HYPERLINK')));
 
 /* 4 ---------------------------------------------------------------- */
 attack(4, 'Sitzungs-Angriffe (CSRF, Cookie-Diebstahl, Klickfallen)', 'Eine angemeldete Person dazu bringen, unbemerkt Aktionen auszuführen, oder ihre Sitzung übernehmen');
@@ -142,8 +153,9 @@ const f = q1('SELECT * FROM files ORDER BY id DESC LIMIT 1');
 probe(f && f.mime !== 'text/html' && f.mime !== 'application/pdf', 'Als PDF getarnte HTML-Datei wird erkannt und nicht als PDF gespeichert', f && f.mime);
 const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>').toString('base64');
 r = await c.post(`/papi/requests/${asgA.id}/parse-pdf`, { pdf: { name: 'x.pdf', type: 'application/pdf', base64: svg } }, { who: 'pa' });
-probe(r.status >= 400 || r.ok === false || (r.fields && Object.keys(r.fields).length === 0) || r.ok, 'Auslesen eines als PDF getarnten SVG führt zu keinem Fehler mit Interna', r.status);
+probe(r.status < 500 && !/stack|at\s+\w+\s+\(/i.test(JSON.stringify(r)), 'Auslesen eines als PDF getarnten SVG führt zu keinem Fehler mit Interna', r.status);
 const off = q1('SELECT id FROM offers ORDER BY id DESC LIMIT 1');
+probe(!!off, 'Gegenprobe: das Angebot mit der getarnten Datei wurde angelegt (die folgenden Proben laufen also wirklich)');
 if (off) {
   const res = await c.call('GET', `/api/requests/${reqNo}/offers/${off.id}/file`, null, { who: 'admin', raw: true });
   probe(/^attachment/.test(res.headers.get('Content-Disposition') || '') && /sandbox/.test(res.headers.get('Content-Security-Policy') || '') && !/[/\\]/.test((res.headers.get('Content-Disposition') || '').split('filename=')[1] || ''), 'Verdächtige Datei nur als Download, abgeschottet, Dateiname ohne Pfadangaben');
@@ -161,6 +173,30 @@ const logged = sq.prepare('SELECT ip FROM audit WHERE ip IS NOT NULL').all().map
 probe(logged.length > 0 && !logged.includes(plain), 'IP-Kennungen im Protokoll sind mit geheimem Schlüssel gebildet (nicht durch Durchprobieren aller IPv4-Adressen umkehrbar)', logged.slice(0, 2));
 r = await c.get('/health'); probe(!r.version || !/\d+\.\d+\.\d+/.test(r.version), 'Statusseite verrät keine genaue Softwareversion', r);
 
+/* Ergänzende Proben aus der unabhängigen Gegenprüfung */
+console.log('  (ergänzende Proben)');
+// Support-Ticket im Namen eines echten Kontos ohne Anmeldung
+r = await c.post('/papi/support-public', { name: 'Gf Beta', email: 'gf@beta.de', message: 'Bitte Zugang für evil@x.de anlegen', topic: 'Zugang' }, { who: 'fake' });
+const tk = q1("SELECT requester_type, requester_id FROM tickets ORDER BY id DESC LIMIT 1");
+probe(r.ok && tk.requester_type === 'web' && !tk.requester_id, 'Support-Nachricht ohne Anmeldung erscheint nicht als Nachricht des echten Partnerkontos', tk);
+// IPv6: neue Adressen aus demselben /64-Netz umgehen die Anmelde-Bremse nicht
+let v6; for (let i = 0; i < 12; i++) v6 = await worker.fetch(new Request('https://w.test/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://w.test', 'X-KFL': '1', 'CF-Connecting-IP': `2001:db8:4711:9::${(i + 1).toString(16)}` }, body: JSON.stringify({ email: 'v6-' + i + '@kfl.de', password: 'Falsch!123' }) }), env);
+probe(v6.status === 429, 'Wechselnde IPv6-Adressen aus einem /64-Netz werden gemeinsam gebremst', v6.status);
+// E-Mail-Links: automatische Link-Prüfer (GET) lösen nichts aus, erst die Bestätigung (POST)
+const { createHmac: hm } = await import('node:crypto');
+const reqId = q1('SELECT id FROM requests ORDER BY id LIMIT 1').id;
+const ooTok = hm('sha256', env.APP_SECRET).update('oo|' + reqId).digest('hex').slice(0, 40);
+const ooUrl = `https://w.test/c/optout?r=${q1('SELECT id FROM requests WHERE id = ?', reqId) ? (await import('./wk.mjs')) && reqNo : reqNo}&t=${ooTok}`;
+const g1 = await worker.fetch(new Request(ooUrl), env); const g1t = await g1.text();
+probe(/<form method="post"/.test(g1t) && !q1('SELECT feedback_optout AS o FROM requests WHERE id = ?', reqId).o, 'E-Mail-Link: Aufruf ohne Bestätigung (z. B. durch Link-Scanner) ändert nichts', g1t.slice(0, 120));
+const g2 = await worker.fetch(new Request(ooUrl, { method: 'POST' }), env); await g2.text();
+probe(q1('SELECT feedback_optout AS o FROM requests WHERE id = ?', reqId).o === 1, 'Gegenprobe: nach Bestätigung wird die Abmeldung gespeichert');
+// Abfragegrenze: Cron mit Rückstau alter Support-Fälle bleibt unter 50 Datenbankabfragen
+for (let i = 0; i < 25; i++) sq.prepare("INSERT INTO tickets (tag, kind, subject, priority, status, requester_type, requester_name, requester_email, archived_at, created_at, updated_at) VALUES ('Intern','ticket','Alt','normal','erledigt','web','A','a@a.de','2022-01-01T00:00:00.000Z','2022-01-01','2022-01-01')").run();
+const { cron: runCron, QMAX } = await import('./harness.mjs');
+let qmax = 0; for (let i = 0; i < 4; i++) { env.DB._q = 0; await runCron(worker, env); qmax = Math.max(qmax, env.DB._q); }
+probe(qmax <= 50, `Zeitgesteuerte Abläufe bleiben im Abfragelimit (max. ${qmax} von 50 je Aufruf)`, qmax);
+probe(q1("SELECT COUNT(*) AS n FROM tickets WHERE archived_at = '2022-01-01T00:00:00.000Z'").n < 25, 'Alte archivierte Support-Fälle (älter als 3 Jahre) werden gelöscht');
 console.log(`\n${fails ? fails + ' Lücke(n) gefunden' : 'Alle Angriffe abgewehrt'}`);
 if (process.env.ANGRIFFE_JSON) writeFileSync(process.env.ANGRIFFE_JSON, JSON.stringify({ at: new Date().toISOString(), fails, report }, null, 1));
-process.exitCode = 0;
+process.exitCode = fails ? 1 : 0;

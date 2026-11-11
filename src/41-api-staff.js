@@ -98,7 +98,7 @@ async function handleStaffApi(ctx, url) {
     need(perIp < 5, 429, 'Gerade sind zu viele Anfragen eingegangen. Bitte versuch es später noch einmal oder schreib an support@kfl-group.com.');
     ctx.actor = { type: 'web', name };
     const known = await DB.one(db, 'SELECT id FROM users WHERE email = ?', email);
-    const id = await createTicket(ctx, { tag: 'Intern', category: str(body.topic, 60) || 'Anmeldung / Zugang', subject: str(body.topic, 60) || 'Support-Anfrage aus dem Dashboard', requester: { type: known ? 'staff' : 'web', id: known ? known.id : null, name, email }, text: message });
+    const id = await createTicket(ctx, { tag: 'Intern', category: str(body.topic, 60) || 'Anmeldung / Zugang', subject: str(body.topic, 60) || 'Support-Anfrage aus dem Dashboard', requester: { type: 'web', id: null, name, email }, text: (known ? '[Nicht angemeldet – die Absenderadresse gehört zu einem Mitarbeiterkonto, ist aber nicht bestätigt. Vor Änderungen am Zugang bitte persönlich rückversichern.]\n\n' : '') + message });
     return out({ ok: true, number: id });
   }
 
@@ -125,7 +125,8 @@ async function handleStaffApi(ctx, url) {
   }
   if (path === '/2fa/disable' && method === 'POST') {
     const row = await DB.one(db, 'SELECT pass_hash, pass_salt, totp_secret, totp_on, totp_step FROM users WHERE id = ?', u.id); need(row.totp_on, 409, 'Die Zwei-Faktor-Anmeldung ist nicht aktiv.');
-    need(await verifyPassword(String(body.password || ''), row.pass_hash, row.pass_salt), 400, 'Das Passwort ist falsch.');
+    need(!(await secondPasswordThrottled(ctx, 'passwort_pruefung_falsch')), 429, 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.');
+    if (!(await verifyPassword(String(body.password || ''), row.pass_hash, row.pass_salt))) { await audit(ctx, 'passwort_pruefung_falsch', 'mitarbeiter', u.id, { zweck: '2fa_aus' }); need(false, 400, 'Das Passwort ist falsch.'); }
     need(await totpCheck((await openSecretInfo(env, row.totp_secret)).text, body.code, row.totp_step || 0), 400, 'Der Code ist falsch oder abgelaufen.');
     await DB.update(db, 'users', u.id, { totp_secret: null, totp_pending: null, totp_on: 0, totp_step: 0 });
     await audit(ctx, '2fa_deaktiviert', 'mitarbeiter', u.id, null);
@@ -133,7 +134,8 @@ async function handleStaffApi(ctx, url) {
   }
   if (path === '/password' && method === 'POST') {
     const row = await DB.one(db, 'SELECT pass_hash, pass_salt FROM users WHERE id = ?', u.id);
-    need(await verifyPassword(body.current, row.pass_hash, row.pass_salt), 400, 'Das aktuelle Passwort ist falsch.');
+    need(!(await secondPasswordThrottled(ctx, 'passwort_pruefung_falsch')), 429, 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.');
+    if (!(await verifyPassword(body.current, row.pass_hash, row.pass_salt))) { await audit(ctx, 'passwort_pruefung_falsch', 'mitarbeiter', u.id, { zweck: 'passwort_aendern' }); need(false, 400, 'Das aktuelle Passwort ist falsch.'); }
     const p = passwordProblem(body.next); need(!p, 400, p);
     const h = await hashPassword(body.next);
     await DB.run(db, 'UPDATE users SET pass_hash = ?, pass_salt = ?, must_change_pw = 0 WHERE id = ?', h.hash, h.salt, u.id);
@@ -719,7 +721,7 @@ async function handleStaffApi(ctx, url) {
     const rows = await DB.all(db, `SELECT * FROM audit ${w} ORDER BY id DESC LIMIT ? OFFSET ?`, ...args, per, (page - 1) * per);
     if (q.export === '1') {
       const all = await DB.all(db, `SELECT * FROM audit ${w} ORDER BY id DESC LIMIT 20000`, ...args);
-      const txt = all.map((a) => [a.at, a.actor_type, a.actor_name, a.action, a.entity, a.entity_id, a.detail, a.ip].map((x) => String(x ?? '').replace(/[\t\n]/g, ' ')).join('\t')).join('\n');
+      const txt = all.map((a) => [a.at, a.actor_type, a.actor_name, a.action, a.entity, a.entity_id, a.detail, a.ip].map((x) => String(x ?? '').replace(/[\t\n\r]/g, ' ').replace(/^([=+\-@])/, "'$1")).join('\t')).join('\n');
       await audit(ctx, 'protokoll_export', 'protokoll', null, { eintraege: all.length });
       return new Response('Zeit\tTyp\tWer\tAktion\tObjekt\tID\tDetails\tIP-Kennung\n' + txt, { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Disposition': `attachment; filename="kfl-protokoll-${berlinDate(nowMs())}.txt"`, ...SEC_HEADERS } });
     }

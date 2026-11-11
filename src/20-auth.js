@@ -99,7 +99,11 @@ async function loginGeneric(ctx, table, sessTable, email, password, code = '') {
   if (!u || !u.active || !u.pass_hash) {
     await hashPassword(password || 'x', 'timing-protect');
     ctx.actor = { type: 'web', id: null, name: 'Unbekannt' };
-    await audit(ctx, 'login_unbekannt', table === 'users' ? 'mitarbeiter' : 'partner', null, null);
+    // Gleiches Verhalten wie bei vorhandenen Konten: nach 5 Fehlversuchen je Adresse 15 Minuten „gesperrt“ (verrät nicht, ob es das Konto gibt)
+    const ek = (await hmacHex(serverKey(ctx.env), 'login-mail:' + String(email || '').toLowerCase())).slice(0, 24);
+    const prev = await DB.val(ctx.db, "SELECT COUNT(*) FROM audit WHERE action = 'login_unbekannt' AND entity_id = ? AND at >= ?", ek, isoOf(nowMs() - 15 * 60e3));
+    await audit(ctx, 'login_unbekannt', table === 'users' ? 'mitarbeiter' : 'partner', ek, null);
+    if (prev >= 5) return { error: 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.', status: 429 };
     return { error: generic, status: 401 };
   }
   if (table === 'partner_users') { const org = await DB.one(ctx.db, 'SELECT active, deleted FROM orgs WHERE id = ?', u.org_id); if (!org || !org.active || org.deleted) return { error: 'Dieses Partnerkonto ist derzeit nicht aktiv. Bitte wende dich an den KFL-Support.', status: 403 }; }

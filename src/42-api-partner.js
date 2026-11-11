@@ -48,6 +48,14 @@ async function partnerAssignmentView(ctx, p, a, { detail = false, req = null, ta
 }
 
 // PDF-Text grob auslesen (unkomprimiert und Flate), um Eckdaten vorzuschlagen
+// Entpacken mit Obergrenze (Schutz vor „Zip-Bomben“ in hochgeladenen PDFs)
+async function inflateCapped(data, max) {
+  const reader = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate')).getReader();
+  const parts = []; let n = 0;
+  for (;;) { const { done, value } = await reader.read(); if (done) break; n += value.length; if (n > max) { await reader.cancel(); break; } parts.push(value); }
+  const out = new Uint8Array(Math.min(n, max)); let o = 0; for (const p of parts) { if (o + p.length > out.length) break; out.set(p, o); o += p.length; }
+  return out.subarray(0, o);
+}
 async function pdfText(bytes) {
   const raw = new TextDecoder('latin1').decode(bytes);
   const chunks = [];
@@ -58,7 +66,7 @@ async function pdfText(bytes) {
     const dict = raw.slice(Math.max(0, mt.index - 300), mt.index);
     const data = bytes.subarray(start, end);
     let txt = '';
-    if (/FlateDecode/.test(dict)) { try { const ds = new DecompressionStream('deflate'); txt = new TextDecoder('latin1').decode(await new Response(new Blob([data]).stream().pipeThrough(ds)).arrayBuffer()); } catch (e) { txt = ''; } }
+    if (/FlateDecode/.test(dict)) { try { txt = new TextDecoder('latin1').decode(await inflateCapped(data, 4e6)); } catch (e) { txt = ''; } }
     else txt = new TextDecoder('latin1').decode(data);
     const parts = [];
     for (const t of txt.matchAll(/\((?:\\.|[^\\)])*\)\s*Tj|\[(?:[^\]]*)\]\s*TJ/g)) {
@@ -263,7 +271,7 @@ async function handlePartnerApi(ctx, url) {
     need((await DB.val(db, "SELECT COUNT(*) FROM audit WHERE action = 'support_ticket' AND ip = ? AND at >= ?", ctx.ipHash || '-', isoOf(nowMs() - 3600e3))) < 5, 429, 'Zu viele Anfragen. Bitte später erneut versuchen.');
     const known = await DB.one(db, 'SELECT id, org_id FROM partner_users WHERE email = ?', email);
     ctx.actor = { type: 'web', name };
-    const id = await createTicket(ctx, { tag: 'Partner', category: str(body.topic, 60) || 'Anmeldung / Zugang', subject: str(body.topic, 60) || 'Support-Anfrage (Partner-Login)', requester: { type: known ? 'partner' : 'web', id: known ? known.id : null, name, email }, orgId: known ? known.org_id : null, text: message });
+    const id = await createTicket(ctx, { tag: 'Partner', category: str(body.topic, 60) || 'Anmeldung / Zugang', subject: str(body.topic, 60) || 'Support-Anfrage (Partner-Login)', requester: { type: 'web', id: null, name, email }, text: (known ? '[Nicht angemeldet – die Absenderadresse gehört zu einem Partnerkonto, ist aber nicht bestätigt. Vor Änderungen am Zugang bitte telefonisch rückversichern.]\n\n' : '') + message });
     return out({ ok: true, number: id });
   }
 

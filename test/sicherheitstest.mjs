@@ -37,7 +37,7 @@ r = await c.post('/api/archive/security-report', { title: 'Extern', file: { name
 r = await c.post('/api/archive/security-report', { title: 'Extern', file: { name: 'x.pdf', base64: Buffer.from(bytes).toString('base64') } }, { who: 'admin' }); check(r.ok, 'PDF-Upload durch Admin', r);
 console.log('Ablauf');
 advance(366 * 24); await c.post('/api/login', { email: 'admin@kfl.de', password: 'AdminPass123!' }, { who: 'admin' });
-await c.post('/api/jobs/run', { job: 'support' }, { who: 'admin' });
+for (let i = 0; i < 2; i++) await c.post('/api/jobs/run', { job: 'archiv' }, { who: 'admin' });
 check(q1("SELECT COUNT(*) AS n FROM archive WHERE kind = 'sicherheitstest'").n === 0, 'Nach 365 Tagen gelöscht');
 check(!q1('SELECT id FROM files WHERE id = ?', d.file_id), 'Datei ebenfalls gelöscht');
 console.log('fertig');
