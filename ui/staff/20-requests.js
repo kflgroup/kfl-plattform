@@ -107,7 +107,7 @@ async function pageRequest(no) {
             ['Kundenkonto', r.customer_account ? 'Shopify-Kunde ' + r.customer_account : 'ohne Konto'], ['Rückmeldung Kontakt', r.feedback_state ? (r.feedback_state === 'ja' ? 'Partner hat sich gemeldet' : 'Partner hat sich NICHT gemeldet') : '']])}</div></section>`
           : html`<section class="panel"><div class="panel-body muted small">${icon('lock')} Kontaktdaten sind für deine Rolle ausgeblendet.</div></section>`}
         <section class="panel"><div class="panel-head"><h2>Geschäftspartner <span class="count">${d.assignments.length}</span></h2>
-          <div class="row">${can('req_partner') ? html`<button class="btn btn-sm" data-act="assignPartner">${icon('plus')}Manuell zuordnen</button>${!d.assignments.length || ['eingang', 'in_bearbeitung', 'fehler', 'stoerung', 'kein_angebot'].includes(r.status) ? html`<button class="btn btn-sm" data-act="redispatch">${icon('refresh')}Automatisch verteilen</button>` : ''}` : ''}</div></div>
+          <div class="row">${can('req_partner') ? html`<button class="btn btn-sm" data-act="assignPartner">${icon('plus')}Manuell zuordnen</button>${d.assignments.filter(asgExtendable).length ? html`<button class="btn btn-sm" data-act="extendAll" title="Alle Partner ohne Angebot bekommen 24 Werktags-Stunden mehr Zeit">${icon('clock')}Allen +24 Std. (${d.assignments.filter(asgExtendable).length})</button>` : ''}${!d.assignments.length || ['eingang', 'in_bearbeitung', 'fehler', 'stoerung', 'kein_angebot'].includes(r.status) ? html`<button class="btn btn-sm" data-act="redispatch">${icon('refresh')}Automatisch verteilen</button>` : ''}` : ''}</div></div>
           ${d.assignments.length ? d.assignments.map((a) => asgHtml(a, d.offers.find((o) => o.assignment_id === a.id))) : html`<div class="panel-body">${empty('Noch an keinen Partner verteilt', 'Kein passender Partner im Umkreis? Ordne manuell zu.')}</div>`}
           ${canMsg && d.assignments.length ? html`<form class="composer" data-submit="msgPartners"><h3>Nachricht an Partner</h3>
             <div class="row">${sel('kind', [['notiz', 'Notiz'], ['ergaenzung', 'Ergänzung zur Anfrage'], ['info', 'Sonstige Information'], ['mahnung', 'Anmahnen'], ['probefahrt', 'Kunde möchte Probefahrt']], 'notiz')}
@@ -137,14 +137,17 @@ async function pageRequest(no) {
         ${can('req_delete') && !r.deleted ? html`<section class="panel"><div class="panel-body row-between"><span class="small muted">Anfrage endgültig deaktivieren und personenbezogene Daten entfernen.</span><button class="btn btn-sm btn-danger" data-act="reqDelete">${icon('trash')}Löschen</button></div></section>` : ''}
       </div></div>`);
 }
+// Frist verlängern: Partner ohne Angebot (laufend oder abgelaufen), solange die Anfrage noch nicht mit Angeboten ausgewertet ist
+const asgExtendable = (a) => !!(REQ && REQ.request && REQ.request.extendOk) && !a.offer_id && ['neu', 'in_bearbeitung', 'verloren'].includes(a.status);
 function asgHtml(a, offer) {
   const live = ['neu', 'in_bearbeitung'].includes(a.status);
   return html`<div class="asg"><div class="asg-head"><div><b>${a.org_name}</b>${a.org_city ? html` <span class="muted small">${a.org_city}</span>` : ''}
-      <div class="asg-meta">${a.distance_km != null ? `${fNum(a.distance_km)} km Luftlinie · ` : ''}${a.source === 'manuell' ? 'manuell zugeordnet' : a.source === 'verknuepft' ? 'vom Partner zusätzlich übernommen (Inzahlungnahme)' : 'automatisch'} · ${a.mailed_at ? 'versendet ' + fDT(a.mailed_at) : 'noch nicht versendet'}${a.reminders ? ` · ${a.reminders}× angemahnt` : ''}</div>
+      <div class="asg-meta">${a.distance_km != null ? `${fNum(a.distance_km)} km Luftlinie · ` : ''}${a.source === 'manuell' ? 'manuell zugeordnet' : a.source === 'verknuepft' ? 'vom Partner zusätzlich übernommen (Inzahlungnahme)' : 'automatisch'} · ${a.mailed_at ? 'versendet ' + fDT(a.mailed_at) : 'noch nicht versendet'}${a.reminders ? ` · ${a.reminders}× angemahnt` : ''}${a.extended ? ` · Frist ${a.extended}× verlängert` : ''}</div>
       <div class="asg-meta">${a.taker_name ? `In Bearbeitung von ${a.taker_name}${a.taken_at ? ' seit ' + fDT(a.taken_at) : ''}` : ''}${live && a.deadline_at ? ` · Frist ${fDT(a.deadline_at)} (${fLeft(a.deadline_at)})` : ''}${a.contact_due_at && ['gewonnen', 'nicht_erreicht'].includes(a.status) ? ` · Kontaktfrist ${fDT(a.contact_due_at)}` : ''}</div>
       ${a.closed_reason ? html`<div class="asg-meta">${a.closed_reason}</div>` : ''}</div>
     ${statusBadge(AS(), a.status)}</div>
     ${can('req_message') ? html`<div class="row">${live ? html`<button class="btn btn-sm" data-act="asgResend" data-id="${a.id}">${icon('send')}Erneut senden</button><button class="btn btn-sm" data-act="asgRemind" data-id="${a.id}">${icon('bell')}Anmahnen</button>` : ''}
+      ${can('req_partner') && asgExtendable(a) ? html`<button class="btn btn-sm" data-act="asgExtend" data-id="${a.id}" title="Angebotsfrist um 24 Werktags-Stunden verlängern und den Partner benachrichtigen">${icon('clock')}${live ? 'Frist +24 Std.' : 'Wieder öffnen +24 Std.'}</button>` : ''}
       ${a.status === 'in_bearbeitung' && can('req_partner') ? html`<button class="btn btn-sm" data-act="asgRelease" data-id="${a.id}">Für Organisation freigeben</button>` : ''}
       ${['gewonnen', 'nicht_erreicht', 'kontaktiert', 'verloren', 'gescheitert', 'vorgestellt'].includes(a.status) || offer ? html`<button class="btn btn-sm" data-act="asgStatus" data-id="${a.id}">Status setzen</button>` : ''}</div>` : ''}</div>`;
 }
@@ -195,11 +198,39 @@ ACT.asgStatus = async (b) => {
 };
 ACT.assignPartner = async () => {
   const c = await GET(`/requests/${rno()}/candidates`);
-  const list = c.orgs.filter((o) => !o.assigned && o.active).sort((a, b) => (b.brandMatch - a.brandMatch) || ((a.distance ?? 1e9) - (b.distance ?? 1e9)));
-  const d = await ask({ title: 'Partner manuell zuordnen', wide: true, ok: 'Zuordnen und senden',
-    fields: html`${field('Geschäftspartner', raw(`<select name="org_id" required size="8">${list.map((o) => `<option value="${o.id}">${esc(o.name)} · ${esc(o.city || '')}${o.distance != null ? ' · ' + fNum(o.distance) + ' km' : ''}${o.brandMatch ? '' : ' · andere Marke'}</option>`).join('')}</select>`), 'Passende Marke zuerst, dann nach Entfernung sortiert.')}
+  const sort = (a, b) => (b.brandMatch - a.brandMatch) || ((a.distance ?? 1e9) - (b.distance ?? 1e9));
+  const label = (o) => `${esc(o.name)} · ${esc(o.city || '')}${o.distance != null ? ' · ' + fNum(o.distance) + ' km' : ''}${o.brandMatch ? '' : ' · andere Marke'}`;
+  const fresh = c.orgs.filter((o) => !o.assigned && o.active).sort(sort);
+  const had = c.orgs.filter((o) => o.assigned && o.active).sort((a, b) => (b.assignment.extendable - a.assignment.extendable) || sort(a, b));
+  const hadLabel = (o) => { const a = o.assignment; if (!a.extendable) return `${label(o)} · ${a.offer ? 'Angebot liegt vor' : 'abgeschlossen'}`;
+    return `${label(o)} · ${a.status === 'verloren' ? 'Frist abgelaufen → wieder öffnen' : 'Frist ' + fDT(a.deadline_at)} · +24 Std.${a.extended ? ` (${a.extended}× verlängert)` : ''}`; };
+  const opts = (fresh.length ? `<optgroup label="Neu zuordnen">${fresh.map((o) => `<option value="${o.id}">${label(o)}</option>`).join('')}</optgroup>` : '')
+    + (had.length ? `<optgroup label="Hat die Anfrage bereits – Frist um 24 Werktags-Stunden verlängern">${had.map((o) => `<option value="${o.id}"${o.assignment.extendable ? '' : ' disabled'}>${hadLabel(o)}</option>`).join('')}</optgroup>` : '');
+  const d = await ask({ title: 'Partner manuell zuordnen', wide: true, ok: 'Zuordnen / verlängern und senden',
+    fields: html`${field('Geschäftspartner', raw(`<select name="org_id" required size="10">${opts}</select>`), 'Neue Partner: passende Marke zuerst, dann nach Entfernung. Partner, die die Anfrage schon haben und noch kein Angebot abgegeben haben, bekommen 24 Werktags-Stunden mehr Zeit – auch wenn ihre Frist schon abgelaufen ist.')}
       ${field('Notiz an den Partner (optional)', area('note', '', { rows: 3 }))}` });
-  if (!d) return; await POST(`/requests/${rno()}/assign`, d); toast('Partner zugeordnet und benachrichtigt.'); reload();
+  if (!d) return;
+  const r = await POST(`/requests/${rno()}/assign`, d);
+  toast(r.extended ? `Frist verlängert bis ${fDT(r.deadline)} – Partner benachrichtigt.` : 'Partner zugeordnet und benachrichtigt.'); reload();
+};
+ACT.asgExtend = async (b) => {
+  const a = REQ.assignments.find((x) => String(x.id) === b.dataset.id); if (!a) return;
+  const live = ['neu', 'in_bearbeitung'].includes(a.status);
+  const d = await ask({ title: `Frist für ${a.org_name} verlängern`, ok: '+24 Std. und benachrichtigen',
+    text: live ? `Die laufende Frist (${fDT(a.deadline_at)}) wird um 24 Werktags-Stunden verlängert.` : 'Die Frist ist abgelaufen. Die Anfrage wird für den Partner wieder geöffnet – mit 24 Werktags-Stunden ab jetzt.',
+    fields: field('Notiz an den Partner (optional)', area('note', '', { rows: 3, ph: 'z. B. Der Kunde wartet noch auf ein Angebot.' })) });
+  if (!d) return;
+  const r = await POST(`/requests/${rno()}/assign`, { org_id: a.org_id, note: d.note });
+  toast(`Frist verlängert bis ${fDT(r.deadline)} – Partner benachrichtigt.`); reload();
+};
+ACT.extendAll = async () => {
+  const list = REQ.assignments.filter(asgExtendable);
+  const d = await ask({ title: 'Frist für alle Partner verlängern', ok: `Allen ${list.length} Partnern +24 Std.`,
+    text: `Alle Partner, die die Anfrage erhalten und noch kein Angebot abgegeben haben, bekommen 24 Werktags-Stunden mehr Zeit und eine Benachrichtigung. Abgelaufene Fristen werden wieder geöffnet. ${list.map((a) => a.org_name).join(', ')}.`,
+    fields: field('Notiz an alle (optional)', area('note', '', { rows: 3, ph: 'z. B. Der Kunde wartet noch auf ein Angebot.' })) });
+  if (!d) return;
+  const r = await POST(`/requests/${rno()}/extend`, { note: d.note });
+  toast(`Frist für ${r.extended} Partner verlängert – alle benachrichtigt.`); reload();
 };
 ACT.redispatch = async () => { const r = await POST(`/requests/${rno()}/dispatch`); toast(r.assigned ? `An ${r.assigned} Partner verteilt.` : (r.error || 'Kein neuer passender Partner gefunden – bitte manuell zuordnen.'), r.assigned ? 'ok' : 'err'); reload(); };
 ACT.evaluate = async () => { if (!(await confirmBox('Jetzt auswerten?', 'Die Angebotsfrist wird nicht abgewartet. Das beste Angebot wird ermittelt und – je nach Einstellung – dem Kunden vorgestellt.', 'Auswerten'))) return; await POST(`/requests/${rno()}/evaluate`); reload(); };

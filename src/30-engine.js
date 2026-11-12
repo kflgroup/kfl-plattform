@@ -96,7 +96,7 @@ async function joinLinkedRequest(ctx, p, aid) {
     return { ok: true, id: ex.id, existing: true };
   }
   const org = await DB.one(ctx.db, 'SELECT * FROM orgs WHERE id = ?', p.orgId);
-  const r = await createAssignment(ctx, sell, org, { source: 'verknuepft', targetUserId: p.id, note: `Weitergeleitet aus dem Auto-DEAL #${toNumber(req.id)} (Inzahlungnahme) – Angebot für Traumwagen und Ankauf möglich.` });
+  const r = await createAssignment(ctx, sell, org, { source: 'verknuepft', targetUserId: p.id, note: `Weitergeleitet aus dem Auto-DEAL #${toNumber(req.id)} (Inzahlungnahme) – Angebot für Fahrzeug und Ankauf möglich.` });
   await takeAssignment(ctx, p, r.id);
   await reqEvent(ctx, sell.id, 'partner_verknuepft', `${org.name} übernimmt den Ankauf zusätzlich zur Auto-DEAL-Anfrage #${toNumber(req.id)}`);
   await audit(ctx, 'ankauf_verknuepft', 'anfrage', toNumber(sell.id), { partner: org.name, deal: toNumber(req.id) });
@@ -263,25 +263,60 @@ function teaserLine(req, distance) {
   return [req.type === 'sell' ? 'Ankauf' : (req.zustand || 'Fahrzeug'), req.brand && req.brand !== 'Noch offen' ? req.brand : null, req.plz ? `PLZ ${req.plz}` : null, distance != null ? `${String(distance).replace('.', ',')} km entfernt` : null,
     req.type === 'deal' && req.linked_request_id ? 'mit Inzahlungnahme' : null].filter(Boolean).join(' · ');
 }
-async function mailAssignment(ctx, req, org, aid, { targetUserId, deadline, reminder = false, extra = '' } = {}) {
+async function mailAssignment(ctx, req, org, aid, { targetUserId, deadline, reminder = false, extended = false, extra = '' } = {}) {
   const s = await settingsOf(ctx);
   const users = await DB.all(ctx.db, 'SELECT id, email, name, role FROM partner_users WHERE org_id = ? AND active = 1', org.id);
   const targets = targetUserId ? users.filter((u) => u.id === targetUserId || u.role !== 'vt') : users;
   const asg = await DB.one(ctx.db, 'SELECT * FROM assignments WHERE id = ?', aid);
   const line = teaserLine(req, asg ? asg.distance_km : null);
-  const title = reminder ? `Erinnerung: Anfrage #${toNumber(req.id)} wartet auf dein Angebot` : `Neue Anfrage #${toNumber(req.id)} in deiner Nähe`;
+  const title = extended ? `Mehr Zeit: Anfrage #${toNumber(req.id)} – Angebotsfrist verlängert` : reminder ? `Erinnerung: Anfrage #${toNumber(req.id)} wartet auf dein Angebot` : `Neue Anfrage #${toNumber(req.id)} in deiner Nähe`;
   const link = partnerUrl(ctx, s, `#/anfragen/${aid}`);
   let mails = 0, mailErrors = 0;
   for (const u of targets) {
-    await notify(ctx, 'partner', u.id, { kind: reminder ? 'mahnung' : 'anfrage', title, body: line + (extra ? '\n' + extra : ''), link: `#/anfragen/${aid}` });
-    const body = `<p>Hallo ${esc(u.name)},</p><p>${reminder ? 'zu dieser Anfrage liegt uns noch kein Angebot von dir vor:' : 'für dich ist eine neue Anfrage eingegangen:'}</p>
+    await notify(ctx, 'partner', u.id, { kind: reminder ? 'mahnung' : 'anfrage', title, body: (extended ? `Neue Frist: ${fmtDE(deadline || (asg && asg.deadline_at))} · ` : '') + line + (extra ? '\n' + extra : ''), link: `#/anfragen/${aid}` });
+    const body = `<p>Hallo ${esc(u.name)},</p><p>${extended ? 'gute Nachricht: Für diese Anfrage hat KFL deine Angebotsfrist verlängert. Der Kunde wartet noch auf ein Angebot – nutze die Chance:' : reminder ? 'zu dieser Anfrage liegt uns noch kein Angebot von dir vor:' : 'für dich ist eine neue Anfrage eingegangen:'}</p>
       <p style="font-size:18px;font-weight:700;margin:14px 0">${esc(line)}</p>${extra ? `<p>${esc(extra).replace(/\n/g, '<br>')}</p>` : ''}
-      <p>Angebotsfrist: <strong>${esc(fmtDE(deadline || (asg && asg.deadline_at)))}</strong> (gezählt werden Werktage${saturdayOpen(org.opening) ? ' inkl. Samstag' : ''}).</p>
+      <p>${extended ? 'Neue Angebotsfrist' : 'Angebotsfrist'}: <strong>${esc(fmtDE(deadline || (asg && asg.deadline_at)))}</strong> (gezählt werden Werktage${saturdayOpen(org.opening) ? ' inkl. Samstag' : ''}).</p>
       ${link ? mailBtn(link, 'Anfrage im Partner-Dashboard öffnen') : ''}<p style="color:#6b6b70;font-size:13px">Die Kontaktdaten des Kunden erhältst du, sobald er dein Angebot annimmt.</p>`;
     const r = await sendMail(ctx, { category: 'partner', to: u.email, toName: u.name, subject: title, title, body });
     mails++; if (r.status === 'fehler') mailErrors++;
   }
   return { mails, mailErrors };
+}
+
+/* ---------- Angebotsfrist verlängern (manuell durch KFL) ----------
+   Für Partner ohne Angebot: laufende Frist + 24 Werktags-Stunden, abgelaufene Frist ab jetzt + 24 Werktags-Stunden.
+   Abgelaufene Zuordnungen werden wieder geöffnet (beim bisherigen Bearbeiter, sonst für die ganze Organisation).
+   Eine Anfrage ohne Angebot („kein Angebot“) wird dabei wieder geöffnet und erst nach der neuen Frist ausgewertet. */
+const EXTEND_HOURS = 24;
+const REQ_EXTEND_OK = ['eingang', 'in_bearbeitung', 'versendet', 'angebot_liegt_vor', 'fehler', 'stoerung', 'kein_angebot'];
+function extendProblem(req, a) {
+  if (req.deleted || req.spam_state === 'bestaetigt') return 'Die Anfrage ist deaktiviert.';
+  if (!REQ_EXTEND_OK.includes(req.status) || (req.evaluated_at && req.status !== 'kein_angebot')) return 'Die Angebote dieser Anfrage wurden bereits ausgewertet – eine Verlängerung ist nicht mehr möglich.';
+  if (!a) return null;
+  if (a.offer_id) return 'Dieser Partner hat bereits ein Angebot abgegeben.';
+  if (!['neu', 'in_bearbeitung', 'verloren'].includes(a.status)) return 'Diese Zuordnung ist abgeschlossen und kann nicht verlängert werden.';
+  return null;
+}
+async function extendAssignment(ctx, req, a, org, { hours = EXTEND_HOURS, note = null, mail = true } = {}) {
+  const t = nowIso();
+  const running = ['neu', 'in_bearbeitung'].includes(a.status) && a.deadline_at && a.deadline_at > t;
+  const deadline = isoOf(addBusinessHours(running ? msOf(a.deadline_at) : nowMs(), hours, { saturday: saturdayOpen(org.opening) }));
+  const upd = { deadline_at: deadline, extended: (a.extended || 0) + 1, extended_at: t, archived: 0, updated_at: t };
+  if (!running) Object.assign(upd, a.taken_by ? { status: 'in_bearbeitung', lock_until: deadline } : { status: 'neu' }, { closed_reason: null });
+  else if (a.status === 'in_bearbeitung' && a.lock_until && a.lock_until < deadline) upd.lock_until = deadline;
+  await DB.update(ctx.db, 'assignments', a.id, upd);
+  await partnerEvent(ctx, { assignmentId: a.id, requestId: req.id, orgId: a.org_id, action: 'frist_verlaengert', visiblePartner: true,
+    text: `${running ? 'Angebotsfrist' : 'Abgelaufene Angebotsfrist'} um ${hours} Werktags-Stunden verlängert – neue Frist: ${fmtDE(deadline)}.${note ? ' ' + note : ''}` });
+  let r = { mails: 0, mailErrors: 0 };
+  if (mail) r = await mailAssignment(ctx, req, org, a.id, { targetUserId: a.taken_by || a.target_user_id, deadline, extended: true, extra: note || '' });
+  return { id: a.id, deadline, reopened: !running, ...r };
+}
+// Anfrage nach einer Verlängerung wieder auf „Versendet“ setzen und die Gesamtfrist anpassen
+async function reopenAfterExtend(ctx, req) {
+  const upd = { updated_at: nowIso(), deadline_at: await DB.val(ctx.db, "SELECT MAX(deadline_at) FROM assignments WHERE request_id = ? AND status IN ('neu','in_bearbeitung')", req.id) };
+  if (['eingang', 'in_bearbeitung', 'fehler', 'kein_angebot', 'stoerung'].includes(req.status)) Object.assign(upd, { status: 'versendet', status_note: null, evaluated_at: null, dispatched_at: req.dispatched_at || nowIso() });
+  await DB.update(ctx.db, 'requests', req.id, upd);
 }
 
 /* ---------- Ansicht für Partner (ohne persönliche Kundendaten) ---------- */

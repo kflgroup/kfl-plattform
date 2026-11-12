@@ -177,6 +177,7 @@ const EXTRA_COLUMNS = {
   mail_outbox: { server_reply: 'TEXT' },
   tickets: { partner_hidden_at: 'TEXT' },
   offers: { score_detail: 'TEXT' },
+  assignments: { extended: 'INTEGER NOT NULL DEFAULT 0', extended_at: 'TEXT' },
   suppliers: { org_id: 'INTEGER' },
   purchase_invoices: { account_id: 'INTEGER', vat_rate: 'REAL', doc_id: 'INTEGER', entry_id: 'INTEGER', pay_entry_id: 'INTEGER', text: 'TEXT', source: 'TEXT', mail_ref: 'TEXT', pdf_sha: 'TEXT', extract: 'TEXT' },
   orgs: { supplier: 'INTEGER NOT NULL DEFAULT 1', reminder_due_days: 'INTEGER', dunning_fee_1: 'REAL', dunning_fee_2: 'REAL', dunning_due_days: 'INTEGER', dunning_due_days_2: 'INTEGER' },

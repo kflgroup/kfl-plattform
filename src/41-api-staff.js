@@ -327,7 +327,7 @@ async function handleStaffApi(ctx, url) {
       const billing = await DB.all(db, 'SELECT b.*, i.number AS invoice_number FROM billing_items b LEFT JOIN invoices i ON i.id = b.invoice_id WHERE b.request_id = ?', rid);
       const tickets = await DB.all(db, 'SELECT id, subject, status, tag FROM tickets WHERE request_id = ?', rid);
       if (r.customer_note_unread && can(u, 'req_edit')) await DB.update(db, 'requests', rid, { customer_note_unread: 0 });
-      return out({ ok: true, request: { ...(await staffRequestRow(ctx, r, u)), fields, contact: can(u, 'req_contact') ? customerContact(r) : null, radius_km: r.radius_km, lat: r.lat, lon: r.lon,
+      return out({ ok: true, request: { ...(await staffRequestRow(ctx, r, u)), extendOk: !extendProblem(r, null), fields, contact: can(u, 'req_contact') ? customerContact(r) : null, radius_km: r.radius_km, lat: r.lat, lon: r.lon,
         customer_account: r.customer_account, linked: r.linked_request_id ? await DB.one(db, 'SELECT id, type, status, vehicle FROM requests WHERE id = ?', r.linked_request_id).then((x) => x && { number: toNumber(x.id), type: x.type, status: x.status, vehicle: x.vehicle }) : null, dispatched_at: r.dispatched_at, evaluated_at: r.evaluated_at, presented_at: r.presented_at, decided_at: r.decided_at, feedback_state: r.feedback_state, spam_reason: r.spam_reason, deleted: !!r.deleted },
         assignments, offers, events, notes, partnerEvents: pevents, billing, tickets });
     }
@@ -389,7 +389,17 @@ async function handleStaffApi(ctx, url) {
     if (sub === 'assign' && method === 'POST') {
       requirePerm(u, 'req_partner');
       const org = await DB.one(db, 'SELECT * FROM orgs WHERE id = ? AND deleted = 0', toInt(body.org_id)); need(org, 404, 'Geschäftspartner nicht gefunden.');
-      need(!(await DB.one(db, 'SELECT id FROM assignments WHERE request_id = ? AND org_id = ?', rid, org.id)), 409, 'Dieser Partner hat die Anfrage bereits.');
+      // Partner hat die Anfrage schon: kein Angebot → Frist um 24 Werktags-Stunden verlängern (statt doppelter Zuordnung)
+      const ex = await DB.one(db, 'SELECT * FROM assignments WHERE request_id = ? AND org_id = ?', rid, org.id);
+      if (ex) {
+        const pr = extendProblem(r, ex); need(!pr, 409, pr);
+        need(org.active, 409, 'Dieser Geschäftspartner ist deaktiviert.');
+        const res = await extendAssignment(ctx, r, ex, org, { note: str(body.note, 2000) || null });
+        await reopenAfterExtend(ctx, r);
+        await reqEvent(ctx, rid, 'frist_verlaengert', `Frist für ${org.name} um ${EXTEND_HOURS} Werktags-Stunden verlängert (bis ${fmtDE(res.deadline)})`);
+        await audit(ctx, 'frist_verlaengert', 'anfrage', reqNo, { org: org.name, bis: res.deadline, wieder_geoeffnet: res.reopened });
+        return out({ ok: true, id: ex.id, extended: true, deadline: res.deadline, mails: res.mails });
+      }
       if (r.lat == null && plzOk(r.plz)) { const g = await geocodePlz(ctx, r.plz); if (g) { await DB.update(db, 'requests', rid, { lat: g.lat, lon: g.lon }); r.lat = g.lat; r.lon = g.lon; } }
       const res = await createAssignment(ctx, r, org, { source: 'manuell', targetUserId: toInt(body.target_user_id) || null, note: str(body.note, 2000) || null });
       const upd = { updated_at: nowIso(), deadline_at: await DB.val(db, "SELECT MAX(deadline_at) FROM assignments WHERE request_id = ? AND status IN ('neu','in_bearbeitung')", rid) };
@@ -402,8 +412,9 @@ async function handleStaffApi(ctx, url) {
     if (sub === 'candidates' && method === 'GET') {
       requirePerm(u, 'req_partner');
       const orgs = await DB.all(db, 'SELECT id, name, city, zip, lat, lon, brands, active FROM orgs WHERE deleted = 0 ORDER BY name');
-      const have = new Set((await DB.all(db, 'SELECT org_id FROM assignments WHERE request_id = ?', rid)).map((x) => x.org_id));
-      return out({ ok: true, orgs: orgs.map((o) => ({ id: o.id, name: o.name, city: o.city, active: !!o.active, assigned: have.has(o.id), brands: jparse(o.brands, []), brandMatch: jparse(o.brands, []).includes('*') || jparse(o.brands, []).some((b) => normBrand(b) === normBrand(r.brand)), distance: r.lat != null && o.lat != null ? distanceKm(r, o) : null })) });
+      const asgs = new Map((await DB.all(db, 'SELECT * FROM assignments WHERE request_id = ?', rid)).map((x) => [x.org_id, x])), have = new Set(asgs.keys());
+      const asgInfo = (oid) => { const a = asgs.get(oid); if (!a) return null; const pr = extendProblem(r, a); return { status: a.status, deadline_at: a.deadline_at, offer: !!a.offer_id, extended: a.extended || 0, extendable: !pr, reason: pr }; };
+      return out({ ok: true, orgs: orgs.map((o) => ({ id: o.id, name: o.name, city: o.city, active: !!o.active, assigned: have.has(o.id), assignment: asgInfo(o.id), brands: jparse(o.brands, []), brandMatch: jparse(o.brands, []).includes('*') || jparse(o.brands, []).some((b) => normBrand(b) === normBrand(r.brand)), distance: r.lat != null && o.lat != null ? distanceKm(r, o) : null })) });
     }
     if (sub === 'message' && method === 'POST') {
       requirePerm(u, 'req_message');
@@ -438,6 +449,21 @@ async function handleStaffApi(ctx, url) {
       await reqEvent(ctx, rid, 'nachricht_partner', `${label} an ${asgs.map((a) => a.org_name).join(', ')}${text ? ': ' + text.slice(0, 200) : ''}`);
       await audit(ctx, 'nachricht_partner', 'anfrage', reqNo, { kind, partner: asgs.length });
       return out({ ok: true });
+    }
+    if (sub === 'extend' && method === 'POST') {
+      // Alle Partner, die die Anfrage erhalten und noch kein Angebot abgegeben haben (oder nur ausgewählte)
+      requirePerm(u, 'req_partner');
+      const pr = extendProblem(r, null); need(!pr, 409, pr);
+      const ids = Array.isArray(body.assignment_ids) ? body.assignment_ids.map(Number).filter((x) => x > 0) : [];
+      const list = (await DB.all(db, `SELECT a.*, o.name AS org_name, o.opening, o.active AS org_active FROM assignments a JOIN orgs o ON o.id = a.org_id WHERE a.request_id = ? AND o.deleted = 0${ids.length ? ` AND a.id IN (${inList(ids)})` : ''} ORDER BY a.id`, rid, ...ids))
+        .filter((a) => a.org_active && !extendProblem(r, a));
+      need(list.length, 409, 'Es gibt keinen Partner ohne Angebot, dessen Frist verlängert werden kann.');
+      const note = str(body.note, 2000) || null, done = [];
+      for (const a of list) { const res = await extendAssignment(ctx, r, a, { id: a.org_id, opening: a.opening }, { note }); done.push({ org: a.org_name, deadline: res.deadline, reopened: res.reopened }); }
+      await reopenAfterExtend(ctx, r);
+      await reqEvent(ctx, rid, 'frist_verlaengert', `Frist für ${done.length} Partner um ${EXTEND_HOURS} Werktags-Stunden verlängert: ${done.map((x) => x.org).join(', ')}`);
+      await audit(ctx, 'frist_verlaengert', 'anfrage', reqNo, { partner: done.map((x) => x.org), anzahl: done.length });
+      return out({ ok: true, extended: done.length, partners: done });
     }
     if ((m = sub.match(/^assignments\/(\d+)\/(resend|status|release)$/)) && method === 'POST') {
       const a = await DB.one(db, 'SELECT a.*, o.opening, o.name AS org_name FROM assignments a JOIN orgs o ON o.id = a.org_id WHERE a.id = ? AND a.request_id = ?', +m[1], rid); need(a, 404, 'Zuordnung nicht gefunden.');
