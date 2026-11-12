@@ -133,7 +133,9 @@ const ICONS = {
   pause: '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>'
 };
 const icon = (n, cls = '') => raw(`<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`);
-const LOGO = raw('<span class="logo" aria-label="KFL – Kaufen Finanzieren Leasen"><b>KFL</b><i></i></span>');
+// Firmenlogo (aus Shopify, über /brand/logo.png ausgeliefert); fehlt das Bild, erscheint der Schriftzug
+const LOGO = raw('<span class="logo" role="img" aria-label="KFL – Kaufen Finanzieren Leasen"><img class="logo-img" src="/brand/logo.png" alt="" width="40" height="40" decoding="async"><b class="logo-word">KFL</b><span class="logo-tag"><span>Kaufen.</span> <span>Finanzieren.</span> <span>Leasen.</span></span></span>');
+document.addEventListener('error', (e) => { const t = e.target; if (t && t.classList && t.classList.contains('logo-img')) { const l = t.closest('.logo'); if (l) l.classList.add('no-img'); } }, true);
 
 /* ---------- Aktionen (CSP-konform ohne Inline-Handler) ---------- */
 const ACT = {}, SUBMIT = {}, CHANGE = {}, INPUT = {};

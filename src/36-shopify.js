@@ -224,3 +224,24 @@ async function cartCodeWarn(ctx, e) {
   }
   return 'Berechtigung fehlt';
 }
+
+/* ---------- Firmenlogo für beide Dashboards (Bild aus Shopify → Dateien, über die eigene Adresse ausgeliefert) ---------- */
+let BRAND_LOGO = null; // { url, body, type, at } – je Worker-Instanz zwischengespeichert
+const logoUrlOk = (u) => { try { const x = new URL(u); return x.protocol === 'https:' && /(^|\.)(shopify\.com|kfl-group\.com)$/i.test(x.hostname); } catch (e) { return false; } };
+async function brandLogoResponse(ctx) {
+  const url = String((await settingsOf(ctx)).brand_logo_url || '').trim();
+  const head = { 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff', 'Cross-Origin-Resource-Policy': 'same-origin' };
+  const none = () => new Response(null, { status: 404, headers: { ...head, 'Cache-Control': 'public, max-age=300' } });
+  if (!logoUrlOk(url)) return none();
+  if (!BRAND_LOGO || BRAND_LOGO.url !== url || nowMs() - BRAND_LOGO.at > 864e5) {
+    try {
+      const res = await fetch(url, { cf: { cacheTtl: 86400, cacheEverything: true } });
+      const type = (res.headers.get('Content-Type') || '').split(';')[0].trim();
+      const body = res.ok && /^image\/(png|jpeg|webp|gif|svg\+xml)$/.test(type) ? await res.arrayBuffer() : null;
+      if (!body || body.byteLength > 2e6) return BRAND_LOGO && BRAND_LOGO.url === url ? new Response(BRAND_LOGO.body, { headers: { ...head, 'Content-Type': BRAND_LOGO.type } }) : none();
+      BRAND_LOGO = { url, body, type, at: nowMs() };
+    } catch (e) { if (!BRAND_LOGO || BRAND_LOGO.url !== url) return none(); }
+  }
+  const extra = BRAND_LOGO.type === 'image/svg+xml' ? { 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'" } : {};
+  return new Response(BRAND_LOGO.body, { headers: { ...head, ...extra, 'Content-Type': BRAND_LOGO.type } });
+}

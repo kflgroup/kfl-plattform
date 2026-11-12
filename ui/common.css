@@ -39,9 +39,12 @@ button{font:inherit;color:inherit}
 hr.sep{border:0;border-top:1px solid var(--line);margin:18px 0}
 
 /* Logo: Wortmarke mit Tempo-Strich */
-.logo{display:inline-flex;align-items:center;gap:7px;text-decoration:none}
-.logo b{font:italic 900 23px/1 var(--font);letter-spacing:-.03em;color:currentColor}
-.logo i{display:block;width:26px;height:5px;background:var(--orange);transform:skewX(-24deg);border-radius:1px}
+.logo{display:inline-flex;align-items:center;gap:10px;text-decoration:none;color:inherit}
+.logo-img{width:40px;height:40px;object-fit:contain;border-radius:9px;flex:none;display:block}
+.logo-word{display:none;font:italic 900 23px/1 var(--font);letter-spacing:-.03em;color:currentColor}
+.logo.no-img .logo-img{display:none}.logo.no-img .logo-word{display:block}
+.logo-tag{font-size:10px;line-height:1.2;font-weight:700;letter-spacing:.06em;text-transform:uppercase;opacity:.75}
+.logo-tag span{display:block}
 
 /* Layout-Helfer */
 .stack{display:flex;flex-direction:column;gap:14px}

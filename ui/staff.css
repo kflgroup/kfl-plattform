@@ -126,8 +126,9 @@ a.kpi:hover{background:var(--sunken)}
 /* Anmeldung */
 .auth{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr) minmax(380px,520px);background:var(--surface)}
 .auth-art{background:var(--asphalt);color:#fff;padding:44px 52px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden}
-.auth-art .logo b{font-size:30px}
-.auth-art .logo i{width:36px;height:6px}
+.auth-art .logo .logo-img{width:64px;height:64px;border-radius:14px}.auth-art .logo .logo-word{font-size:30px}
+.auth-art .logo .logo-tag{font-size:12px}.auth-art .logo .logo-tag span{display:inline}
+@media (max-width:760px){.tb-logo .logo-tag{display:none}.tb-logo .logo-img{width:32px;height:32px}}
 .auth-art h1{font-size:46px;line-height:1.05;max-width:520px;font-weight:900}
 .auth-art p{color:#a8abb0;max-width:440px;margin-top:14px;font-size:16px}
 .auth-art .stripes{position:absolute;right:-60px;top:0;bottom:0;width:340px;display:flex;gap:22px;transform:skewX(-24deg);opacity:.9;pointer-events:none}

@@ -265,6 +265,7 @@ const DEFAULT_SETTINGS = {
   link_shopify_admin: 'https://admin.shopify.com/store/3r1qns-2d',
   link_shop: 'https://kfl-group.com',
   link_instagram: 'https://www.instagram.com/',
+  brand_logo_url: 'https://cdn.shopify.com/s/files/1/1055/0699/6563/files/KFL_-_Logo.png?v=1774557605&width=256',
   link_agb_partner: 'https://kfl-group.com/pages/agb-partner',
   link_privacy: 'https://kfl-group.com/policies/privacy-policy',
   link_my_requests: 'https://kfl-group.com/pages/meine-anfragen'
